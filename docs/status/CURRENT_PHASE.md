@@ -2,11 +2,11 @@
 
 | Field | Value |
 |---|---|
-| **Current Phase** | Phase 07 — Burst and Multi-Frame Acquisition |
+| **Current Phase** | Phase 08 — Frame Scoring, Rejection and Alignment |
 | **Status** | ✅ PASS |
 | **Completed** | 2026-09-20 |
-| **Prompt file** | `prompts/PHASE_07_MULTIFRAME_ACQUISITION.md` |
-| **Next phase** | Phase 08 — Frame Selection, Motion Estimation and Alignment (`prompts/PHASE_08_FRAME_SELECTION_ALIGNMENT.md`) |
+| **Prompt file** | `prompts/PHASE_08_FRAME_SCORING_ALIGNMENT.md` |
+| **Next phase** | Phase 09 — Multi-Frame Fusion (HDR, Night, Denoise) (`prompts/PHASE_09_MULTIFRAME_FUSION.md`) |
 
 ## Completed Phases
 
@@ -20,3 +20,4 @@
 | 05 | Lenses, Zoom, Controls and Pro Base | ✅ PASS | `phase-05: lenses, zoom, controls and pro base` |
 | 06 | Real-Time Scene and Quality Analysis | ✅ PASS | `phase-06: real-time scene and quality analysis` |
 | 07 | Burst and Multi-Frame Acquisition | ✅ PASS | `phase-07: burst and multi-frame acquisition` |
+| 08 | Frame Scoring, Rejection and Alignment | ✅ PASS | `phase-08: frame scoring, rejection and alignment` |
