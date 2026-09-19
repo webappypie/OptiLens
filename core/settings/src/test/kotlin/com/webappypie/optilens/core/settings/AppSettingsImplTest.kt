@@ -168,5 +168,31 @@ class AppSettingsImplTest {
         assertFalse(settings.keepOriginalEnabled.first())
     }
 
+    // ── AI Enhance Analytics ──────────────────────────────────────────────
+
+    @Test
+    fun `recordAiEnhanceOutcome kept updates counts and calculates keep rate accurately`() = runTest {
+        val settings = createSettings(backgroundScope)
+        assertEquals(0, settings.aiEnhanceKeptCount.first())
+        assertEquals(0, settings.aiEnhanceRevertedCount.first())
+        assertEquals(1.0f, settings.aiEnhanceKeepRate.first(), 0.001f)
+
+        settings.recordAiEnhanceOutcome(kept = true)
+
+        assertEquals(1, settings.aiEnhanceKeptCount.first())
+        assertEquals(0, settings.aiEnhanceRevertedCount.first())
+        assertEquals(1.0f, settings.aiEnhanceKeepRate.first(), 0.001f)
+    }
+
+    @Test
+    fun `recordAiEnhanceOutcome reverted updates counts and calculates keep rate accurately`() = runTest {
+        val settings = createSettings(backgroundScope)
+        settings.recordAiEnhanceOutcome(kept = false)
+
+        assertEquals(0, settings.aiEnhanceKeptCount.first())
+        assertEquals(1, settings.aiEnhanceRevertedCount.first())
+        assertEquals(0.0f, settings.aiEnhanceKeepRate.first(), 0.001f)
+    }
+
 }
 

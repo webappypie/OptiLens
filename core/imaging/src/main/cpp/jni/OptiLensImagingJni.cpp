@@ -9,6 +9,7 @@
 #include "../fusion/ToneMapper.hpp"
 #include "../fusion/ColorCorrector.hpp"
 #include "../portrait/PortraitProcessor.hpp"
+#include "../enhance/AiEnhanceProcessor.hpp"
 
 #define LOG_TAG "OptiLensImagingJni"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -539,6 +540,65 @@ Java_com_webappypie_optilens_core_imaging_portrait_NativePortraitBridge_nativePr
 
     env->ReleasePrimitiveArrayCritical(vPlane, vData, 0);
     env->ReleasePrimitiveArrayCritical(uPlane, uData, 0);
+    env->ReleasePrimitiveArrayCritical(yPlane, yData, 0);
+
+    return success ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_webappypie_optilens_core_imaging_enhance_NativeAiEnhanceBridge_nativeProcessAiEnhance(
+    JNIEnv* env,
+    jclass /* clazz */,
+    jbyteArray yPlane,
+    jbyteArray uPlane,
+    jbyteArray vPlane,
+    jint width,
+    jint height,
+    jint yStride,
+    jint uvStride,
+    jfloat strength,
+    jboolean preserveSkinTones,
+    jboolean enableExposureBalancing,
+    jboolean enableNoiseReduction,
+    jboolean enableDetailEnhancement,
+    jboolean enableColorHarmony
+) {
+    if (!yPlane || width <= 0 || height <= 0 || yStride <= 0) {
+        return JNI_FALSE;
+    }
+
+    jboolean isCopyY = JNI_FALSE;
+    jboolean isCopyU = JNI_FALSE;
+    jboolean isCopyV = JNI_FALSE;
+
+    jbyte* yData = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(yPlane, &isCopyY));
+    if (!yData) return JNI_FALSE;
+
+    jbyte* uData = (uPlane != nullptr) ? static_cast<jbyte*>(env->GetPrimitiveArrayCritical(uPlane, &isCopyU)) : nullptr;
+    jbyte* vData = (vPlane != nullptr) ? static_cast<jbyte*>(env->GetPrimitiveArrayCritical(vPlane, &isCopyV)) : nullptr;
+
+    optilens::EnhanceParams params;
+    params.strength = strength;
+    params.preserveSkinTones = (preserveSkinTones == JNI_TRUE);
+    params.enableExposureBalancing = (enableExposureBalancing == JNI_TRUE);
+    params.enableNoiseReduction = (enableNoiseReduction == JNI_TRUE);
+    params.enableDetailEnhancement = (enableDetailEnhancement == JNI_TRUE);
+    params.enableColorHarmony = (enableColorHarmony == JNI_TRUE);
+
+    bool success = optilens::AiEnhanceProcessor::process(
+        reinterpret_cast<uint8_t*>(yData),
+        reinterpret_cast<uint8_t*>(uData),
+        reinterpret_cast<uint8_t*>(vData),
+        width,
+        height,
+        yStride,
+        uvStride,
+        params,
+        nullptr
+    );
+
+    if (vData) env->ReleasePrimitiveArrayCritical(vPlane, vData, 0);
+    if (uData) env->ReleasePrimitiveArrayCritical(uPlane, uData, 0);
     env->ReleasePrimitiveArrayCritical(yPlane, yData, 0);
 
     return success ? JNI_TRUE : JNI_FALSE;

@@ -13,6 +13,7 @@ data class ProcessingResult(
     val isHdrApplied: Boolean = false,
     val isNightModeApplied: Boolean = false,
     val isPortraitApplied: Boolean = false,
+    val isAiEnhanceApplied: Boolean = false,
     val faceCount: Int = 0,
     val isFallbackUsed: Boolean = false,
 )

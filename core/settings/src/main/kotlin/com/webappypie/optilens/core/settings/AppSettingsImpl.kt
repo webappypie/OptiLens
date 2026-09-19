@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -37,6 +38,8 @@ class AppSettingsImpl @Inject constructor(
         val PORTRAIT_BLUR_STRENGTH  = floatPreferencesKey("portrait_blur_strength")
         val PORTRAIT_SKIN_SMOOTHING = floatPreferencesKey("portrait_skin_smoothing")
         val IS_PRO                  = booleanPreferencesKey("is_pro")
+        val AI_ENHANCE_KEPT_COUNT   = intPreferencesKey("ai_enhance_kept_count")
+        val AI_ENHANCE_REVERTED_COUNT = intPreferencesKey("ai_enhance_reverted_count")
     }
 
     // ── Theme ─────────────────────────────────────────────────────────────
@@ -116,5 +119,27 @@ class AppSettingsImpl @Inject constructor(
     override val isPro: Flow<Boolean> = dataStore.data.map { it[Keys.IS_PRO] ?: false }
     override suspend fun setIsPro(isPro: Boolean) {
         dataStore.edit { it[Keys.IS_PRO] = isPro }
+    }
+
+    // ── AI Enhance & Analytics ────────────────────────────────────────────
+    override val aiEnhanceKeptCount: Flow<Int> = dataStore.data.map { it[Keys.AI_ENHANCE_KEPT_COUNT] ?: 0 }
+    override val aiEnhanceRevertedCount: Flow<Int> = dataStore.data.map { it[Keys.AI_ENHANCE_REVERTED_COUNT] ?: 0 }
+    override val aiEnhanceKeepRate: Flow<Float> = dataStore.data.map { prefs ->
+        val kept = prefs[Keys.AI_ENHANCE_KEPT_COUNT] ?: 0
+        val reverted = prefs[Keys.AI_ENHANCE_REVERTED_COUNT] ?: 0
+        val total = kept + reverted
+        if (total > 0) kept.toFloat() / total.toFloat() else 1.0f
+    }
+
+    override suspend fun recordAiEnhanceOutcome(kept: Boolean) {
+        dataStore.edit { prefs ->
+            if (kept) {
+                val current = prefs[Keys.AI_ENHANCE_KEPT_COUNT] ?: 0
+                prefs[Keys.AI_ENHANCE_KEPT_COUNT] = current + 1
+            } else {
+                val current = prefs[Keys.AI_ENHANCE_REVERTED_COUNT] ?: 0
+                prefs[Keys.AI_ENHANCE_REVERTED_COUNT] = current + 1
+            }
+        }
     }
 }

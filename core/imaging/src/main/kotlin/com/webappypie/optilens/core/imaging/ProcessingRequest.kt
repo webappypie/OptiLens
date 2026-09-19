@@ -9,6 +9,7 @@ enum class ProcessingMode {
     NIGHT,
     PORTRAIT,
     SUPER_RES_ZOOM,
+    AI_ENHANCE,
 }
 
 /**
@@ -22,4 +23,5 @@ data class ProcessingRequest(
     val applyDenoise: Boolean = true,
     val enhanceLighting: Boolean = true,
     val portraitConfig: com.webappypie.optilens.core.imaging.portrait.PortraitConfig? = null,
+    val aiEnhanceConfig: com.webappypie.optilens.core.imaging.enhance.AiEnhanceConfig? = null,
 )

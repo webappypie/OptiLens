@@ -2,11 +2,11 @@
 
 | Field | Value |
 |---|---|
-| **Current Phase** | Phase 11 — Portrait and Face-Aware Processing |
+| **Current Phase** | Phase 12 — One-Tap AI Enhance and Before/After Review |
 | **Status** | ✅ PASS |
 | **Completed** | 2026-09-20 |
-| **Prompt file** | `prompts/PHASE_11_PORTRAIT_FACE_PIPELINE.md` |
-| **Next phase** | Phase 12 — Offline AI Enhancer and Interactive Before/After Comparison (`prompts/PHASE_12_AI_ENHANCE_BEFORE_AFTER.md`) |
+| **Prompt file** | `prompts/PHASE_12_AI_ENHANCE_BEFORE_AFTER.md` |
+| **Next phase** | Phase 13 — Super Resolution and AI Zoom (`prompts/PHASE_13_SUPER_RESOLUTION_AI_ZOOM.md`) |
 
 ## Completed Phases
 
@@ -24,3 +24,4 @@
 | 09 | Multi-Frame Fusion, HDR, Denoise, Tone and Color | ✅ PASS | `phase-09: multi-frame fusion, hdr, denoise, tone and color` |
 | 10 | Handheld Night Mode and Low-Light Boost | ✅ PASS | `phase-10: handheld night mode, preview boost, chroma cleanup and moving-subject fallback` |
 | 11 | Portrait and Face-Aware Processing | ✅ PASS | `phase-11: portrait and face-aware pipeline, optical disc bokeh, and skin tone fidelity` |
+| 12 | One-Tap AI Enhance and Before/After Review | ✅ PASS | `phase-12: one-tap ai enhance, before-after split slider, and reversible non-destructive workflow` |

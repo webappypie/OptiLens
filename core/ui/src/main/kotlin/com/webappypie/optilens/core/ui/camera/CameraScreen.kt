@@ -151,6 +151,7 @@ enum class HdrState { AUTO, ON, OFF }
 fun CameraScreen(
     onNavigateToSettings: () -> Unit,
     onNavigateToGallery: () -> Unit,
+    onNavigateToPhotoReview: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier,
     onShutterClick: () -> Unit = {},
     showGrid: Boolean = true,
@@ -589,7 +590,14 @@ fun CameraScreen(
                         .clickable(
                             indication = ripple(bounded = true),
                             interactionSource = remember { MutableInteractionSource() },
-                            onClick = onNavigateToGallery,
+                            onClick = {
+                                val lastUri = uiState.lastCapturedPhoto?.uri
+                                if (lastUri != null && onNavigateToPhotoReview != null) {
+                                    onNavigateToPhotoReview(lastUri)
+                                } else {
+                                    onNavigateToGallery()
+                                }
+                            },
                         ),
                     contentAlignment = Alignment.Center,
                 ) {

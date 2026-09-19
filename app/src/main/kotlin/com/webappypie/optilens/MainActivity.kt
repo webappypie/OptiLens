@@ -24,6 +24,7 @@ import com.webappypie.optilens.core.navigation.NavigationManager
 import com.webappypie.optilens.core.settings.AppSettings
 import com.webappypie.optilens.core.settings.ThemeMode
 import com.webappypie.optilens.core.ui.camera.CameraScreen
+import com.webappypie.optilens.core.ui.review.PhotoReviewScreen
 import com.webappypie.optilens.core.ui.screens.AiToolsScreen
 import com.webappypie.optilens.core.ui.screens.CameraDiagnosticsScreen
 import com.webappypie.optilens.core.ui.screens.GalleryScreen
@@ -133,9 +134,16 @@ fun OptiLensNavigationShell(
             CameraScreen(
                 onNavigateToSettings = { navController.navigate(AppDestination.Settings) },
                 onNavigateToGallery  = { navController.navigate(AppDestination.Gallery) },
+                onNavigateToPhotoReview = { uri -> navController.navigate(AppDestination.PhotoDetail(uri)) },
                 showGrid = gridEnabled,
                 showLevel = levelEnabled,
                 externalShutterTrigger = volumeKeyShutterTrigger,
+            )
+        },
+        photoDetailScreen = { detail ->
+            PhotoReviewScreen(
+                photoUri = detail.photoUri,
+                onNavigateBack = { navController.popBackStack() },
             )
         },
         galleryScreen = {

@@ -69,6 +69,19 @@ interface AppSettings {
     /** Whether the user has an active Pro entitlement. Set by billing layer. Default: false. */
     val isPro: Flow<Boolean>
     suspend fun setIsPro(isPro: Boolean)
+
+    // ── AI Enhance & Analytics ───────────────────────────────
+    /** Total number of times an AI enhancement was kept / saved. Default: 0. */
+    val aiEnhanceKeptCount: Flow<Int>
+
+    /** Total number of times an AI enhancement was reverted. Default: 0. */
+    val aiEnhanceRevertedCount: Flow<Int>
+
+    /** Lifetime AI Enhance Keep Rate in [0.0, 1.0]. */
+    val aiEnhanceKeepRate: Flow<Float>
+
+    /** Records an AI enhance session outcome (kept or reverted) anonymously without photo content. */
+    suspend fun recordAiEnhanceOutcome(kept: Boolean)
 }
 
 /** User-visible theme preference. */

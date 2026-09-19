@@ -38,6 +38,7 @@ dependencies {
     implementation(project(":core:common"))
     implementation(project(":core:settings"))
     implementation(project(":core:camera"))
+    implementation(project(":core:imaging"))
     implementation(project(":core:logging"))
 
     implementation(libs.androidx.core.ktx)
