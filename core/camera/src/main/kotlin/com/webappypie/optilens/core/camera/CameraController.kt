@@ -74,8 +74,31 @@ interface CameraController {
     /** Most recently acquired multi-frame burst result. */
     val lastBurstResult: Flow<com.webappypie.optilens.core.camera.burst.model.BurstResult?>
 
+    /** Active Night mode execution plan evaluated in real-time. */
+    val nightExecutionPlan: Flow<com.webappypie.optilens.core.camera.night.NightExecutionPlan?>
+
+    /** Whether preview low-light boost is actively brightening the viewfinder. */
+    val isPreviewBoostActive: Flow<Boolean>
+
+    /** Current physical device stability assessment (Tripod vs Handheld). */
+    val stabilityAssessment: Flow<com.webappypie.optilens.core.camera.night.StabilityAssessment>
+
+    /** Current device hardware thermal state. */
+    val thermalState: Flow<com.webappypie.optilens.core.camera.thermal.DeviceThermalState>
+
     /** Whether the front camera is currently active. */
     val isFrontCamera: Boolean
+
+    /**
+     * Enables or disables preview low-light boost framing aid.
+     * @return [OptiResult.Success] with true if boost is active, false if unsupported/disabled.
+     */
+    suspend fun enablePreviewLowLightBoost(enable: Boolean): OptiResult<Boolean>
+
+    /**
+     * Set user policy preference for Night mode (AUTO, PREFER_VENDOR, PREFER_CUSTOM).
+     */
+    suspend fun setNightPolicyPreference(preference: com.webappypie.optilens.core.camera.night.NightPolicyPreference)
 
     /**
      * Binds CameraX Preview, ImageCapture, and ImageAnalysis use cases to the given

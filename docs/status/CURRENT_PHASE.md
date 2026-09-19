@@ -2,11 +2,11 @@
 
 | Field | Value |
 |---|---|
-| **Current Phase** | Phase 09 — Multi-Frame Fusion, HDR, Denoise, Tone and Color |
+| **Current Phase** | Phase 10 — Handheld Night Mode and Low-Light Boost |
 | **Status** | ✅ PASS |
 | **Completed** | 2026-09-20 |
-| **Prompt file** | `prompts/PHASE_09_FUSION_HDR_DENOISE_COLOR.md` |
-| **Next phase** | Phase 10 — Handheld Night Mode (`prompts/PHASE_10_NIGHT_MODE.md`) |
+| **Prompt file** | `prompts/PHASE_10_NIGHT_MODE.md` |
+| **Next phase** | Phase 11 — Portrait Pipeline and Depth Processing (`prompts/PHASE_11_PORTRAIT_PIPELINE.md`) |
 
 ## Completed Phases
 
@@ -22,3 +22,4 @@
 | 07 | Burst and Multi-Frame Acquisition | ✅ PASS | `phase-07: burst and multi-frame acquisition` |
 | 08 | Frame Scoring, Rejection and Alignment | ✅ PASS | `phase-08: frame scoring, rejection and alignment` |
 | 09 | Multi-Frame Fusion, HDR, Denoise, Tone and Color | ✅ PASS | `phase-09: multi-frame fusion, hdr, denoise, tone and color` |
+| 10 | Handheld Night Mode and Low-Light Boost | ✅ PASS | `phase-10: handheld night mode, preview boost, chroma cleanup and moving-subject fallback` |

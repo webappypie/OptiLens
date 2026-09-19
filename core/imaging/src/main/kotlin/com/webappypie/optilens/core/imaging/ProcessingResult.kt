@@ -11,4 +11,6 @@ data class ProcessingResult(
     val width: Int,
     val height: Int,
     val isHdrApplied: Boolean = false,
+    val isNightModeApplied: Boolean = false,
+    val isFallbackUsed: Boolean = false,
 )

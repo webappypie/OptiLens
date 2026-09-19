@@ -18,13 +18,15 @@ struct ColorCorrectionParams {
     float awbGain = 0.40f;             // Gray-world AWB correction intensity (0.0 to 1.0)
     bool protectSkinTones = true;      // Prevent oversaturation of human skin
     float sharpnessBoost = 0.25f;      // Noise-aware unsharp detail enhancement (0.0 to 1.0)
+    bool enableChromaCleanup = true;   // Low-light chrominance noise blotch suppression
+    bool conservativeSharpening = true;// Suppress noise amplification in deep shadows
 };
 
 class ColorCorrector {
 public:
     /**
      * Executes color grading, gray-world AWB, color profiling (DEFAULT, NATURAL, VIVID),
-     * skin tone protection, and noise-aware detail enhancement.
+     * skin tone protection, low-light chroma cleanup, and noise-aware detail enhancement.
      *
      * @param inY Tone-mapped luminance [0..255]
      * @param inU Fused chrominance U [0..255]
@@ -54,13 +56,28 @@ public:
     static float computeSkinProbability(float u, float v);
 
     /**
-     * Noise-aware detail enhancement operator applying unsharp masking only above noise threshold.
+     * Luminance-guided chrominance bilateral filter removing blotchy low-light noise in shadows.
+     */
+    static void applyChromaCleanup(
+        const float* inY,
+        const float* inU,
+        const float* inV,
+        int width,
+        int height,
+        float* outU,
+        float* outV
+    );
+
+    /**
+     * Noise-aware detail enhancement operator applying unsharp masking only above noise threshold,
+     * with conservative luminance gating in deep shadows.
      */
     static void applyDetailEnhancement(
         const float* inY,
         int width,
         int height,
         float sharpnessBoost,
+        bool conservativeSharpening,
         uint8_t* outY
     );
 };

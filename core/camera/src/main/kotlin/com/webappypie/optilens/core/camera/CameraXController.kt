@@ -38,10 +38,18 @@ import com.webappypie.optilens.core.camera.model.MotionState
 import com.webappypie.optilens.core.camera.model.ProCameraState
 import com.webappypie.optilens.core.camera.model.QualityMetrics
 import com.webappypie.optilens.core.camera.model.SceneClassification
+import com.webappypie.optilens.core.camera.model.PerformanceTier
 import com.webappypie.optilens.core.camera.model.WhiteBalanceMode
 import com.webappypie.optilens.core.camera.model.ZoomState
 import com.webappypie.optilens.core.camera.model.ZoomStop
+import com.webappypie.optilens.core.camera.night.NightExecutionPlan
+import com.webappypie.optilens.core.camera.night.NightModePolicyEngine
+import com.webappypie.optilens.core.camera.night.NightPolicyPreference
+import com.webappypie.optilens.core.camera.night.NightStabilityDetector
+import com.webappypie.optilens.core.camera.night.StabilityAssessment
 import com.webappypie.optilens.core.camera.strategy.CaptureStrategy
+import com.webappypie.optilens.core.camera.thermal.DeviceThermalMonitor
+import com.webappypie.optilens.core.camera.thermal.DeviceThermalState
 import com.webappypie.optilens.core.camera.storage.MediaStoreSaver
 import com.webappypie.optilens.core.common.coroutines.AppDispatchers
 import com.webappypie.optilens.core.common.result.OptiError
@@ -86,6 +94,8 @@ class CameraXController @Inject constructor(
     @ApplicationContext private val context: Context,
     private val capabilityRepository: CameraCapabilityRepository,
     private val mediaStoreSaver: MediaStoreSaver,
+    private val thermalMonitor: DeviceThermalMonitor,
+    private val nightPolicyEngine: NightModePolicyEngine,
     private val dispatchers: AppDispatchers,
     private val logger: AppLogger,
 ) : CameraController {
@@ -140,6 +150,21 @@ class CameraXController @Inject constructor(
     private val _lastBurstResult = MutableStateFlow<BurstResult?>(null)
     override val lastBurstResult: Flow<BurstResult?> = _lastBurstResult.asStateFlow()
 
+    private val _nightExecutionPlan = MutableStateFlow<NightExecutionPlan?>(null)
+    override val nightExecutionPlan: Flow<NightExecutionPlan?> = _nightExecutionPlan.asStateFlow()
+
+    private val _isPreviewBoostActive = MutableStateFlow(false)
+    override val isPreviewBoostActive: Flow<Boolean> = _isPreviewBoostActive.asStateFlow()
+
+    private val stabilityDetector = NightStabilityDetector()
+    private val _stabilityAssessment = MutableStateFlow(stabilityDetector.evaluateStability(0.0f))
+    override val stabilityAssessment: Flow<StabilityAssessment> = _stabilityAssessment.asStateFlow()
+
+    override val thermalState: Flow<DeviceThermalState> = thermalMonitor.thermalState
+
+    private var nightPolicyPreference: NightPolicyPreference = NightPolicyPreference.AUTO
+    private var activeCameraProfile: CameraDeviceProfile? = null
+
     private var _isFrontCamera = false
     override val isFrontCamera: Boolean get() = _isFrontCamera
 
@@ -185,9 +210,39 @@ class CameraXController @Inject constructor(
         scope.launch {
             capabilityRepository.capabilityProfile.filterNotNull().collectLatest { profile ->
                 val activeCamera = if (_isFrontCamera) profile.primaryFrontCamera else profile.primaryBackCamera
+                activeCameraProfile = activeCamera
                 updateHardwareProfileCapabilities(activeCamera)
+                recomputeNightPlan()
             }
         }
+
+        // Observe thermal status transitions
+        scope.launch {
+            thermalMonitor.thermalState.collectLatest {
+                recomputeNightPlan()
+            }
+        }
+    }
+
+    private fun recomputeNightPlan() {
+        val angularVel = gyroMotionTracker.angularVelocity.value
+        val assessment = stabilityDetector.evaluateStability(angularVel)
+        _stabilityAssessment.value = assessment
+
+        val profile = activeCameraProfile
+        val tier = capabilityRepository.capabilityProfile.value?.performanceTier ?: PerformanceTier.MID_RANGE
+        val plan = nightPolicyEngine.evaluatePolicy(
+            activeCameraProfile = profile,
+            performanceTier = tier,
+            stability = assessment,
+            subjectMotion = _motionState.value.subjectMotionLevel,
+            luminance = _qualityMetrics.value.luminance,
+            thermalState = thermalMonitor.thermalState.value,
+            thermalPolicy = thermalMonitor.policy.value,
+            preference = nightPolicyPreference,
+            isHighContrastOrNeon = _qualityMetrics.value.dynamicRangeScore > 65.0f,
+        )
+        _nightExecutionPlan.value = plan
     }
 
     private fun updateHardwareProfileCapabilities(cameraProfile: CameraDeviceProfile?) {
@@ -258,8 +313,14 @@ class CameraXController @Inject constructor(
                 gyroVelocityProvider = { gyroMotionTracker.angularVelocity.value },
                 analysisScope = scope,
                 onHistogramComputed = { _histogramData.value = it },
-                onQualityMetricsComputed = { _qualityMetrics.value = it },
-                onMotionStateComputed = { _motionState.value = it },
+                onQualityMetricsComputed = {
+                    _qualityMetrics.value = it
+                    recomputeNightPlan()
+                },
+                onMotionStateComputed = {
+                    _motionState.value = it
+                    recomputeNightPlan()
+                },
                 onSceneClassificationComputed = { _sceneClassification.value = it },
                 onFacesDetected = { _detectedFaces.value = it },
                 onStrategyDecided = { _captureStrategy.value = it },
@@ -282,6 +343,19 @@ class CameraXController @Inject constructor(
                 analysis,
             )
             camera = boundCamera
+
+            // Re-apply preview low-light boost if active
+            if (_isPreviewBoostActive.value && android.os.Build.VERSION.SDK_INT >= 35) {
+                try {
+                    val camera2Control = Camera2CameraControl.from(boundCamera.cameraControl)
+                    val options = CaptureRequestOptions.Builder()
+                        .setCaptureRequestOption(CaptureRequest.CONTROL_AE_MODE, 6)
+                        .build()
+                    camera2Control.setCaptureRequestOptions(options)
+                } catch (e: Exception) {
+                    logger.w(TAG, "Failed to apply low light boost on bind: ${e.message}")
+                }
+            }
 
             // 5. Observe zoom and exposure bounds
             setupCameraStateObservers(boundCamera)
@@ -600,8 +674,36 @@ class CameraXController @Inject constructor(
         startPreview()
     }
 
+    override suspend fun enablePreviewLowLightBoost(enable: Boolean): OptiResult<Boolean> = withContext(dispatchers.main) {
+        _isPreviewBoostActive.value = enable
+        val cam = camera ?: return@withContext OptiResult.Success(enable)
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 35) {
+                val camera2Control = Camera2CameraControl.from(cam.cameraControl)
+                val options = CaptureRequestOptions.Builder()
+                    .setCaptureRequestOption(
+                        CaptureRequest.CONTROL_AE_MODE,
+                        if (enable) 6 else CaptureRequest.CONTROL_AE_MODE_ON
+                    )
+                    .build()
+                camera2Control.setCaptureRequestOptions(options)
+            }
+            logger.i(TAG, "Preview low light boost toggled: $enable")
+            OptiResult.Success(enable)
+        } catch (e: Exception) {
+            logger.w(TAG, "Low light boost toggle exception: ${e.message}")
+            OptiResult.Success(enable)
+        }
+    }
+
+    override suspend fun setNightPolicyPreference(preference: NightPolicyPreference) {
+        nightPolicyPreference = preference
+        recomputeNightPlan()
+    }
+
     override fun release() {
         try {
+            thermalMonitor.stopMonitoring()
             _lastBurstResult.value?.close()
             _lastBurstResult.value = null
             gyroMotionTracker.stop()

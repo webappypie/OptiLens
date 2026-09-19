@@ -47,7 +47,8 @@ class ProductionImagingPipeline @Inject constructor(
         onProgress?.invoke(0.1f)
 
         val mode = request.mode
-        val isMultiFrameEligible = (mode == ProcessingMode.HDR || mode == ProcessingMode.NIGHT || mode == ProcessingMode.STANDARD) &&
+        val isNightMode = (mode == ProcessingMode.NIGHT)
+        val isMultiFrameEligible = (mode == ProcessingMode.HDR || isNightMode || mode == ProcessingMode.STANDARD) &&
             request.burstFrameUris.size > 1
 
         val fusionConfig = FusionConfig(
@@ -55,7 +56,11 @@ class ProductionImagingPipeline @Inject constructor(
             enableDenoise = request.applyDenoise,
             enableHdr = mode == ProcessingMode.HDR,
             enableHighlightRollOff = true,
-            enableShadowRecovery = request.enhanceLighting,
+            enableShadowRecovery = request.enhanceLighting || isNightMode,
+            shadowLiftAmount = if (isNightMode) 0.40f else 0.35f,
+            enableNightHighlightProtection = isNightMode,
+            enableChromaCleanup = isNightMode,
+            conservativeSharpening = isNightMode,
         )
 
         logger.i(TAG, "ProductionImagingPipeline processing: mode=$mode, burstFrames=${request.burstFrameUris.size}")
@@ -70,16 +75,9 @@ class ProductionImagingPipeline @Inject constructor(
             onProgress?.invoke(0.5f)
             val duration = System.currentTimeMillis() - startTime
             onProgress?.invoke(1.0f)
+            val isFallback = (mode == ProcessingMode.NIGHT || mode == ProcessingMode.HDR)
             return@withContext OptiResult.Success(
-                ProcessingResult(
-                    outputUri = request.inputUri,
-                    originalUri = if (request.keepOriginal) request.inputUri else null,
-                    modeUsed = mode,
-                    processingDurationMs = duration,
-                    width = 4000,
-                    height = 3000,
-                    isHdrApplied = false,
-                )
+                createSingleFrameFallback(request, startTime, isFallbackUsed = isFallback, isNightMode = isNightMode)
             )
         }
 
@@ -91,7 +89,7 @@ class ProductionImagingPipeline @Inject constructor(
             val pool = BoundedBufferPool(maxCapacity = 10, defaultBufferSize = 4096)
             val burstEngine = FakeBurstAcquisitionEngine(bufferPool = pool)
             val burstResult = burstEngine.acquireBurst(
-                frameCount = request.burstFrameUris.size.coerceAtMost(8),
+                frameCount = request.burstFrameUris.size.coerceAtMost(if (isNightMode) 10 else 8),
                 evOffsets = if (mode == ProcessingMode.HDR) listOf(-2, 0, 1) else listOf(0),
                 mode = if (mode == ProcessingMode.HDR) CaptureStrategyMode.MULTI_FRAME_HDR else CaptureStrategyMode.NIGHT_STACK,
             )
@@ -101,11 +99,13 @@ class ProductionImagingPipeline @Inject constructor(
                 is OptiResult.Error -> {
                     logger.w(TAG, "Failed to acquire burst data, falling back to single frame: ${burstResult.error.displayMessage}")
                     return@withContext OptiResult.Success(
-                        createSingleFrameFallback(request, startTime)
+                        createSingleFrameFallback(request, startTime, isFallbackUsed = true, isNightMode = isNightMode)
                     )
                 }
                 is OptiResult.Loading -> {
-                    return@withContext OptiResult.Success(createSingleFrameFallback(request, startTime))
+                    return@withContext OptiResult.Success(
+                        createSingleFrameFallback(request, startTime, isFallbackUsed = true, isNightMode = isNightMode)
+                    )
                 }
             }
 
@@ -123,18 +123,43 @@ class ProductionImagingPipeline @Inject constructor(
                     logger.w(TAG, "Stack alignment failed, gracefully falling back to single-frame: ${stackResult.error.displayMessage}")
                     burstData.close()
                     return@withContext OptiResult.Success(
-                        createSingleFrameFallback(request, startTime)
+                        createSingleFrameFallback(request, startTime, isFallbackUsed = true, isNightMode = isNightMode)
                     )
                 }
                 is OptiResult.Loading -> {
                     burstData.close()
-                    return@withContext OptiResult.Success(createSingleFrameFallback(request, startTime))
+                    return@withContext OptiResult.Success(
+                        createSingleFrameFallback(request, startTime, isFallbackUsed = true, isNightMode = isNightMode)
+                    )
                 }
             }
 
             if (isCancelled.get()) {
                 stack.close()
                 return@withContext OptiResult.Error(OptiError.ProcessingFailed("cancelled"))
+            }
+
+            // In Night Mode, evaluate ghost / subject motion across candidate frames
+            var isMovingSubjectFallback = false
+            if (isNightMode) {
+                val candidateMasks = stack.alignedFrames.mapNotNull { it.ghostMask?.coverageFraction }
+                if (candidateMasks.isNotEmpty()) {
+                    val averageGhostFraction = candidateMasks.average()
+                    logger.d(TAG, "Night stack motion analysis: averageGhostFraction = $averageGhostFraction")
+
+                    if (averageGhostFraction > 0.35) {
+                        logger.i(TAG, "Moving-subject fallback triggered: averageGhostFraction $averageGhostFraction exceeds 35%. Reverting to anchor frame.")
+                        isMovingSubjectFallback = true
+                    }
+                }
+            }
+
+            if (isMovingSubjectFallback) {
+                stack.close()
+                onProgress?.invoke(1.0f)
+                return@withContext OptiResult.Success(
+                    createSingleFrameFallback(request, startTime, isFallbackUsed = true, isNightMode = true)
+                )
             }
 
             // Fuse stack
@@ -146,12 +171,14 @@ class ProductionImagingPipeline @Inject constructor(
                     logger.w(TAG, "Multi-frame fusion failed, falling back to single-frame: ${photoResult.error.displayMessage}")
                     stack.close()
                     return@withContext OptiResult.Success(
-                        createSingleFrameFallback(request, startTime)
+                        createSingleFrameFallback(request, startTime, isFallbackUsed = true, isNightMode = isNightMode)
                     )
                 }
                 is OptiResult.Loading -> {
                     stack.close()
-                    return@withContext OptiResult.Success(createSingleFrameFallback(request, startTime))
+                    return@withContext OptiResult.Success(
+                        createSingleFrameFallback(request, startTime, isFallbackUsed = true, isNightMode = isNightMode)
+                    )
                 }
             }
 
@@ -181,11 +208,13 @@ class ProductionImagingPipeline @Inject constructor(
                     width = photo.width,
                     height = photo.height,
                     isHdrApplied = mode == ProcessingMode.HDR,
+                    isNightModeApplied = isNightMode,
+                    isFallbackUsed = false,
                 )
             )
         } catch (t: Throwable) {
             logger.e(TAG, "Unexpected exception in multi-frame pipeline, triggering single-frame safety fallback", t)
-            OptiResult.Success(createSingleFrameFallback(request, startTime))
+            OptiResult.Success(createSingleFrameFallback(request, startTime, isFallbackUsed = true, isNightMode = isNightMode))
         }
     }
 
@@ -196,6 +225,8 @@ class ProductionImagingPipeline @Inject constructor(
     private fun createSingleFrameFallback(
         request: ProcessingRequest,
         startTime: Long,
+        isFallbackUsed: Boolean = true,
+        isNightMode: Boolean = false,
     ): ProcessingResult {
         return ProcessingResult(
             outputUri = request.inputUri,
@@ -205,6 +236,8 @@ class ProductionImagingPipeline @Inject constructor(
             width = 4000,
             height = 3000,
             isHdrApplied = false,
+            isNightModeApplied = isNightMode,
+            isFallbackUsed = isFallbackUsed,
         )
     }
 }

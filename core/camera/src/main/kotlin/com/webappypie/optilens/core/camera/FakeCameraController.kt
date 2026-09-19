@@ -117,6 +117,27 @@ class FakeCameraController @Inject constructor() : CameraController {
     private val _lastBurstResult = MutableStateFlow<com.webappypie.optilens.core.camera.burst.model.BurstResult?>(null)
     override val lastBurstResult: Flow<com.webappypie.optilens.core.camera.burst.model.BurstResult?> = _lastBurstResult.asStateFlow()
 
+    private val _nightExecutionPlan = MutableStateFlow<com.webappypie.optilens.core.camera.night.NightExecutionPlan?>(null)
+    override val nightExecutionPlan: Flow<com.webappypie.optilens.core.camera.night.NightExecutionPlan?> = _nightExecutionPlan.asStateFlow()
+
+    private val _isPreviewBoostActive = MutableStateFlow(false)
+    override val isPreviewBoostActive: Flow<Boolean> = _isPreviewBoostActive.asStateFlow()
+
+    private val _stabilityAssessment = MutableStateFlow(
+        com.webappypie.optilens.core.camera.night.StabilityAssessment(
+            classification = com.webappypie.optilens.core.camera.night.StabilityClassification.HANDHELD_STABLE,
+            stabilityScore = 90.0f,
+            stabilityConfidence = 0.90f,
+            averageAngularVelocity = 0.05f,
+            isTripod = false,
+            timestampMs = System.currentTimeMillis(),
+        )
+    )
+    override val stabilityAssessment: Flow<com.webappypie.optilens.core.camera.night.StabilityAssessment> = _stabilityAssessment.asStateFlow()
+
+    private val _thermalState = MutableStateFlow(com.webappypie.optilens.core.camera.thermal.DeviceThermalState.NORMAL)
+    override val thermalState: Flow<com.webappypie.optilens.core.camera.thermal.DeviceThermalState> = _thermalState.asStateFlow()
+
     val fakeBurstEngine = com.webappypie.optilens.core.camera.burst.FakeBurstAcquisitionEngine()
 
     fun emitScene(scene: com.webappypie.optilens.core.camera.model.SceneClassification) { _sceneClassification.value = scene }
@@ -125,6 +146,9 @@ class FakeCameraController @Inject constructor() : CameraController {
     fun emitStrategy(strategy: com.webappypie.optilens.core.camera.strategy.CaptureStrategy) { _captureStrategy.value = strategy }
     fun emitFaces(faces: List<com.webappypie.optilens.core.camera.model.DetectedFace>) { _detectedFaces.value = faces }
     fun emitBurst(burst: com.webappypie.optilens.core.camera.burst.model.BurstResult?) { _lastBurstResult.value = burst }
+    fun emitNightPlan(plan: com.webappypie.optilens.core.camera.night.NightExecutionPlan?) { _nightExecutionPlan.value = plan }
+    fun emitStability(assessment: com.webappypie.optilens.core.camera.night.StabilityAssessment) { _stabilityAssessment.value = assessment }
+    fun emitThermalState(state: com.webappypie.optilens.core.camera.thermal.DeviceThermalState) { _thermalState.value = state }
 
     private var _isFrontCamera = false
     override val isFrontCamera: Boolean get() = _isFrontCamera
@@ -276,6 +300,15 @@ class FakeCameraController @Inject constructor() : CameraController {
     override suspend fun flipCamera(): OptiResult<Unit> {
         _isFrontCamera = !_isFrontCamera
         return OptiResult.Success(Unit)
+    }
+
+    override suspend fun enablePreviewLowLightBoost(enable: Boolean): OptiResult<Boolean> {
+        _isPreviewBoostActive.value = enable
+        return OptiResult.Success(enable)
+    }
+
+    override suspend fun setNightPolicyPreference(preference: com.webappypie.optilens.core.camera.night.NightPolicyPreference) {
+        // Mock preference storage
     }
 
     override fun release() {

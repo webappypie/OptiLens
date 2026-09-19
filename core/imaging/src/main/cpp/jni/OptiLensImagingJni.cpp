@@ -353,11 +353,14 @@ Java_com_webappypie_optilens_core_imaging_fusion_NativeFusionBridge_nativeToneMa
     jfloat shadowLiftAmount,
     jfloat highlightKnee,
     jfloat exposureCompensation,
+    jboolean enableNightHighlightProtection,
     jint profile,
     jboolean enableAwb,
     jfloat awbGain,
     jboolean protectSkinTones,
     jfloat sharpnessBoost,
+    jboolean enableChromaCleanup,
+    jboolean conservativeSharpening,
     jbyteArray outY,
     jbyteArray outU,
     jbyteArray outV
@@ -396,7 +399,7 @@ Java_com_webappypie_optilens_core_imaging_fusion_NativeFusionBridge_nativeToneMa
         return JNI_FALSE;
     }
 
-    // 1. Tone Mapping (Shadow recovery + Highlight roll-off + Filmic S-curve)
+    // 1. Tone Mapping (Shadow recovery + Highlight roll-off + Filmic S-curve + Night Highlight Protection)
     std::vector<float> toneMappedY(totalPixels);
     optilens::ToneMapperParams tmParams;
     tmParams.enableHighlightRollOff = (enableHighlightRollOff == JNI_TRUE);
@@ -404,16 +407,19 @@ Java_com_webappypie_optilens_core_imaging_fusion_NativeFusionBridge_nativeToneMa
     tmParams.shadowLiftAmount = shadowLiftAmount;
     tmParams.highlightKnee = highlightKnee;
     tmParams.exposureCompensation = exposureCompensation;
+    tmParams.enableNightHighlightProtection = (enableNightHighlightProtection == JNI_TRUE);
 
     optilens::ToneMapper::mapLuminance(yData, width, height, tmParams, toneMappedY.data());
 
-    // 2. Color Correction (AWB + Profile + Skin Tone Protection + Detail Enhancement)
+    // 2. Color Correction (AWB + Profile + Skin Tone Protection + Chroma Cleanup + Conservative Sharpening)
     optilens::ColorCorrectionParams ccParams;
     ccParams.profile = static_cast<optilens::NativeColorProfile>(profile);
     ccParams.enableAwb = (enableAwb == JNI_TRUE);
     ccParams.awbGain = awbGain;
     ccParams.protectSkinTones = (protectSkinTones == JNI_TRUE);
     ccParams.sharpnessBoost = sharpnessBoost;
+    ccParams.enableChromaCleanup = (enableChromaCleanup == JNI_TRUE);
+    ccParams.conservativeSharpening = (conservativeSharpening == JNI_TRUE);
 
     optilens::ColorCorrector::correct(
         toneMappedY.data(),

@@ -12,11 +12,89 @@ float ColorCorrector::computeSkinProbability(float u, float v) {
     return std::exp(-0.5f * distSq);
 }
 
+void ColorCorrector::applyChromaCleanup(
+    const float* inY,
+    const float* inU,
+    const float* inV,
+    int width,
+    int height,
+    float* outU,
+    float* outV
+) {
+    if (!inY || !inU || !inV || !outU || !outV || width <= 0 || height <= 0) return;
+
+    const float sigmaLumSq = 2.0f * 14.0f * 14.0f; // Luminance edge sensitivity threshold
+
+    for (int y = 0; y < height; ++y) {
+        const int yMin = std::max(0, y - 2);
+        const int yMax = std::min(height - 1, y + 2);
+
+        for (int x = 0; x < width; ++x) {
+            const int idx = y * width + x;
+            const float centerLuma = inY[idx];
+
+            // Target chroma cleanup only in low-light/dark regions (Y < 85) where blotches manifest
+            if (centerLuma >= 85.0f) {
+                outU[idx] = inU[idx];
+                outV[idx] = inV[idx];
+                continue;
+            }
+
+            // Protect skin tones from excessive chroma blurring
+            const float skinProb = computeSkinProbability(inU[idx], inV[idx]);
+            if (skinProb > 0.30f) {
+                outU[idx] = inU[idx];
+                outV[idx] = inV[idx];
+                continue;
+            }
+
+            const int xMin = std::max(0, x - 2);
+            const int xMax = std::min(width - 1, x + 2);
+
+            float sumWeight = 0.0f;
+            float sumU = 0.0f;
+            float sumV = 0.0f;
+
+            for (int ny = yMin; ny <= yMax; ++ny) {
+                const int nRowOffset = ny * width;
+                const float dy = static_cast<float>(ny - y);
+
+                for (int nx = xMin; nx <= xMax; ++nx) {
+                    const int nIdx = nRowOffset + nx;
+                    const float dx = static_cast<float>(nx - x);
+                    const float distSq = dx * dx + dy * dy;
+
+                    const float lumDiff = inY[nIdx] - centerLuma;
+                    const float lumDiffSq = lumDiff * lumDiff;
+
+                    // Bilateral weight: spatial Gaussian * photometric luminance Gaussian
+                    const float wSpatial = std::exp(-distSq / 4.5f);
+                    const float wLum = std::exp(-lumDiffSq / sigmaLumSq);
+                    const float weight = wSpatial * wLum;
+
+                    sumWeight += weight;
+                    sumU += inU[nIdx] * weight;
+                    sumV += inV[nIdx] * weight;
+                }
+            }
+
+            if (sumWeight > 0.001f) {
+                outU[idx] = sumU / sumWeight;
+                outV[idx] = sumV / sumWeight;
+            } else {
+                outU[idx] = inU[idx];
+                outV[idx] = inV[idx];
+            }
+        }
+    }
+}
+
 void ColorCorrector::applyDetailEnhancement(
     const float* inY,
     int width,
     int height,
     float sharpnessBoost,
+    bool conservativeSharpening,
     uint8_t* outY
 ) {
     if (!inY || !outY || width <= 0 || height <= 0) return;
@@ -50,8 +128,18 @@ void ColorCorrector::applyDetailEnhancement(
 
             float delta = 0.0f;
             if (sharpnessBoost > 0.0f && absDetail > noiseFloor) {
+                // Conservative sharpening: gate boost by luminance in dark shadows
+                float lumGate = 1.0f;
+                if (conservativeSharpening) {
+                    if (center < 35.0f) {
+                        lumGate = 0.0f; // Zero boost in deep shadow noise
+                    } else if (center < 60.0f) {
+                        lumGate = (center - 35.0f) / 25.0f; // Smooth transition ramp
+                    }
+                }
+
                 // Modulate boost: gentle ramp past noise floor up to full boost
-                const float weight = std::min(1.0f, (absDetail - noiseFloor) / 4.0f);
+                const float weight = std::min(1.0f, (absDetail - noiseFloor) / 4.0f) * lumGate;
                 delta = detail * sharpnessBoost * weight;
                 delta = std::max(-maxBoost, std::min(maxBoost, delta));
             }
@@ -77,6 +165,20 @@ void ColorCorrector::correct(
 
     const int totalPixels = width * height;
 
+    // Optional Chroma Cleanup for low-light noise blotches
+    std::vector<float> cleanU;
+    std::vector<float> cleanV;
+    const float* srcU = inU;
+    const float* srcV = inV;
+
+    if (params.enableChromaCleanup) {
+        cleanU.resize(totalPixels);
+        cleanV.resize(totalPixels);
+        applyChromaCleanup(inY, inU, inV, width, height, cleanU.data(), cleanV.data());
+        srcU = cleanU.data();
+        srcV = cleanV.data();
+    }
+
     // 1. Auto White Balance (AWB) via Gray World Chromaticity
     float shiftU = 0.0f;
     float shiftV = 0.0f;
@@ -90,8 +192,8 @@ void ColorCorrector::correct(
         for (int i = 0; i < totalPixels; i += 4) {
             const float y = inY[i];
             if (y > 35.0f && y < 220.0f) {
-                sumU += inU[i];
-                sumV += inV[i];
+                sumU += srcU[i];
+                sumV += srcV[i];
                 count++;
             }
         }
@@ -119,8 +221,8 @@ void ColorCorrector::correct(
     // 2. Chrominance grading: AWB + Saturation Profile + Skin Tone Protection
     for (int i = 0; i < totalPixels; ++i) {
         // Apply AWB shift
-        float u = inU[i] - shiftU;
-        float v = inV[i] - shiftV;
+        float u = srcU[i] - shiftU;
+        float v = srcV[i] - shiftV;
 
         float uDiff = u - 128.0f;
         float vDiff = v - 128.0f;
@@ -153,8 +255,8 @@ void ColorCorrector::correct(
         outV[i] = static_cast<uint8_t>(std::max(0.0f, std::min(255.0f, v)));
     }
 
-    // 3. Luminance detail enhancement (Noise-aware unsharp masking)
-    applyDetailEnhancement(inY, width, height, params.sharpnessBoost, outY);
+    // 3. Luminance detail enhancement (Noise-aware unsharp masking with conservative shadow gating)
+    applyDetailEnhancement(inY, width, height, params.sharpnessBoost, params.conservativeSharpening, outY);
 }
 
 } // namespace optilens

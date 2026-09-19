@@ -12,6 +12,7 @@ struct ToneMapperParams {
     float shadowLiftAmount = 0.35f;   // Strength of shadow detail lift (0.0 to 1.0)
     float highlightKnee = 0.72f;      // Transition threshold for highlight roll-off
     float exposureCompensation = 1.0f; // Global exposure multiplier
+    bool enableNightHighlightProtection = true; // Protect neon signs / point lights from harsh clipping
 };
 
 class ToneMapper {

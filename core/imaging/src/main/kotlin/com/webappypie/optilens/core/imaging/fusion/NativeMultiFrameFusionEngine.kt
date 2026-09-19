@@ -155,11 +155,14 @@ class NativeMultiFrameFusionEngine @Inject constructor(
                     shadowLiftAmount = config.shadowLiftAmount,
                     highlightKnee = config.highlightKnee,
                     exposureCompensation = config.exposureCompensation,
+                    enableNightHighlightProtection = config.enableNightHighlightProtection,
                     profile = config.colorProfile.id,
                     enableAwb = config.enableAwb,
                     awbGain = config.awbGain,
                     protectSkinTones = config.protectSkinTones,
                     sharpnessBoost = config.sharpnessBoost,
+                    enableChromaCleanup = config.enableChromaCleanup,
+                    conservativeSharpening = config.conservativeSharpening,
                     outY = outY,
                     outU = outU,
                     outV = outV,
@@ -369,8 +372,48 @@ class NativeMultiFrameFusionEngine @Inject constructor(
             ColorProfile.DEFAULT -> 1.05f
         }
 
-        val knee = config.highlightKnee
+        val effKnee = if (config.enableNightHighlightProtection) {
+            min(config.highlightKnee, 0.65f)
+        } else config.highlightKnee
         val lift = config.shadowLiftAmount
+
+        // Optional Chroma Cleanup for dark pixels in fallback
+        val workingU = fusedU.clone()
+        val workingV = fusedV.clone()
+        if (config.enableChromaCleanup) {
+            for (cy in 0 until height) {
+                val yStart = max(0, cy - 1)
+                val yEnd = min(height - 1, cy + 1)
+                for (cx in 0 until width) {
+                    val idx = cy * width + cx
+                    if (fusedY[idx] < 85.0f) {
+                        val du0 = (fusedU[idx] - 109.0f) / 18.0f
+                        val dv0 = (fusedV[idx] - 152.0f) / 20.0f
+                        if (exp(-0.5f * (du0 * du0 + dv0 * dv0)) <= 0.30f) {
+                            val xStart = max(0, cx - 1)
+                            val xEnd = min(width - 1, cx + 1)
+                            var uSum = 0.0f
+                            var vSum = 0.0f
+                            var count = 0
+                            for (ny in yStart..yEnd) {
+                                for (nx in xStart..xEnd) {
+                                    val nIdx = ny * width + nx
+                                    if (kotlin.math.abs(fusedY[nIdx] - fusedY[idx]) < 20.0f) {
+                                        uSum += fusedU[nIdx]
+                                        vSum += fusedV[nIdx]
+                                        count++
+                                    }
+                                }
+                            }
+                            if (count > 0) {
+                                workingU[idx] = uSum / count
+                                workingV[idx] = vSum / count
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         for (i in 0 until totalPixels) {
             var normY = (fusedY[i] / 255.0f) * config.exposureCompensation
@@ -383,13 +426,13 @@ class NativeMultiFrameFusionEngine @Inject constructor(
             }
 
             // Highlight roll-off (rational knee compression)
-            if (config.enableHighlightRollOff && normY > knee) {
-                val excess = normY - knee
-                val headroom = 1.0f - knee
+            if (config.enableHighlightRollOff && normY > effKnee) {
+                val excess = normY - effKnee
+                val headroom = 1.0f - effKnee
                 if (headroom > 0.001f) {
                     val scaled = excess / headroom
                     val comp = scaled / (1.0f + scaled)
-                    normY = knee + comp * headroom
+                    normY = effKnee + comp * headroom
                 }
             }
 
@@ -401,8 +444,8 @@ class NativeMultiFrameFusionEngine @Inject constructor(
             val finalY = (filmic * 255.0f).toInt().coerceIn(0, 255)
 
             // Color grading with skin protection
-            var u = fusedU[i]
-            var v = fusedV[i]
+            var u = workingU[i]
+            var v = workingV[i]
             val du = (u - 109.0f) / 18.0f
             val dv = (v - 152.0f) / 20.0f
             val skinProb = exp(-0.5f * (du * du + dv * dv))

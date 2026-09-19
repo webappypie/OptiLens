@@ -66,7 +66,11 @@ void ToneMapper::mapLuminance(
 
         // 2. Highlight roll-off (soft-knee compression)
         if (params.enableHighlightRollOff) {
-            normY = applyHighlightRollOff(normY, params.highlightKnee);
+            float knee = params.highlightKnee;
+            if (params.enableNightHighlightProtection) {
+                knee = std::min(knee, 0.65f); // Adaptive lower knee prevents harsh neon blowout
+            }
+            normY = applyHighlightRollOff(normY, knee);
         }
 
         // 3. Filmic S-curve tone mapping

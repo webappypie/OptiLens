@@ -21,7 +21,11 @@ import com.webappypie.optilens.core.camera.model.SceneClassification
 import com.webappypie.optilens.core.camera.model.WhiteBalanceMode
 import com.webappypie.optilens.core.camera.model.ZoomState
 import com.webappypie.optilens.core.camera.model.ZoomStop
+import com.webappypie.optilens.core.camera.night.NightExecutionPlan
+import com.webappypie.optilens.core.camera.night.NightModeType
+import com.webappypie.optilens.core.camera.night.StabilityAssessment
 import com.webappypie.optilens.core.camera.strategy.CaptureStrategy
+import com.webappypie.optilens.core.camera.thermal.DeviceThermalState
 import com.webappypie.optilens.core.common.result.OptiResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -70,6 +74,12 @@ data class CameraUiState(
     val motionState: MotionState = MotionState.DEFAULT,
     val captureStrategy: CaptureStrategy = CaptureStrategy.DEFAULT,
     val detectedFaces: List<DetectedFace> = emptyList(),
+    val nightExecutionPlan: NightExecutionPlan? = null,
+    val isPreviewBoostActive: Boolean = false,
+    val holdSteadyRemainingSec: Float? = null,
+    val stabilityAssessment: StabilityAssessment? = null,
+    val thermalState: DeviceThermalState = DeviceThermalState.NORMAL,
+    val isProcessingNightShot: Boolean = false,
     val timerState: TimerState = TimerState.OFF,
     val timerCountdown: Int? = null,
     val aspectRatio: CameraAspectRatio = CameraAspectRatio.RATIO_4_3,
@@ -129,6 +139,13 @@ class CameraViewModel @Inject constructor(
         val faces: List<DetectedFace>,
     )
 
+    private data class NightStreamState(
+        val plan: NightExecutionPlan?,
+        val isPreviewBoost: Boolean,
+        val stability: StabilityAssessment,
+        val thermal: DeviceThermalState,
+    )
+
     private val _stream1 = combine(
         cameraController.zoomStops,
         cameraController.flashMode,
@@ -156,12 +173,23 @@ class CameraViewModel @Inject constructor(
         IntelligenceStreamState(scene, quality, motion, strategy, faces)
     }
 
+    private val _streamNight = combine(
+        cameraController.nightExecutionPlan,
+        cameraController.isPreviewBoostActive,
+        cameraController.stabilityAssessment,
+        cameraController.thermalState,
+    ) { plan, boost, stab, therm ->
+        NightStreamState(plan, boost, stab, therm)
+    }
+
     val uiState: StateFlow<CameraUiState> = combine(
         _internalState,
         cameraController.sessionState,
         cameraController.zoomState,
-        combine(_stream1, _stream2, _streamIntelligence) { s1, s2, intel -> Triple(s1, s2, intel) }
-    ) { internal, session, zoom, (s1, s2, intel) ->
+        combine(_stream1, _stream2, _streamIntelligence, _streamNight) { s1, s2, intel, night ->
+            Tuple4(s1, s2, intel, night)
+        }
+    ) { internal, session, zoom, (s1, s2, intel, night) ->
         CameraUiState(
             hasCameraPermission = internal.hasPermission,
             isFrontCamera = internal.isFrontCamera,
@@ -178,6 +206,12 @@ class CameraViewModel @Inject constructor(
             motionState = intel.motion,
             captureStrategy = intel.strategy,
             detectedFaces = intel.faces,
+            nightExecutionPlan = night.plan,
+            isPreviewBoostActive = night.isPreviewBoost,
+            holdSteadyRemainingSec = internal.holdSteadyRemainingSec,
+            stabilityAssessment = night.stability,
+            thermalState = night.thermal,
+            isProcessingNightShot = internal.isProcessingNightShot,
             timerState = internal.timerState,
             timerCountdown = internal.timerCountdown,
             aspectRatio = internal.aspectRatio,
@@ -195,6 +229,8 @@ class CameraViewModel @Inject constructor(
         started = SharingStarted.WhileSubscribed(5_000L),
         initialValue = CameraUiState(),
     )
+
+    private data class Tuple4<A, B, C, D>(val a: A, val b: B, val c: C, val d: D)
 
     fun onPermissionResult(isGranted: Boolean) {
         _internalState.update { it.copy(hasPermission = isGranted) }
@@ -432,6 +468,80 @@ class CameraViewModel @Inject constructor(
         }
     }
 
+    fun togglePreviewLowLightBoost() {
+        val next = !uiState.value.isPreviewBoostActive
+        viewModelScope.launch {
+            cameraController.enablePreviewLowLightBoost(next)
+        }
+    }
+
+    fun takeNightPhoto(targetRotation: Int = 0) {
+        if (_internalState.value.isCapturing || _internalState.value.isBurstCapturing) return
+
+        val plan = uiState.value.nightExecutionPlan
+        val expectedDurationMs = plan?.exposurePlan?.expectedCaptureDurationMs ?: 1200L
+
+        _internalState.update {
+            it.copy(
+                isCapturing = true,
+                isShutterBlinking = true,
+                holdSteadyRemainingSec = expectedDurationMs / 1000f,
+            )
+        }
+
+        viewModelScope.launch {
+            launch {
+                delay(80L)
+                _internalState.update { it.copy(isShutterBlinking = false) }
+            }
+
+            // Animate hold steady countdown smoothly
+            val countdownJob = launch {
+                val totalSteps = (expectedDurationMs / 100).toInt().coerceAtLeast(1)
+                for (step in totalSteps downTo 0) {
+                    val remainingSec = (step * 100) / 1000f
+                    _internalState.update { it.copy(holdSteadyRemainingSec = remainingSec) }
+                    delay(100L)
+                }
+            }
+
+            try {
+                val burstJob = launch {
+                    if (plan?.mode == NightModeType.VENDOR_EXTENSION) {
+                        when (val result = cameraController.capturePhoto(targetRotation)) {
+                            is OptiResult.Error -> _internalState.update { it.copy(errorMessage = result.error.displayMessage) }
+                            else -> Unit
+                        }
+                    } else {
+                        val frameCount = plan?.exposurePlan?.frameCount ?: 6
+                        val offsets = plan?.exposurePlan?.evOffsets ?: listOf(0)
+                        when (val result = cameraController.acquireBurst(frameCount, offsets, targetRotation)) {
+                            is OptiResult.Error -> _internalState.update { it.copy(errorMessage = result.error.displayMessage) }
+                            else -> Unit
+                        }
+                    }
+                }
+                burstJob.join()
+                countdownJob.join()
+            } finally {
+                countdownJob.cancel()
+                _internalState.update {
+                    it.copy(
+                        holdSteadyRemainingSec = null,
+                        isProcessingNightShot = true,
+                    )
+                }
+                delay(300L) // Brief processing visual state
+                _internalState.update {
+                    it.copy(
+                        isCapturing = false,
+                        isProcessingNightShot = false,
+                    )
+                }
+            }
+        }
+    }
+
     fun clearErrorMessage() {
         _internalState.update { it.copy(errorMessage = null) }
     }
@@ -449,6 +559,8 @@ class CameraViewModel @Inject constructor(
         val isTorchEnabled: Boolean = false,
         val isCapturing: Boolean = false,
         val isBurstCapturing: Boolean = false,
+        val holdSteadyRemainingSec: Float? = null,
+        val isProcessingNightShot: Boolean = false,
         val focusTarget: Offset? = null,
         val isShutterBlinking: Boolean = false,
         val timerState: TimerState = TimerState.OFF,

@@ -55,16 +55,20 @@ import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.HdrAuto
 import androidx.compose.material.icons.filled.HdrOff
 import androidx.compose.material.icons.filled.HdrOn
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Leaderboard
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Timer10
 import androidx.compose.material.icons.filled.Timer3
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
+import com.webappypie.optilens.core.camera.night.StabilityAssessment
+import com.webappypie.optilens.core.camera.night.StabilityClassification
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -183,7 +187,11 @@ fun CameraScreen(
         LaunchedEffect(trigger) {
             trigger.collect {
                 onShutterClick()
-                viewModel.takePhotoWithTimer(targetRotation = Surface.ROTATION_0)
+                if (currentMode == CameraMode.NIGHT) {
+                    viewModel.takeNightPhoto(targetRotation = Surface.ROTATION_0)
+                } else {
+                    viewModel.takePhotoWithTimer(targetRotation = Surface.ROTATION_0)
+                }
             }
         }
     }
@@ -329,6 +337,22 @@ fun CameraScreen(
                     }
                 }
 
+                // Hold Steady Night Mode Countdown Overlay
+                if (uiState.holdSteadyRemainingSec != null) {
+                    HoldSteadyIndicator(
+                        remainingSec = uiState.holdSteadyRemainingSec,
+                        stability = uiState.stabilityAssessment,
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+                }
+
+                // Processing Night Shot Indicator
+                if (uiState.isProcessingNightShot) {
+                    NightProcessingIndicator(
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+                }
+
                 // Shutter blink visual feedback
                 AnimatedVisibility(
                     visible = uiState.isShutterBlinking,
@@ -352,6 +376,17 @@ fun CameraScreen(
                     .align(Alignment.TopCenter)
                     .padding(top = topInset + 64.dp),
             )
+
+            // Preview Low-Light Boost framing aid pill (shown when Night mode is active)
+            if (currentMode == CameraMode.NIGHT) {
+                PreviewBoostBadge(
+                    isActive = uiState.isPreviewBoostActive,
+                    onClick = { viewModel.togglePreviewLowLightBoost() },
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(top = topInset + 64.dp, start = 16.dp),
+                )
+            }
 
             // Live Luminance Histogram Overlay (in Pro Mode or when toggled)
             if (uiState.isHistogramVisible || currentMode == CameraMode.PRO) {
@@ -554,14 +589,18 @@ fun CameraScreen(
                     }
                 }
 
-                // Tactile Shutter Button with timer countdown trigger
+                // Tactile Shutter Button with timer countdown trigger or night mode
                 CameraShutterButton(
                     onClick = {
                         onShutterClick()
-                        viewModel.takePhotoWithTimer(targetRotation = Surface.ROTATION_0)
+                        if (currentMode == CameraMode.NIGHT) {
+                            viewModel.takeNightPhoto(targetRotation = Surface.ROTATION_0)
+                        } else {
+                            viewModel.takePhotoWithTimer(targetRotation = Surface.ROTATION_0)
+                        }
                     },
                     isVideo = currentMode == CameraMode.VIDEO,
-                    enabled = !uiState.isCapturing && uiState.timerCountdown == null,
+                    enabled = !uiState.isCapturing && !uiState.isBurstCapturing && !uiState.isProcessingNightShot && uiState.timerCountdown == null,
                 )
 
                 // Camera Flip Button (48dp touch target)
@@ -815,5 +854,148 @@ fun SceneHintPill(
             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
             color = overlayColors.activeAccent,
         )
+    }
+}
+
+/**
+ * Hold steady countdown overlay for Night mode long-exposure/burst capture.
+ */
+@Composable
+fun HoldSteadyIndicator(
+    remainingSec: Float?,
+    stability: StabilityAssessment?,
+    modifier: Modifier = Modifier,
+) {
+    val overlayColors = OptiLensTheme.overlayColors
+    val isUnsteady = stability?.classification == StabilityClassification.UNSTEADY
+    val isTripod = stability?.classification == StabilityClassification.TRIPOD
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.Black.copy(alpha = 0.75f))
+            .border(
+                width = 1.dp,
+                color = if (isUnsteady) overlayColors.horizonWarning else overlayColors.controlBorder,
+                shape = RoundedCornerShape(16.dp),
+            )
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(36.dp),
+                color = if (isUnsteady) overlayColors.horizonWarning else overlayColors.activeAccent,
+                strokeWidth = 3.dp,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = if (isTripod) "Tripod Night Exposure" else "Hold Still",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = Color.White,
+            )
+            remainingSec?.let { sec ->
+                Text(
+                    text = "${String.format(java.util.Locale.US, "%.1f", sec)}s remaining",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = overlayColors.controlOnSurface,
+                )
+            }
+            if (isUnsteady) {
+                Text(
+                    text = "High movement detected",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = overlayColors.horizonWarning,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Processing indicator shown while post-processing multi-frame night captures.
+ */
+@Composable
+fun NightProcessingIndicator(
+    modifier: Modifier = Modifier,
+) {
+    val overlayColors = OptiLensTheme.overlayColors
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.Black.copy(alpha = 0.80f))
+            .border(1.dp, overlayColors.controlBorder, RoundedCornerShape(16.dp))
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(32.dp),
+                color = overlayColors.activeAccent,
+                strokeWidth = 3.dp,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Enhancing Low-Light...",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                color = Color.White,
+            )
+        }
+    }
+}
+
+/**
+ * Preview low-light boost badge indicating preview is boosted for framing aid only.
+ */
+@Composable
+fun PreviewBoostBadge(
+    isActive: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val overlayColors = OptiLensTheme.overlayColors
+
+    Box(
+        modifier = modifier
+            .clip(CircleShape)
+            .background(
+                if (isActive) overlayColors.activeAccent.copy(alpha = 0.25f)
+                else overlayColors.scrimBackground
+            )
+            .border(
+                width = 1.dp,
+                color = if (isActive) overlayColors.activeAccent else overlayColors.controlBorder,
+                shape = CircleShape,
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Default.DarkMode,
+                contentDescription = null,
+                tint = if (isActive) overlayColors.activeAccent else overlayColors.controlOnSurface,
+                modifier = Modifier.size(14.dp),
+            )
+            Text(
+                text = if (isActive) "Boost: On (Framing)" else "Boost: Off",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 11.sp,
+                ),
+                color = if (isActive) overlayColors.activeAccent else overlayColors.controlOnSurface,
+            )
+        }
     }
 }

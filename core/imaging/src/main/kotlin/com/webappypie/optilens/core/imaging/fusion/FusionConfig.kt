@@ -17,4 +17,7 @@ data class FusionConfig(
     val awbGain: Float = 0.40f,
     val protectSkinTones: Boolean = true,
     val sharpnessBoost: Float = 0.25f,
+    val enableNightHighlightProtection: Boolean = false,
+    val enableChromaCleanup: Boolean = false,
+    val conservativeSharpening: Boolean = false,
 )
