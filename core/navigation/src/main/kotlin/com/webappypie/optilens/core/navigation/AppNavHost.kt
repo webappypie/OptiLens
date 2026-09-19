@@ -11,9 +11,6 @@ import androidx.navigation.toRoute
 /**
  * Root navigation host for OptiLens.
  *
- * Each screen composable is a stub in Phase 01 — replaced with real
- * implementations in Phase 02 (Design System & Navigation) and beyond.
- *
  * All routes use type-safe [AppDestination] with Navigation 2.10+.
  */
 @Composable
@@ -21,10 +18,10 @@ fun AppNavHost(
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
     startDestination: AppDestination = AppDestination.Camera,
-    // Screen composables injected so this host remains testable/previewable.
     cameraScreen: @Composable () -> Unit = { NavigationPlaceholderScreen("Camera") },
     galleryScreen: @Composable () -> Unit = { NavigationPlaceholderScreen("Gallery") },
     settingsScreen: @Composable () -> Unit = { NavigationPlaceholderScreen("Settings") },
+    aiToolsScreen: @Composable () -> Unit = { NavigationPlaceholderScreen("AI Tools") },
     photoDetailScreen: @Composable (AppDestination.PhotoDetail) -> Unit = { NavigationPlaceholderScreen("Photo Detail") },
     proUpgradeScreen: @Composable () -> Unit = { NavigationPlaceholderScreen("Pro Upgrade") },
     onboardingScreen: @Composable () -> Unit = { NavigationPlaceholderScreen("Onboarding") },
@@ -37,6 +34,7 @@ fun AppNavHost(
         composable<AppDestination.Camera>      { cameraScreen() }
         composable<AppDestination.Gallery>     { galleryScreen() }
         composable<AppDestination.Settings>    { settingsScreen() }
+        composable<AppDestination.AiTools>     { aiToolsScreen() }
         composable<AppDestination.PhotoDetail> { backStackEntry ->
             photoDetailScreen(backStackEntry.toRoute())
         }

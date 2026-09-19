@@ -25,6 +25,10 @@ sealed interface AppDestination {
     @Serializable
     data object Settings : AppDestination
 
+    /** AI computational photography tools screen. */
+    @Serializable
+    data object AiTools : AppDestination
+
     // ── Photo detail / result ─────────────────────────────────────────
 
     /**
