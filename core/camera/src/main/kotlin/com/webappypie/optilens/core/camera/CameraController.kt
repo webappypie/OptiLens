@@ -7,14 +7,19 @@ import com.webappypie.optilens.core.camera.model.CameraSessionState
 import com.webappypie.optilens.core.camera.model.CapturedPhoto
 import com.webappypie.optilens.core.camera.model.ExposureState
 import com.webappypie.optilens.core.camera.model.FlashMode
+import com.webappypie.optilens.core.camera.model.HistogramData
+import com.webappypie.optilens.core.camera.model.ProCameraState
+import com.webappypie.optilens.core.camera.model.WhiteBalanceMode
 import com.webappypie.optilens.core.camera.model.ZoomState
+import com.webappypie.optilens.core.camera.model.ZoomStop
 import com.webappypie.optilens.core.common.result.OptiResult
 import kotlinx.coroutines.flow.Flow
 
 /**
  * Abstraction over the camera hardware controller.
  *
- * Implemented with CameraX in Phase 04.
+ * Exposes core capture, preview, hardware-derived zoom stops,
+ * live histogram analysis, and Pro manual photography controls.
  */
 interface CameraController {
 
@@ -27,11 +32,20 @@ interface CameraController {
     /** Current optical and digital zoom state. */
     val zoomState: Flow<ZoomState>
 
+    /** Stream of truthful hardware-derived zoom stops (optical vs digital). */
+    val zoomStops: Flow<List<ZoomStop>>
+
     /** Active flash mode. */
     val flashMode: Flow<FlashMode>
 
     /** Current exposure compensation index and bounds. */
     val exposureState: Flow<ExposureState>
+
+    /** Stream of Pro manual controls state and hardware support flags. */
+    val proState: Flow<ProCameraState>
+
+    /** Live 64-bin luminance histogram from incoming viewfinder frames. */
+    val histogramData: Flow<HistogramData>
 
     /** Most recently captured photo saved to MediaStore. */
     val lastCapturedPhoto: Flow<CapturedPhoto?>
@@ -40,8 +54,8 @@ interface CameraController {
     val isFrontCamera: Boolean
 
     /**
-     * Binds CameraX Preview and ImageCapture use cases to the given lifecycle owner
-     * and UI surface provider.
+     * Binds CameraX Preview, ImageCapture, and ImageAnalysis use cases to the given
+     * lifecycle owner and UI surface provider.
      */
     suspend fun bindPreview(
         lifecycleOwner: LifecycleOwner,
@@ -63,6 +77,36 @@ interface CameraController {
      * Set exposure compensation index.
      */
     suspend fun setExposureCompensation(index: Int): OptiResult<Unit>
+
+    /**
+     * Set manual ISO sensitivity, or null for AUTO AE.
+     */
+    suspend fun setIso(iso: Int?): OptiResult<Unit>
+
+    /**
+     * Set manual exposure time in nanoseconds, or null for AUTO AE.
+     */
+    suspend fun setShutterSpeed(nanos: Long?): OptiResult<Unit>
+
+    /**
+     * Set manual focus distance in diopters (0.0f = infinity), or null for AUTO AF.
+     */
+    suspend fun setFocusDistance(distanceDiopters: Float?): OptiResult<Unit>
+
+    /**
+     * Set white balance mode.
+     */
+    suspend fun setWhiteBalance(mode: WhiteBalanceMode): OptiResult<Unit>
+
+    /**
+     * Reset all manual Pro settings back to default AUTO 3A operation.
+     */
+    suspend fun resetProToAuto(): OptiResult<Unit>
+
+    /**
+     * Enable or disable the live histogram analysis stream to conserve resources.
+     */
+    fun setHistogramEnabled(enabled: Boolean)
 
     /**
      * Set flash mode for still captures.

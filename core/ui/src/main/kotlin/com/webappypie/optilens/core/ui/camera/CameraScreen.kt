@@ -47,6 +47,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.FlashAuto
 import androidx.compose.material.icons.filled.FlashOff
@@ -54,6 +55,7 @@ import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.HdrAuto
 import androidx.compose.material.icons.filled.HdrOff
 import androidx.compose.material.icons.filled.HdrOn
+import androidx.compose.material.icons.filled.Leaderboard
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Timer
@@ -67,20 +69,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -88,18 +92,24 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.webappypie.optilens.core.camera.model.FlashMode
+import com.webappypie.optilens.core.camera.model.ZoomStop
+import com.webappypie.optilens.core.ui.camera.histogram.HistogramOverlay
+import com.webappypie.optilens.core.ui.camera.pro.ProControlsBar
+import com.webappypie.optilens.core.ui.camera.sensor.HorizonSensor
 import com.webappypie.optilens.core.ui.components.OptiCameraModeChip
 import com.webappypie.optilens.core.ui.components.OptiIconButton
 import com.webappypie.optilens.core.ui.components.OptiIconButtonVariant
 import com.webappypie.optilens.core.ui.components.OptiPermissionState
 import com.webappypie.optilens.core.ui.theme.OptiLensCameraTypography
 import com.webappypie.optilens.core.ui.theme.OptiLensTheme
+import kotlinx.coroutines.flow.Flow
 import kotlin.math.roundToInt
 
 enum class CameraMode(val label: String) {
@@ -111,20 +121,24 @@ enum class CameraMode(val label: String) {
 }
 
 enum class HdrState { AUTO, ON, OFF }
-enum class TimerState(val seconds: Int) { OFF(0), SEC_3(3), SEC_10(10) }
 
 /**
  * Production Camera Screen for OptiLens.
  *
- * Integrates:
+ * Implements:
  * - Real CameraX viewfinder with [PreviewView].
+ * - Real hardware-derived truthful zoom stops (optical vs digital crop).
+ * - Smooth continuous pinch zoom + optical stop haptics.
+ * - Non-rebinding animated Aspect Ratio framing (4:3, 16:9, 1:1).
+ * - Sensor-driven horizon level balance line via [HorizonSensor].
+ * - Timer with animated countdown overlay (0s, 3s, 10s).
+ * - Hardware volume-key shutter trigger support.
+ * - Pro manual mode controls (ISO, Shutter, Focus, WB, EV, AUTO Reset).
+ * - Real-time 64-bin luminance histogram overlay.
  * - Camera permission verification and fallback via [OptiPermissionState].
  * - Tap-to-focus with animated reticle indicator.
- * - Pinch-to-zoom gesture and discrete zoom selector chips.
- * - Flash mode toggle cycling (Auto, On, Off).
  * - Shutter button with tactile animation, capture lock, and blink feedback.
- * - Camera flip (rear/front).
- * - Gallery thumbnail shortcut showing the most recent capture.
+ * - Camera flip and recent capture gallery shortcut thumbnail.
  */
 @Composable
 fun CameraScreen(
@@ -134,18 +148,45 @@ fun CameraScreen(
     onShutterClick: () -> Unit = {},
     showGrid: Boolean = true,
     showLevel: Boolean = true,
+    externalShutterTrigger: Flow<Unit>? = null,
     viewModel: CameraViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val haptic = LocalHapticFeedback.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    val horizonSensor = remember { HorizonSensor(context) }
+    val rollDegrees by horizonSensor.rollDegrees.collectAsStateWithLifecycle()
 
     var currentMode by remember { mutableStateOf(CameraMode.PHOTO) }
     var hdrState by remember { mutableStateOf(HdrState.AUTO) }
-    var timerState by remember { mutableStateOf(TimerState.OFF) }
     var previewViewRef by remember { mutableStateOf<PreviewView?>(null) }
 
-    // Check camera permission on composition & launch
+    // Start/stop horizon sensor with lifecycle & visibility
+    DisposableEffect(showLevel) {
+        if (showLevel) horizonSensor.start()
+        onDispose { horizonSensor.stop() }
+    }
+
+    // Haptic feedback when crossing physical optical zoom stops
+    LaunchedEffect(Unit) {
+        viewModel.opticalHapticFlow.collect {
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
+    }
+
+    // External shutter trigger (e.g. Hardware Volume Keys)
+    externalShutterTrigger?.let { trigger ->
+        LaunchedEffect(trigger) {
+            trigger.collect {
+                onShutterClick()
+                viewModel.takePhotoWithTimer(targetRotation = Surface.ROTATION_0)
+            }
+        }
+    }
+
+    // Camera permission check and launcher
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
     ) { isGranted ->
@@ -184,6 +225,14 @@ fun CameraScreen(
     val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val overlayColors = OptiLensTheme.overlayColors
 
+    // Smooth non-rebinding aspect ratio transition
+    val targetAspect = uiState.aspectRatio.ratio
+    val animatedAspect by animateFloatAsState(
+        targetValue = targetAspect,
+        animationSpec = tween(durationMillis = 250),
+        label = "viewfinderAspect",
+    )
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -215,11 +264,12 @@ fun CameraScreen(
                 },
             contentAlignment = Alignment.Center,
         ) {
-            // Viewfinder aspect frame (4:3)
+            // Viewfinder aspect frame with animated transition
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(3f / 4f)
+                    .aspectRatio(animatedAspect)
+                    .clip(RoundedCornerShape(if (uiState.aspectRatio == CameraAspectRatio.RATIO_1_1) 12.dp else 0.dp))
                     .background(Color(0xFF0A0C10)),
             ) {
                 // Live CameraX Preview
@@ -243,10 +293,10 @@ fun CameraScreen(
                     ViewfinderGridOverlay(color = overlayColors.gridLine)
                 }
 
-                // Level / horizon indicator line
+                // Sensor-driven level / horizon indicator line
                 if (showLevel) {
                     HorizonLevelIndicator(
-                        tiltAngleDegrees = 0f,
+                        tiltAngleDegrees = rollDegrees,
                         modifier = Modifier.align(Alignment.Center),
                     )
                 }
@@ -254,6 +304,22 @@ fun CameraScreen(
                 // Tap-to-focus animated reticle
                 uiState.focusTarget?.let { target ->
                     FocusReticle(offset = target)
+                }
+
+                // Timer Countdown Large Visual Overlay
+                if (uiState.timerCountdown != null) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "${uiState.timerCountdown}",
+                            fontSize = 84.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color.White,
+                            style = MaterialTheme.typography.displayLarge,
+                        )
+                    }
                 }
 
                 // Shutter blink visual feedback
@@ -281,6 +347,16 @@ fun CameraScreen(
             ) {
                 SceneHintPill(text = "Low Light • Handheld Night Active")
             }
+
+            // Live Luminance Histogram Overlay (in Pro Mode or when toggled)
+            if (uiState.isHistogramVisible || currentMode == CameraMode.PRO) {
+                HistogramOverlay(
+                    data = uiState.histogramData,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = topInset + 56.dp, end = 16.dp),
+                )
+            }
         }
 
         // ── 2. Top Scrim & Controls ────────────────────────────────────────
@@ -291,8 +367,8 @@ fun CameraScreen(
                 .background(overlayColors.scrimBackground)
                 .padding(top = topInset)
                 .padding(
-                    horizontal = OptiLensTheme.spacing.l,
-                    vertical = OptiLensTheme.spacing.s,
+                    horizontal = OptiLensTheme.spacing.m,
+                    vertical = OptiLensTheme.spacing.xs,
                 ),
         ) {
             Row(
@@ -313,6 +389,26 @@ fun CameraScreen(
                     onClick = { viewModel.toggleFlashMode() },
                 )
 
+                // Aspect Ratio Toggle (4:3, 16:9, 1:1)
+                OptiIconButton(
+                    icon = Icons.Default.AspectRatio,
+                    contentDescription = "Aspect ratio: ${uiState.aspectRatio.label}",
+                    variant = OptiIconButtonVariant.OVERLAY,
+                    onClick = { viewModel.toggleAspectRatio() },
+                )
+
+                // Timer Toggle (Off, 3s, 10s)
+                OptiIconButton(
+                    icon = when (uiState.timerState) {
+                        TimerState.OFF    -> Icons.Default.Timer
+                        TimerState.SEC_3  -> Icons.Default.Timer3
+                        TimerState.SEC_10 -> Icons.Default.Timer10
+                    },
+                    contentDescription = "Timer: ${uiState.timerState.seconds}s",
+                    variant = if (uiState.timerState != TimerState.OFF) OptiIconButtonVariant.OVERLAY_ACTIVE else OptiIconButtonVariant.OVERLAY,
+                    onClick = { viewModel.toggleTimer() },
+                )
+
                 // HDR Toggle
                 OptiIconButton(
                     icon = when (hdrState) {
@@ -331,22 +427,12 @@ fun CameraScreen(
                     },
                 )
 
-                // Timer Toggle
+                // Live Histogram Toggle
                 OptiIconButton(
-                    icon = when (timerState) {
-                        TimerState.OFF    -> Icons.Default.Timer
-                        TimerState.SEC_3  -> Icons.Default.Timer3
-                        TimerState.SEC_10 -> Icons.Default.Timer10
-                    },
-                    contentDescription = "Timer: ${timerState.seconds}s",
-                    variant = if (timerState != TimerState.OFF) OptiIconButtonVariant.OVERLAY_ACTIVE else OptiIconButtonVariant.OVERLAY,
-                    onClick = {
-                        timerState = when (timerState) {
-                            TimerState.OFF    -> TimerState.SEC_3
-                            TimerState.SEC_3  -> TimerState.SEC_10
-                            TimerState.SEC_10 -> TimerState.OFF
-                        }
-                    },
+                    icon = Icons.Default.Leaderboard,
+                    contentDescription = "Toggle Histogram",
+                    variant = if (uiState.isHistogramVisible) OptiIconButtonVariant.OVERLAY_ACTIVE else OptiIconButtonVariant.OVERLAY,
+                    onClick = { viewModel.toggleHistogram() },
                 )
 
                 // Settings Navigation Button
@@ -359,22 +445,47 @@ fun CameraScreen(
             }
         }
 
-        // ── 3. Bottom Scrim & Capture Controls ─────────────────────────────
+        // ── 3. Bottom Scrim & Controls ─────────────────────────────────────
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)
                 .background(overlayColors.scrimBackground)
                 .padding(bottom = bottomInset.coerceAtLeast(OptiLensTheme.spacing.l))
-                .padding(top = OptiLensTheme.spacing.m),
+                .padding(top = OptiLensTheme.spacing.xs),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            // Zoom Selector Bar
-            ZoomSelector(
+            // Pro Mode Manual Control Bar (Shown when PRO mode is selected)
+            if (currentMode == CameraMode.PRO) {
+                ProControlsBar(
+                    proState = uiState.proState,
+                    onIsoChanged = { viewModel.setIso(it) },
+                    onShutterSpeedChanged = { viewModel.setShutterSpeed(it) },
+                    onFocusDistanceChanged = { viewModel.setFocusDistance(it) },
+                    onWhiteBalanceChanged = { viewModel.setWhiteBalance(it) },
+                    onEvChanged = { viewModel.onExposureCompensationChanged(it) },
+                    onResetToAuto = { viewModel.resetProToAuto() },
+                    modifier = Modifier.padding(bottom = OptiLensTheme.spacing.xs),
+                )
+            }
+
+            // Truthful Zoom Selector Bar (derives optical vs digital crop)
+            val activeStops = if (uiState.zoomStops.isNotEmpty()) {
+                uiState.zoomStops
+            } else {
+                listOf(
+                    ZoomStop(ratio = 0.6f, label = "0.6x", isOptical = true),
+                    ZoomStop(ratio = 1.0f, label = "1x", isOptical = true),
+                    ZoomStop(ratio = 2.0f, label = "2x", isOptical = false),
+                    ZoomStop(ratio = 5.0f, label = "5x", isOptical = true),
+                )
+            }
+
+            TruthfulZoomSelector(
                 currentZoom = uiState.zoomState.currentZoom,
                 onZoomSelected = { ratio -> viewModel.onZoomRatioChanged(ratio) },
-                availableRatios = listOf(0.6f, 1.0f, 2.0f, 5.0f),
-                modifier = Modifier.padding(bottom = OptiLensTheme.spacing.s),
+                zoomStops = activeStops,
+                modifier = Modifier.padding(bottom = OptiLensTheme.spacing.xs),
             )
 
             // Shooting Mode Carousel
@@ -394,7 +505,7 @@ fun CameraScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(OptiLensTheme.spacing.m))
+            Spacer(modifier = Modifier.height(OptiLensTheme.spacing.s))
 
             // Main Shutter Row: Gallery Shortcut | Shutter Button | Camera Flip
             Row(
@@ -438,14 +549,14 @@ fun CameraScreen(
                     }
                 }
 
-                // Tactile Shutter Button
+                // Tactile Shutter Button with timer countdown trigger
                 CameraShutterButton(
                     onClick = {
                         onShutterClick()
-                        viewModel.takePhoto(targetRotation = Surface.ROTATION_0)
+                        viewModel.takePhotoWithTimer(targetRotation = Surface.ROTATION_0)
                     },
                     isVideo = currentMode == CameraMode.VIDEO,
-                    enabled = !uiState.isCapturing,
+                    enabled = !uiState.isCapturing && uiState.timerCountdown == null,
                 )
 
                 // Camera Flip Button (48dp touch target)
@@ -575,13 +686,14 @@ fun FocusReticle(
 }
 
 /**
- * Discrete zoom pill selector with monospace numeric readouts.
+ * Truthful zoom pill selector derived from actual hardware.
+ * Never mislabels a digital crop as optical.
  */
 @Composable
-fun ZoomSelector(
+fun TruthfulZoomSelector(
     currentZoom: Float,
     onZoomSelected: (Float) -> Unit,
-    availableRatios: List<Float>,
+    zoomStops: List<ZoomStop>,
     modifier: Modifier = Modifier,
 ) {
     val overlayColors = OptiLensTheme.overlayColors
@@ -595,27 +707,36 @@ fun ZoomSelector(
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        availableRatios.forEach { ratio ->
-            val isSelected = (kotlin.math.abs(currentZoom - ratio) < 0.15f)
-            val label = if (ratio < 1.0f) "${ratio}x" else "${ratio.toInt()}x"
+        zoomStops.forEach { stop ->
+            val isSelected = (kotlin.math.abs(currentZoom - stop.ratio) < 0.15f)
 
             Box(
                 modifier = Modifier
-                    .size(34.dp)
+                    .size(36.dp)
                     .clip(CircleShape)
                     .background(if (isSelected) overlayColors.controlSurfaceActive else Color.Transparent)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
-                        indication = ripple(bounded = true, radius = 17.dp),
-                        onClick = { onZoomSelected(ratio) },
+                        indication = ripple(bounded = true, radius = 18.dp),
+                        onClick = { onZoomSelected(stop.ratio) },
                     ),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = label,
-                    style = OptiLensCameraTypography.zoomReadout,
-                    color = if (isSelected) overlayColors.controlOnSurfaceActive else overlayColors.controlOnSurface,
-                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = stop.label,
+                        style = OptiLensCameraTypography.zoomReadout,
+                        color = if (isSelected) overlayColors.controlOnSurfaceActive else overlayColors.controlOnSurface,
+                    )
+                    // Visual indicator for dedicated optical lens
+                    if (stop.isOptical && stop.ratio != 1.0f) {
+                        Box(
+                            modifier = Modifier
+                                .size(3.dp)
+                                .background(if (isSelected) overlayColors.activeAccent else overlayColors.controlOnSurface.copy(alpha = 0.5f), CircleShape)
+                        )
+                    }
+                }
             }
         }
     }
@@ -645,7 +766,8 @@ fun ViewfinderGridOverlay(
 }
 
 /**
- * Horizon tilt balance indicator line.
+ * Horizon tilt balance indicator line driven by hardware sensors.
+ * Rotates with device tilt and turns green when level within ±1.0 degree.
  */
 @Composable
 fun HorizonLevelIndicator(
@@ -658,6 +780,7 @@ fun HorizonLevelIndicator(
 
     Box(
         modifier = modifier
+            .rotate(-tiltAngleDegrees)
             .width(80.dp)
             .height(2.dp)
             .background(lineColor),

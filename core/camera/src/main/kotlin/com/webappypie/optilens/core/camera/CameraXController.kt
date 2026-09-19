@@ -1,12 +1,15 @@
 package com.webappypie.optilens.core.camera
 
 import android.content.Context
-import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CaptureRequest
+import androidx.camera.camera2.interop.Camera2CameraControl
+import androidx.camera.camera2.interop.CaptureRequestOptions
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraControl
 import androidx.camera.core.CameraInfo
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.FocusMeteringAction
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
@@ -15,21 +18,34 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
+import com.webappypie.optilens.core.camera.analyzer.HistogramAnalyzer
 import com.webappypie.optilens.core.camera.discovery.CameraCapabilityRepository
+import com.webappypie.optilens.core.camera.model.CameraDeviceProfile
 import com.webappypie.optilens.core.camera.model.CameraSessionState
 import com.webappypie.optilens.core.camera.model.CapturedPhoto
 import com.webappypie.optilens.core.camera.model.ExposureState
 import com.webappypie.optilens.core.camera.model.FlashMode
+import com.webappypie.optilens.core.camera.model.HistogramData
+import com.webappypie.optilens.core.camera.model.LensFacing
+import com.webappypie.optilens.core.camera.model.ProCameraState
+import com.webappypie.optilens.core.camera.model.WhiteBalanceMode
 import com.webappypie.optilens.core.camera.model.ZoomState
+import com.webappypie.optilens.core.camera.model.ZoomStop
 import com.webappypie.optilens.core.camera.storage.MediaStoreSaver
 import com.webappypie.optilens.core.common.coroutines.AppDispatchers
 import com.webappypie.optilens.core.common.result.OptiError
 import com.webappypie.optilens.core.common.result.OptiResult
 import com.webappypie.optilens.core.logging.AppLogger
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.filterNotNull
+import com.webappypie.optilens.core.common.result.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ExecutorService
@@ -45,12 +61,14 @@ import kotlin.coroutines.resume
  *
  * Implements:
  * - Deterministic lifecycle-bound preview and still capture.
+ * - Hardware-derived truthful zoom stops (optical vs digital crop).
+ * - Live 64-bin luminance histogram via non-blocking [ImageAnalysis].
+ * - Pro photography manual overrides (ISO, Shutter, Focus, WB, EV) via [Camera2CameraControl].
  * - Tap-to-focus and metering.
- * - Smooth optical/digital zoom.
  * - Exposure compensation.
  * - Flash and torch modes.
  * - Orientation awareness and background MediaStore saving.
- * - Strict non-blocking I/O and deterministic ImageProxy closure.
+ * - Strict non-blocking I/O and deterministic [ImageProxy] closure.
  */
 @Singleton
 class CameraXController @Inject constructor(
@@ -61,6 +79,8 @@ class CameraXController @Inject constructor(
     private val logger: AppLogger,
 ) : CameraController {
 
+    private val scope = CoroutineScope(SupervisorJob() + dispatchers.default)
+
     override val capabilities: Flow<CameraCapability> = capabilityRepository.legacyCapability
 
     private val _sessionState = MutableStateFlow(CameraSessionState.IDLE)
@@ -69,11 +89,24 @@ class CameraXController @Inject constructor(
     private val _zoomState = MutableStateFlow(ZoomState())
     override val zoomState: Flow<ZoomState> = _zoomState.asStateFlow()
 
+    private val _zoomStops = MutableStateFlow(
+        listOf(
+            ZoomStop(ratio = 1.0f, label = "1x", isOptical = true),
+        )
+    )
+    override val zoomStops: Flow<List<ZoomStop>> = _zoomStops.asStateFlow()
+
     private val _flashMode = MutableStateFlow(FlashMode.AUTO)
     override val flashMode: Flow<FlashMode> = _flashMode.asStateFlow()
 
     private val _exposureState = MutableStateFlow(ExposureState())
     override val exposureState: Flow<ExposureState> = _exposureState.asStateFlow()
+
+    private val _proState = MutableStateFlow(ProCameraState())
+    override val proState: Flow<ProCameraState> = _proState.asStateFlow()
+
+    private val _histogramData = MutableStateFlow(HistogramData.EMPTY)
+    override val histogramData: Flow<HistogramData> = _histogramData.asStateFlow()
 
     private val _lastCapturedPhoto = MutableStateFlow<CapturedPhoto?>(null)
     override val lastCapturedPhoto: Flow<CapturedPhoto?> = _lastCapturedPhoto.asStateFlow()
@@ -85,6 +118,8 @@ class CameraXController @Inject constructor(
     private var camera: Camera? = null
     private var previewUseCase: Preview? = null
     private var imageCaptureUseCase: ImageCapture? = null
+    private var imageAnalysisUseCase: ImageAnalysis? = null
+    private var histogramAnalyzer: HistogramAnalyzer? = null
 
     private var currentLifecycleOwner: LifecycleOwner? = null
     private var currentSurfaceProvider: Preview.SurfaceProvider? = null
@@ -94,6 +129,47 @@ class CameraXController @Inject constructor(
     /** Dedicated single-thread background executor for capture callbacks (prevents UI blocking). */
     private val captureExecutor: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "optilens-camera-capture")
+    }
+
+    /** Dedicated background executor for image analysis (histogram). */
+    private val analysisExecutor: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "optilens-camera-analysis")
+    }
+
+    init {
+        // Observe detected hardware capability profile to derive truthful zoom stops and Pro limits
+        scope.launch {
+            capabilityRepository.capabilityProfile.filterNotNull().collectLatest { profile ->
+                val activeCamera = if (_isFrontCamera) profile.primaryFrontCamera else profile.primaryBackCamera
+                updateHardwareProfileCapabilities(activeCamera)
+            }
+        }
+    }
+
+    private fun updateHardwareProfileCapabilities(cameraProfile: CameraDeviceProfile?) {
+        if (cameraProfile == null) return
+
+        // 1. Truthful zoom stops
+        _zoomStops.value = ZoomStop.deriveFromProfile(cameraProfile)
+
+        // 2. Pro bounds
+        val streamCaps = cameraProfile.streamCapabilities
+        val isoRange = if (streamCaps.isoRangeMin != null && streamCaps.isoRangeMax != null) {
+            streamCaps.isoRangeMin..streamCaps.isoRangeMax
+        } else null
+
+        val shutterRange = if (streamCaps.exposureTimeRangeMinNs != null && streamCaps.exposureTimeRangeMaxNs != null) {
+            streamCaps.exposureTimeRangeMinNs..streamCaps.exposureTimeRangeMaxNs
+        } else null
+
+        _proState.value = _proState.value.copy(
+            isoRange = isoRange,
+            isIsoManualSupported = streamCaps.supportsManualSensor && isoRange != null,
+            shutterSpeedRangeNanos = shutterRange,
+            isShutterManualSupported = streamCaps.supportsManualSensor && shutterRange != null,
+            isFocusManualSupported = true,
+            isWhiteBalanceSupported = true,
+        )
     }
 
     override suspend fun bindPreview(
@@ -129,17 +205,34 @@ class CameraXController @Inject constructor(
                 .build()
             imageCaptureUseCase = capture
 
-            // 3. Bind to Lifecycle
+            // 3. Build ImageAnalysis Use Case for real-time luminance histogram
+            val analyzer = HistogramAnalyzer { hist ->
+                _histogramData.value = hist
+            }
+            histogramAnalyzer = analyzer
+
+            val analysis = ImageAnalysis.Builder()
+                .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .build()
+            analysis.setAnalyzer(analysisExecutor, analyzer)
+            imageAnalysisUseCase = analysis
+
+            // 4. Bind to Lifecycle
             val boundCamera = provider.bindToLifecycle(
                 lifecycleOwner,
                 selector,
                 preview,
                 capture,
+                analysis,
             )
             camera = boundCamera
 
-            // 4. Observe zoom and exposure bounds
+            // 5. Observe zoom and exposure bounds
             setupCameraStateObservers(boundCamera)
+
+            // 6. Re-apply any active manual Pro parameters
+            applyCamera2CaptureOptions()
 
             _sessionState.value = CameraSessionState.PREVIEW_ACTIVE
             logger.i(TAG, "Camera preview successfully bound to lifecycle.")
@@ -188,11 +281,99 @@ class CameraXController @Inject constructor(
         try {
             control.setExposureCompensationIndex(index)
             _exposureState.value = _exposureState.value.copy(index = index)
+            _proState.value = _proState.value.copy(evIndex = index)
             OptiResult.Success(Unit)
         } catch (e: Exception) {
             logger.w(TAG, "Failed setting exposure compensation: ${e.message}")
             OptiResult.Error(OptiError.Unknown(cause = e, message = "Exposure adjustment failed"))
         }
+    }
+
+    override suspend fun setIso(iso: Int?): OptiResult<Unit> = withContext(dispatchers.main) {
+        _proState.value = _proState.value.copy(iso = iso)
+        applyCamera2CaptureOptions()
+        OptiResult.Success(Unit)
+    }
+
+    override suspend fun setShutterSpeed(nanos: Long?): OptiResult<Unit> = withContext(dispatchers.main) {
+        _proState.value = _proState.value.copy(shutterSpeedNanos = nanos)
+        applyCamera2CaptureOptions()
+        OptiResult.Success(Unit)
+    }
+
+    override suspend fun setFocusDistance(distanceDiopters: Float?): OptiResult<Unit> = withContext(dispatchers.main) {
+        _proState.value = _proState.value.copy(focusDistanceDiopters = distanceDiopters)
+        applyCamera2CaptureOptions()
+        OptiResult.Success(Unit)
+    }
+
+    override suspend fun setWhiteBalance(mode: WhiteBalanceMode): OptiResult<Unit> = withContext(dispatchers.main) {
+        _proState.value = _proState.value.copy(whiteBalanceMode = mode)
+        applyCamera2CaptureOptions()
+        OptiResult.Success(Unit)
+    }
+
+    override suspend fun resetProToAuto(): OptiResult<Unit> = withContext(dispatchers.main) {
+        _proState.value = _proState.value.copy(
+            iso = null,
+            shutterSpeedNanos = null,
+            focusDistanceDiopters = null,
+            whiteBalanceMode = WhiteBalanceMode.AUTO,
+            evIndex = 0,
+        )
+        setExposureCompensation(0)
+        val cam = camera
+        if (cam != null) {
+            try {
+                Camera2CameraControl.from(cam.cameraControl).clearCaptureRequestOptions()
+            } catch (e: Exception) {
+                logger.w(TAG, "Error clearing Camera2 options: ${e.message}")
+            }
+        }
+        OptiResult.Success(Unit)
+    }
+
+    override fun setHistogramEnabled(enabled: Boolean) {
+        histogramAnalyzer?.isEnabled = enabled
+    }
+
+    private fun applyCamera2CaptureOptions() {
+        val cam = camera ?: return
+        val pro = _proState.value
+        val camera2Control = Camera2CameraControl.from(cam.cameraControl)
+
+        if (!pro.isAnyManualActive) {
+            camera2Control.clearCaptureRequestOptions()
+            return
+        }
+
+        val builder = CaptureRequestOptions.Builder()
+
+        // 1. Manual ISO / Shutter
+        if (pro.iso != null || pro.shutterSpeedNanos != null) {
+            builder.setCaptureRequestOption(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
+            pro.iso?.let { builder.setCaptureRequestOption(CaptureRequest.SENSOR_SENSITIVITY, it) }
+            pro.shutterSpeedNanos?.let { builder.setCaptureRequestOption(CaptureRequest.SENSOR_EXPOSURE_TIME, it) }
+        } else {
+            builder.setCaptureRequestOption(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+        }
+
+        // 2. Manual Focus Distance
+        if (pro.focusDistanceDiopters != null) {
+            builder.setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF)
+            builder.setCaptureRequestOption(CaptureRequest.LENS_FOCUS_DISTANCE, pro.focusDistanceDiopters)
+        } else {
+            builder.setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+        }
+
+        // 3. White Balance
+        if (pro.whiteBalanceMode != WhiteBalanceMode.AUTO) {
+            builder.setCaptureRequestOption(CaptureRequest.CONTROL_AWB_MODE, pro.whiteBalanceMode.camera2AwbMode)
+        } else {
+            builder.setCaptureRequestOption(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
+        }
+
+        camera2Control.setCaptureRequestOptions(builder.build())
     }
 
     override suspend fun setFlashMode(mode: FlashMode): OptiResult<Unit> = withContext(dispatchers.main) {
@@ -287,12 +468,7 @@ class CameraXController @Inject constructor(
     }
 
     override suspend fun capturePhoto(): OptiResult<String> {
-        val result = capturePhoto(0)
-        return when (result) {
-            is OptiResult.Success -> OptiResult.Success(result.data.uri)
-            is OptiResult.Error -> OptiResult.Error(result.error)
-            is OptiResult.Loading -> OptiResult.Loading(result.fraction)
-        }
+        return capturePhoto(0).map { it.uri }
     }
 
     override suspend fun stopPreview() = withContext(dispatchers.main) {
@@ -301,6 +477,7 @@ class CameraXController @Inject constructor(
             camera = null
             previewUseCase = null
             imageCaptureUseCase = null
+            imageAnalysisUseCase = null
             _sessionState.value = CameraSessionState.IDLE
             logger.i(TAG, "Camera preview stopped and resources released.")
         } catch (e: Exception) {
@@ -334,6 +511,7 @@ class CameraXController @Inject constructor(
             cameraProvider?.unbindAll()
             camera = null
             captureExecutor.shutdown()
+            analysisExecutor.shutdown()
             _sessionState.value = CameraSessionState.IDLE
             logger.d(TAG, "CameraXController fully released.")
         } catch (e: Exception) {
@@ -376,6 +554,12 @@ class CameraXController @Inject constructor(
             minIndex = exp.exposureCompensationRange.lower,
             maxIndex = exp.exposureCompensationRange.upper,
             step = exp.exposureCompensationStep.toFloat(),
+        )
+
+        _proState.value = _proState.value.copy(
+            evRange = exp.exposureCompensationRange.lower..exp.exposureCompensationRange.upper,
+            evStep = exp.exposureCompensationStep.toFloat(),
+            evIndex = exp.exposureCompensationIndex,
         )
     }
 

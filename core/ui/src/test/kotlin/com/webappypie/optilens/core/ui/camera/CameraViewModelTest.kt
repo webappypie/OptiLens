@@ -5,6 +5,7 @@ import androidx.compose.ui.geometry.Offset
 import app.cash.turbine.test
 import com.webappypie.optilens.core.camera.FakeCameraController
 import com.webappypie.optilens.core.camera.model.FlashMode
+import com.webappypie.optilens.core.camera.model.WhiteBalanceMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -47,6 +48,8 @@ class CameraViewModelTest {
             assertFalse(initial.hasCameraPermission)
             assertFalse(initial.isFrontCamera)
             assertEquals(FlashMode.AUTO, initial.flashMode)
+            assertEquals(TimerState.OFF, initial.timerState)
+            assertEquals(CameraAspectRatio.RATIO_4_3, initial.aspectRatio)
             assertFalse(initial.isCapturing)
             assertNull(initial.lastCapturedPhoto)
             assertNull(initial.focusTarget)
@@ -90,15 +93,61 @@ class CameraViewModelTest {
     }
 
     @Test
-    fun `zoom ratio change propagates to state`() = runTest {
+    fun `toggle timer cycles through OFF, 3s, 10s`() = runTest {
         viewModel.uiState.test {
-            awaitItem()
+            assertEquals(TimerState.OFF, awaitItem().timerState)
 
-            viewModel.onZoomRatioChanged(2.5f)
+            viewModel.toggleTimer()
+            testScheduler.advanceUntilIdle()
+            assertEquals(TimerState.SEC_3, awaitItem().timerState)
+
+            viewModel.toggleTimer()
+            testScheduler.advanceUntilIdle()
+            assertEquals(TimerState.SEC_10, awaitItem().timerState)
+
+            viewModel.toggleTimer()
+            testScheduler.advanceUntilIdle()
+            assertEquals(TimerState.OFF, awaitItem().timerState)
+
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `toggle aspect ratio cycles through 4-3, 16-9, 1-1`() = runTest {
+        viewModel.uiState.test {
+            assertEquals(CameraAspectRatio.RATIO_4_3, awaitItem().aspectRatio)
+
+            viewModel.toggleAspectRatio()
+            testScheduler.advanceUntilIdle()
+            assertEquals(CameraAspectRatio.RATIO_16_9, awaitItem().aspectRatio)
+
+            viewModel.toggleAspectRatio()
+            testScheduler.advanceUntilIdle()
+            assertEquals(CameraAspectRatio.RATIO_1_1, awaitItem().aspectRatio)
+
+            viewModel.toggleAspectRatio()
+            testScheduler.advanceUntilIdle()
+            assertEquals(CameraAspectRatio.RATIO_4_3, awaitItem().aspectRatio)
+
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `zoom ratio change propagates to state and triggers haptics at optical stops`() = runTest {
+        viewModel.opticalHapticFlow.test {
+            // FakeCameraController has optical stops at 0.6x, 1x, 5x, and digital crop at 2x
+            viewModel.onZoomRatioChanged(0.6f)
+            testScheduler.advanceUntilIdle()
+            awaitItem() // Haptic fired crossing 0.6x optical stop
+
+            viewModel.onZoomRatioChanged(2.0f) // 2.0x is digital crop, no optical crossing event
             testScheduler.advanceUntilIdle()
 
-            val state = awaitItem()
-            assertEquals(2.5f, state.zoomState.currentZoom, 0.01f)
+            viewModel.onZoomRatioChanged(5.0f) // 5.0x optical telephoto stop
+            testScheduler.advanceUntilIdle()
+            awaitItem() // Haptic fired crossing 5.0x optical stop
 
             cancelAndIgnoreRemainingEvents()
         }
@@ -126,6 +175,39 @@ class CameraViewModelTest {
     }
 
     @Test
+    fun `pro manual controls update ISO, shutter, focus, WB and reset to auto`() = runTest {
+        viewModel.uiState.test {
+            awaitItem()
+
+            viewModel.setIso(400)
+            testScheduler.advanceUntilIdle()
+            assertEquals(400, expectMostRecentItem().proState.iso)
+
+            viewModel.setShutterSpeed(8_000_000L) // 1/125s
+            testScheduler.advanceUntilIdle()
+            assertEquals(8_000_000L, expectMostRecentItem().proState.shutterSpeedNanos)
+
+            viewModel.setFocusDistance(3.0f)
+            testScheduler.advanceUntilIdle()
+            assertEquals(3.0f, expectMostRecentItem().proState.focusDistanceDiopters)
+
+            viewModel.setWhiteBalance(WhiteBalanceMode.INCANDESCENT)
+            testScheduler.advanceUntilIdle()
+            assertEquals(WhiteBalanceMode.INCANDESCENT, expectMostRecentItem().proState.whiteBalanceMode)
+
+            viewModel.resetProToAuto()
+            testScheduler.advanceUntilIdle()
+            val resetState = expectMostRecentItem()
+            assertNull(resetState.proState.iso)
+            assertNull(resetState.proState.shutterSpeedNanos)
+            assertNull(resetState.proState.focusDistanceDiopters)
+            assertEquals(WhiteBalanceMode.AUTO, resetState.proState.whiteBalanceMode)
+
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
     fun `takePhoto captures and updates lastCapturedPhoto`() = runTest {
         viewModel.uiState.test {
             awaitItem()
@@ -137,6 +219,34 @@ class CameraViewModelTest {
             assertFalse(state.isCapturing)
             assertNotNull(state.lastCapturedPhoto)
             assertTrue(state.lastCapturedPhoto?.uri?.startsWith("content://") == true)
+
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `takePhotoWithTimer executes countdown before triggering capture`() = runTest {
+        viewModel.uiState.test {
+            awaitItem()
+
+            viewModel.toggleTimer() // switch to 3s
+            testScheduler.advanceUntilIdle()
+            assertEquals(TimerState.SEC_3, expectMostRecentItem().timerState)
+
+            viewModel.takePhotoWithTimer(targetRotation = 0)
+            testScheduler.advanceTimeBy(100)
+            assertEquals(3, expectMostRecentItem().timerCountdown)
+
+            testScheduler.advanceTimeBy(1_000)
+            assertEquals(2, expectMostRecentItem().timerCountdown)
+
+            testScheduler.advanceTimeBy(1_000)
+            assertEquals(1, expectMostRecentItem().timerCountdown)
+
+            testScheduler.advanceTimeBy(1_100)
+            val capturedState = expectMostRecentItem()
+            assertNull(capturedState.timerCountdown)
+            assertNotNull(capturedState.lastCapturedPhoto)
 
             cancelAndIgnoreRemainingEvents()
         }

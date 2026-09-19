@@ -11,22 +11,42 @@ import com.webappypie.optilens.core.camera.model.CameraSessionState
 import com.webappypie.optilens.core.camera.model.CapturedPhoto
 import com.webappypie.optilens.core.camera.model.ExposureState
 import com.webappypie.optilens.core.camera.model.FlashMode
+import com.webappypie.optilens.core.camera.model.HistogramData
+import com.webappypie.optilens.core.camera.model.ProCameraState
+import com.webappypie.optilens.core.camera.model.WhiteBalanceMode
 import com.webappypie.optilens.core.camera.model.ZoomState
+import com.webappypie.optilens.core.camera.model.ZoomStop
 import com.webappypie.optilens.core.common.result.OptiResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import kotlin.math.abs
+
+enum class CameraAspectRatio(val ratio: Float, val label: String) {
+    RATIO_4_3(3f / 4f, "4:3"),
+    RATIO_16_9(9f / 16f, "16:9"),
+    RATIO_1_1(1f / 1f, "1:1");
+}
+
+enum class TimerState(val seconds: Int) {
+    OFF(0),
+    SEC_3(3),
+    SEC_10(10);
+}
 
 /**
- * UI State representing camera viewfinder, session status, controls, and capture status.
+ * UI State representing camera viewfinder, session status, Pro controls, and capture status.
  */
 data class CameraUiState(
     val hasCameraPermission: Boolean = false,
@@ -34,7 +54,14 @@ data class CameraUiState(
     val flashMode: FlashMode = FlashMode.AUTO,
     val isTorchEnabled: Boolean = false,
     val zoomState: ZoomState = ZoomState(),
+    val zoomStops: List<ZoomStop> = emptyList(),
     val exposureState: ExposureState = ExposureState(),
+    val proState: ProCameraState = ProCameraState(),
+    val histogramData: HistogramData = HistogramData.EMPTY,
+    val isHistogramVisible: Boolean = false,
+    val timerState: TimerState = TimerState.OFF,
+    val timerCountdown: Int? = null,
+    val aspectRatio: CameraAspectRatio = CameraAspectRatio.RATIO_4_3,
     val sessionState: CameraSessionState = CameraSessionState.IDLE,
     val isCapturing: Boolean = false,
     val lastCapturedPhoto: CapturedPhoto? = null,
@@ -52,37 +79,73 @@ class CameraViewModel @Inject constructor(
         CameraInternalState(isFrontCamera = cameraController.isFrontCamera)
     )
     private var focusResetJob: Job? = null
+    private var timerJob: Job? = null
 
-    private data class CameraHardwareState(
+    private val _opticalHapticFlow = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val opticalHapticFlow: SharedFlow<Unit> = _opticalHapticFlow.asSharedFlow()
+
+    private var previousZoom = 1.0f
+    private var activeZoomStops: List<ZoomStop> = emptyList()
+
+    init {
+        viewModelScope.launch {
+            cameraController.zoomStops.collect { stops ->
+                activeZoomStops = stops
+            }
+        }
+    }
+
+    private data class HardwareStreamState1(
+        val zoomStops: List<ZoomStop>,
         val flash: FlashMode,
         val exposure: ExposureState,
+    )
+
+    private data class HardwareStreamState2(
+        val proState: ProCameraState,
+        val histogram: HistogramData,
         val lastPhoto: CapturedPhoto?,
     )
 
-    private val _cameraHardwareState = combine(
+    private val _stream1 = combine(
+        cameraController.zoomStops,
         cameraController.flashMode,
         cameraController.exposureState,
+    ) { stops, flash, exp ->
+        HardwareStreamState1(stops, flash, exp)
+    }
+
+    private val _stream2 = combine(
+        cameraController.proState,
+        cameraController.histogramData,
         cameraController.lastCapturedPhoto,
-    ) { flash, exposure, lastPhoto ->
-        CameraHardwareState(flash, exposure, lastPhoto)
+    ) { pro, hist, photo ->
+        HardwareStreamState2(pro, hist, photo)
     }
 
     val uiState: StateFlow<CameraUiState> = combine(
         _internalState,
         cameraController.sessionState,
         cameraController.zoomState,
-        _cameraHardwareState,
-    ) { internal, session, zoom, hardware ->
+        combine(_stream1, _stream2) { s1, s2 -> s1 to s2 }
+    ) { internal, session, zoom, (s1, s2) ->
         CameraUiState(
             hasCameraPermission = internal.hasPermission,
             isFrontCamera = internal.isFrontCamera,
-            flashMode = hardware.flash,
+            flashMode = s1.flash,
             isTorchEnabled = internal.isTorchEnabled,
             zoomState = zoom,
-            exposureState = hardware.exposure,
+            zoomStops = s1.zoomStops,
+            exposureState = s1.exposure,
+            proState = s2.proState,
+            histogramData = s2.histogram,
+            isHistogramVisible = internal.isHistogramVisible,
+            timerState = internal.timerState,
+            timerCountdown = internal.timerCountdown,
+            aspectRatio = internal.aspectRatio,
             sessionState = session,
             isCapturing = internal.isCapturing,
-            lastCapturedPhoto = hardware.lastPhoto,
+            lastCapturedPhoto = s2.lastPhoto,
             focusTarget = internal.focusTarget,
             isShutterBlinking = internal.isShutterBlinking,
             errorMessage = internal.errorMessage,
@@ -119,6 +182,19 @@ class CameraViewModel @Inject constructor(
     }
 
     fun onZoomRatioChanged(ratio: Float) {
+        val stops = if (activeZoomStops.isNotEmpty()) {
+            activeZoomStops.filter { it.isOptical }
+        } else {
+            uiState.value.zoomStops.filter { it.isOptical }
+        }
+        for (stop in stops) {
+            if (abs(ratio - stop.ratio) < 0.05f && abs(previousZoom - stop.ratio) >= 0.05f) {
+                _opticalHapticFlow.tryEmit(Unit)
+                break
+            }
+        }
+        previousZoom = ratio
+
         viewModelScope.launch {
             cameraController.setZoom(ratio)
         }
@@ -128,6 +204,60 @@ class CameraViewModel @Inject constructor(
         viewModelScope.launch {
             cameraController.setExposureCompensation(index)
         }
+    }
+
+    fun setIso(iso: Int?) {
+        viewModelScope.launch {
+            cameraController.setIso(iso)
+        }
+    }
+
+    fun setShutterSpeed(nanos: Long?) {
+        viewModelScope.launch {
+            cameraController.setShutterSpeed(nanos)
+        }
+    }
+
+    fun setFocusDistance(distance: Float?) {
+        viewModelScope.launch {
+            cameraController.setFocusDistance(distance)
+        }
+    }
+
+    fun setWhiteBalance(mode: WhiteBalanceMode) {
+        viewModelScope.launch {
+            cameraController.setWhiteBalance(mode)
+        }
+    }
+
+    fun resetProToAuto() {
+        viewModelScope.launch {
+            cameraController.resetProToAuto()
+        }
+    }
+
+    fun toggleHistogram() {
+        val next = !_internalState.value.isHistogramVisible
+        _internalState.update { it.copy(isHistogramVisible = next) }
+        cameraController.setHistogramEnabled(next)
+    }
+
+    fun toggleAspectRatio() {
+        val next = when (_internalState.value.aspectRatio) {
+            CameraAspectRatio.RATIO_4_3 -> CameraAspectRatio.RATIO_16_9
+            CameraAspectRatio.RATIO_16_9 -> CameraAspectRatio.RATIO_1_1
+            CameraAspectRatio.RATIO_1_1 -> CameraAspectRatio.RATIO_4_3
+        }
+        _internalState.update { it.copy(aspectRatio = next) }
+    }
+
+    fun toggleTimer() {
+        val next = when (_internalState.value.timerState) {
+            TimerState.OFF -> TimerState.SEC_3
+            TimerState.SEC_3 -> TimerState.SEC_10
+            TimerState.SEC_10 -> TimerState.OFF
+        }
+        _internalState.update { it.copy(timerState = next) }
     }
 
     fun toggleFlashMode() {
@@ -177,6 +307,30 @@ class CameraViewModel @Inject constructor(
         }
     }
 
+    fun takePhotoWithTimer(targetRotation: Int = 0) {
+        val timer = _internalState.value.timerState
+        if (timer == TimerState.OFF) {
+            takePhoto(targetRotation)
+            return
+        }
+
+        timerJob?.cancel()
+        timerJob = viewModelScope.launch {
+            for (sec in timer.seconds downTo 1) {
+                _internalState.update { it.copy(timerCountdown = sec) }
+                delay(1_000L)
+            }
+            _internalState.update { it.copy(timerCountdown = null) }
+            takePhoto(targetRotation)
+        }
+    }
+
+    fun cancelTimer() {
+        timerJob?.cancel()
+        timerJob = null
+        _internalState.update { it.copy(timerCountdown = null) }
+    }
+
     fun takePhoto(targetRotation: Int = 0) {
         if (_internalState.value.isCapturing) return
 
@@ -213,6 +367,7 @@ class CameraViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
         focusResetJob?.cancel()
+        timerJob?.cancel()
         cameraController.release()
     }
 
@@ -223,6 +378,10 @@ class CameraViewModel @Inject constructor(
         val isCapturing: Boolean = false,
         val focusTarget: Offset? = null,
         val isShutterBlinking: Boolean = false,
+        val timerState: TimerState = TimerState.OFF,
+        val timerCountdown: Int? = null,
+        val aspectRatio: CameraAspectRatio = CameraAspectRatio.RATIO_4_3,
+        val isHistogramVisible: Boolean = false,
         val errorMessage: String? = null,
     )
 }

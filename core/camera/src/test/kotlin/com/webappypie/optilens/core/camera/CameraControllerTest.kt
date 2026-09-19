@@ -1,13 +1,20 @@
 package com.webappypie.optilens.core.camera
 
+import com.webappypie.optilens.core.camera.model.CameraDeviceProfile
+import com.webappypie.optilens.core.camera.model.CameraHardwareLevel
 import com.webappypie.optilens.core.camera.model.CameraSessionState
 import com.webappypie.optilens.core.camera.model.FlashMode
+import com.webappypie.optilens.core.camera.model.LensFacing
+import com.webappypie.optilens.core.camera.model.PhysicalSensorInfo
+import com.webappypie.optilens.core.camera.model.WhiteBalanceMode
+import com.webappypie.optilens.core.camera.model.ZoomStop
 import com.webappypie.optilens.core.common.result.OptiResult
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -88,5 +95,92 @@ class CameraControllerTest {
         controller.setExposureCompensation(2)
         val exp = controller.exposureState.first()
         assertEquals(2, exp.index)
+    }
+
+    @Test
+    fun `deriveFromProfile never labels digital crop as optical`() {
+        // Device with primary 1x (f=4.5mm), ultrawide 0.6x (f=2.2mm), and periscope 5x (f=22.5mm)
+        // Note: NO physical 2x or 3x sensor!
+        val profile = CameraDeviceProfile(
+            id = "0",
+            lensFacing = LensFacing.BACK,
+            hardwareLevel = CameraHardwareLevel.LEVEL_3,
+            focalLengthsMm = listOf(4.5f),
+            minZoom = 0.6f,
+            maxZoom = 10.0f,
+            physicalSensors = listOf(
+                PhysicalSensorInfo(id = "2", focalLengthMm = 2.2f, lensFacing = LensFacing.BACK), // ~0.6x UW
+                PhysicalSensorInfo(id = "3", focalLengthMm = 22.5f, lensFacing = LensFacing.BACK), // 5x Tele
+            ),
+        )
+
+        val stops = ZoomStop.deriveFromProfile(profile)
+        assertTrue(stops.isNotEmpty())
+
+        val stop1x = stops.first { it.ratio == 1.0f }
+        assertTrue("1x must be optical", stop1x.isOptical)
+
+        val stop06x = stops.first { it.ratio == 0.6f }
+        assertTrue("0.6x backed by physical sensor must be optical", stop06x.isOptical)
+
+        val stop2x = stops.first { it.ratio == 2.0f }
+        assertFalse("2x digital crop must NEVER be labeled optical", stop2x.isOptical)
+
+        val stop3x = stops.firstOrNull { it.ratio == 3.0f }
+        if (stop3x != null) {
+            assertFalse("3x digital crop without 3x sensor must NEVER be labeled optical", stop3x.isOptical)
+        }
+
+        val stop5x = stops.first { it.ratio == 5.0f }
+        assertTrue("5x backed by 22.5mm physical sensor must be optical", stop5x.isOptical)
+    }
+
+    @Test
+    fun `pro controls update ISO, shutter, focus, and white balance`() = runTest {
+        controller.setIso(800)
+        assertEquals(800, controller.proState.first().iso)
+
+        controller.setShutterSpeed(16_666_666L) // ~1/60s
+        assertEquals(16_666_666L, controller.proState.first().shutterSpeedNanos)
+
+        controller.setFocusDistance(5.0f)
+        assertEquals(5.0f, controller.proState.first().focusDistanceDiopters)
+
+        controller.setWhiteBalance(WhiteBalanceMode.DAYLIGHT)
+        assertEquals(WhiteBalanceMode.DAYLIGHT, controller.proState.first().whiteBalanceMode)
+
+        assertTrue(controller.proState.first().isAnyManualActive)
+    }
+
+    @Test
+    fun `resetProToAuto restores all manual controls to default AUTO values`() = runTest {
+        controller.setIso(1600)
+        controller.setShutterSpeed(1_000_000L)
+        controller.setFocusDistance(2.0f)
+        controller.setWhiteBalance(WhiteBalanceMode.CLOUDY)
+        controller.setExposureCompensation(2)
+        assertTrue(controller.proState.first().isAnyManualActive)
+
+        controller.resetProToAuto()
+        val state = controller.proState.first()
+
+        assertNull(state.iso)
+        assertNull(state.shutterSpeedNanos)
+        assertNull(state.focusDistanceDiopters)
+        assertEquals(WhiteBalanceMode.AUTO, state.whiteBalanceMode)
+        assertEquals(0, state.evIndex)
+        assertFalse(state.isAnyManualActive)
+    }
+
+    @Test
+    fun `histogram data stream emits 64 bins and respects toggle`() = runTest {
+        val hist = controller.histogramData.first()
+        assertEquals(64, hist.bins.size)
+
+        controller.setHistogramEnabled(true)
+        assertTrue(controller.isHistogramEnabled)
+
+        controller.setHistogramEnabled(false)
+        assertFalse(controller.isHistogramEnabled)
     }
 }

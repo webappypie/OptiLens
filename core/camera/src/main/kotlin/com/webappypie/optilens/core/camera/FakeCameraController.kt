@@ -1,6 +1,5 @@
 package com.webappypie.optilens.core.camera
 
-import android.net.Uri
 import androidx.camera.core.MeteringPoint
 import androidx.camera.core.Preview
 import androidx.lifecycle.LifecycleOwner
@@ -8,8 +7,13 @@ import com.webappypie.optilens.core.camera.model.CameraSessionState
 import com.webappypie.optilens.core.camera.model.CapturedPhoto
 import com.webappypie.optilens.core.camera.model.ExposureState
 import com.webappypie.optilens.core.camera.model.FlashMode
+import com.webappypie.optilens.core.camera.model.HistogramData
+import com.webappypie.optilens.core.camera.model.ProCameraState
+import com.webappypie.optilens.core.camera.model.WhiteBalanceMode
 import com.webappypie.optilens.core.camera.model.ZoomState
+import com.webappypie.optilens.core.camera.model.ZoomStop
 import com.webappypie.optilens.core.common.result.OptiResult
+import com.webappypie.optilens.core.common.result.map
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -50,6 +54,16 @@ class FakeCameraController @Inject constructor() : CameraController {
     )
     override val zoomState: Flow<ZoomState> = _zoomState.asStateFlow()
 
+    private val _zoomStops = MutableStateFlow(
+        listOf(
+            ZoomStop(ratio = 0.6f, label = "0.6x", isOptical = true, physicalSensorId = "2"),
+            ZoomStop(ratio = 1.0f, label = "1x", isOptical = true, physicalSensorId = "0"),
+            ZoomStop(ratio = 2.0f, label = "2x", isOptical = false, physicalSensorId = null), // Truthful digital crop
+            ZoomStop(ratio = 5.0f, label = "5x", isOptical = true, physicalSensorId = "3"),
+        )
+    )
+    override val zoomStops: Flow<List<ZoomStop>> = _zoomStops.asStateFlow()
+
     private val _flashMode = MutableStateFlow(FlashMode.AUTO)
     override val flashMode: Flow<FlashMode> = _flashMode.asStateFlow()
 
@@ -62,6 +76,25 @@ class FakeCameraController @Inject constructor() : CameraController {
         )
     )
     override val exposureState: Flow<ExposureState> = _exposureState.asStateFlow()
+
+    private val _proState = MutableStateFlow(
+        ProCameraState(
+            isoRange = 50..3200,
+            isIsoManualSupported = true,
+            shutterSpeedRangeNanos = 100_000L..1_000_000_000L,
+            isShutterManualSupported = true,
+            isFocusManualSupported = true,
+            isWhiteBalanceSupported = true,
+            evRange = -12..12,
+            evStep = 0.333f,
+        )
+    )
+    override val proState: Flow<ProCameraState> = _proState.asStateFlow()
+
+    private val _histogramData = MutableStateFlow(
+        HistogramData(bins = FloatArray(64) { (it / 64f) })
+    )
+    override val histogramData: Flow<HistogramData> = _histogramData.asStateFlow()
 
     private val _lastCapturedPhoto = MutableStateFlow<CapturedPhoto?>(null)
     override val lastCapturedPhoto: Flow<CapturedPhoto?> = _lastCapturedPhoto.asStateFlow()
@@ -76,6 +109,9 @@ class FakeCameraController @Inject constructor() : CameraController {
         private set
 
     var isTorchEnabled: Boolean = false
+        private set
+
+    var isHistogramEnabled: Boolean = false
         private set
 
     var lastFocusedPoint: MeteringPoint? = null
@@ -103,7 +139,44 @@ class FakeCameraController @Inject constructor() : CameraController {
 
     override suspend fun setExposureCompensation(index: Int): OptiResult<Unit> {
         _exposureState.value = _exposureState.value.copy(index = index)
+        _proState.value = _proState.value.copy(evIndex = index)
         return OptiResult.Success(Unit)
+    }
+
+    override suspend fun setIso(iso: Int?): OptiResult<Unit> {
+        _proState.value = _proState.value.copy(iso = iso)
+        return OptiResult.Success(Unit)
+    }
+
+    override suspend fun setShutterSpeed(nanos: Long?): OptiResult<Unit> {
+        _proState.value = _proState.value.copy(shutterSpeedNanos = nanos)
+        return OptiResult.Success(Unit)
+    }
+
+    override suspend fun setFocusDistance(distanceDiopters: Float?): OptiResult<Unit> {
+        _proState.value = _proState.value.copy(focusDistanceDiopters = distanceDiopters)
+        return OptiResult.Success(Unit)
+    }
+
+    override suspend fun setWhiteBalance(mode: WhiteBalanceMode): OptiResult<Unit> {
+        _proState.value = _proState.value.copy(whiteBalanceMode = mode)
+        return OptiResult.Success(Unit)
+    }
+
+    override suspend fun resetProToAuto(): OptiResult<Unit> {
+        _proState.value = _proState.value.copy(
+            iso = null,
+            shutterSpeedNanos = null,
+            focusDistanceDiopters = null,
+            whiteBalanceMode = WhiteBalanceMode.AUTO,
+            evIndex = 0,
+        )
+        _exposureState.value = _exposureState.value.copy(index = 0)
+        return OptiResult.Success(Unit)
+    }
+
+    override fun setHistogramEnabled(enabled: Boolean) {
+        isHistogramEnabled = enabled
     }
 
     override suspend fun setFlashMode(mode: FlashMode): OptiResult<Unit> {
@@ -135,17 +208,12 @@ class FakeCameraController @Inject constructor() : CameraController {
     }
 
     override suspend fun capturePhoto(): OptiResult<String> {
-        val result = capturePhoto(0)
-        return when (result) {
-            is OptiResult.Success -> OptiResult.Success(result.data.uri)
-            is OptiResult.Error -> OptiResult.Error(result.error)
-            is OptiResult.Loading -> OptiResult.Loading(result.fraction)
-        }
+        return capturePhoto(0).map { it.uri }
     }
 
     override suspend fun stopPreview() {
-        isPreviewActive = false
         _sessionState.value = CameraSessionState.IDLE
+        isPreviewActive = false
     }
 
     override suspend fun setZoom(ratio: Float): OptiResult<Unit> {
@@ -160,7 +228,11 @@ class FakeCameraController @Inject constructor() : CameraController {
     }
 
     override fun release() {
-        isPreviewActive = false
+        stopPreviewSync()
+    }
+
+    private fun stopPreviewSync() {
         _sessionState.value = CameraSessionState.IDLE
+        isPreviewActive = false
     }
 }
