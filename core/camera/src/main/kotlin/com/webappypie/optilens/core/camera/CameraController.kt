@@ -77,6 +77,9 @@ interface CameraController {
     /** Active Night mode execution plan evaluated in real-time. */
     val nightExecutionPlan: Flow<com.webappypie.optilens.core.camera.night.NightExecutionPlan?>
 
+    /** Active Portrait mode execution plan evaluated in real-time. */
+    val portraitExecutionPlan: Flow<com.webappypie.optilens.core.camera.portrait.PortraitExecutionPlan?>
+
     /** Whether preview low-light boost is actively brightening the viewfinder. */
     val isPreviewBoostActive: Flow<Boolean>
 
@@ -99,6 +102,16 @@ interface CameraController {
      * Set user policy preference for Night mode (AUTO, PREFER_VENDOR, PREFER_CUSTOM).
      */
     suspend fun setNightPolicyPreference(preference: com.webappypie.optilens.core.camera.night.NightPolicyPreference)
+
+    /**
+     * Set simulated optical aperture for Portrait mode depth-of-field.
+     */
+    suspend fun setPortraitAperture(aperture: com.webappypie.optilens.core.camera.portrait.PortraitAperture): OptiResult<Unit>
+
+    /**
+     * Set user policy preference for Portrait mode (AUTO, PREFER_VENDOR, PREFER_CUSTOM).
+     */
+    suspend fun setPortraitPolicyPreference(preference: com.webappypie.optilens.core.camera.portrait.PortraitPolicyPreference)
 
     /**
      * Binds CameraX Preview, ImageCapture, and ImageAnalysis use cases to the given
@@ -166,10 +179,10 @@ interface CameraController {
     suspend fun enableTorch(enabled: Boolean): OptiResult<Unit>
 
     /**
-     * Capture a single still image with the specified display rotation.
+     * Capture a single still image with the specified display rotation and optional horizontal mirroring.
      * @return [OptiResult.Success] with the [CapturedPhoto] record.
      */
-    suspend fun capturePhoto(targetRotation: Int = 0): OptiResult<CapturedPhoto>
+    suspend fun capturePhoto(targetRotation: Int = 0, mirrorHorizontal: Boolean = false): OptiResult<CapturedPhoto>
 
     /**
      * Acquires a synchronized multi-frame sequence with metadata based on the active

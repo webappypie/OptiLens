@@ -4,6 +4,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -32,6 +33,9 @@ class AppSettingsImpl @Inject constructor(
         val COLOR_PROFILE           = stringPreferencesKey("color_profile")
         val KEEP_ORIGINAL           = booleanPreferencesKey("keep_original")
         val LOCATION_TAGGING        = booleanPreferencesKey("location_tagging")
+        val MIRROR_FRONT_SELFIE     = booleanPreferencesKey("mirror_front_selfie")
+        val PORTRAIT_BLUR_STRENGTH  = floatPreferencesKey("portrait_blur_strength")
+        val PORTRAIT_SKIN_SMOOTHING = floatPreferencesKey("portrait_skin_smoothing")
         val IS_PRO                  = booleanPreferencesKey("is_pro")
     }
 
@@ -90,6 +94,22 @@ class AppSettingsImpl @Inject constructor(
     override val locationTaggingEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.LOCATION_TAGGING] ?: false }
     override suspend fun setLocationTaggingEnabled(enabled: Boolean) {
         dataStore.edit { it[Keys.LOCATION_TAGGING] = enabled }
+    }
+
+    // ── Portrait & Selfie ─────────────────────────────────────────────────
+    override val mirrorFrontCameraSelfie: Flow<Boolean> = dataStore.data.map { it[Keys.MIRROR_FRONT_SELFIE] ?: true }
+    override suspend fun setMirrorFrontCameraSelfie(enabled: Boolean) {
+        dataStore.edit { it[Keys.MIRROR_FRONT_SELFIE] = enabled }
+    }
+
+    override val portraitBlurStrength: Flow<Float> = dataStore.data.map { it[Keys.PORTRAIT_BLUR_STRENGTH] ?: 0.50f }
+    override suspend fun setPortraitBlurStrength(strength: Float) {
+        dataStore.edit { it[Keys.PORTRAIT_BLUR_STRENGTH] = strength }
+    }
+
+    override val portraitSkinSmoothingStrength: Flow<Float> = dataStore.data.map { it[Keys.PORTRAIT_SKIN_SMOOTHING] ?: 0.25f }
+    override suspend fun setPortraitSkinSmoothingStrength(strength: Float) {
+        dataStore.edit { it[Keys.PORTRAIT_SKIN_SMOOTHING] = strength }
     }
 
     // ── Pro ───────────────────────────────────────────────────────────────

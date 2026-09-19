@@ -112,6 +112,7 @@ import com.webappypie.optilens.core.ui.camera.sensor.HorizonSensor
 import com.webappypie.optilens.core.ui.components.OptiCameraModeChip
 import com.webappypie.optilens.core.ui.components.OptiIconButton
 import com.webappypie.optilens.core.ui.components.OptiIconButtonVariant
+import com.webappypie.optilens.core.camera.portrait.PortraitAperture
 import com.webappypie.optilens.core.ui.components.OptiPermissionState
 import com.webappypie.optilens.core.ui.theme.OptiLensCameraTypography
 import com.webappypie.optilens.core.ui.theme.OptiLensTheme
@@ -189,6 +190,8 @@ fun CameraScreen(
                 onShutterClick()
                 if (currentMode == CameraMode.NIGHT) {
                     viewModel.takeNightPhoto(targetRotation = Surface.ROTATION_0)
+                } else if (currentMode == CameraMode.PORTRAIT) {
+                    viewModel.takePortraitPhoto(targetRotation = Surface.ROTATION_0)
                 } else {
                     viewModel.takePhotoWithTimer(targetRotation = Surface.ROTATION_0)
                 }
@@ -388,6 +391,18 @@ fun CameraScreen(
                 )
             }
 
+            // Portrait Mode Status & Depth Badge (shown when Portrait mode is active)
+            if (currentMode == CameraMode.PORTRAIT) {
+                PortraitStatusBadge(
+                    aperture = uiState.portraitAperture,
+                    isProcessing = uiState.isProcessingPortraitShot,
+                    faceCount = uiState.detectedFaces.size,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(top = topInset + 64.dp, start = 16.dp),
+                )
+            }
+
             // Live Luminance Histogram Overlay (in Pro Mode or when toggled)
             if (uiState.isHistogramVisible || currentMode == CameraMode.PRO) {
                 HistogramOverlay(
@@ -509,6 +524,15 @@ fun CameraScreen(
                 )
             }
 
+            // Portrait Mode Aperture Bar (Shown when PORTRAIT mode is selected)
+            if (currentMode == CameraMode.PORTRAIT) {
+                PortraitApertureSelector(
+                    currentAperture = uiState.portraitAperture,
+                    onApertureSelected = { viewModel.setPortraitAperture(it) },
+                    modifier = Modifier.padding(bottom = OptiLensTheme.spacing.xs),
+                )
+            }
+
             // Truthful Zoom Selector Bar (derives optical vs digital crop)
             val activeStops = if (uiState.zoomStops.isNotEmpty()) {
                 uiState.zoomStops
@@ -589,18 +613,20 @@ fun CameraScreen(
                     }
                 }
 
-                // Tactile Shutter Button with timer countdown trigger or night mode
+                // Tactile Shutter Button with timer countdown trigger, night mode, or portrait mode
                 CameraShutterButton(
                     onClick = {
                         onShutterClick()
                         if (currentMode == CameraMode.NIGHT) {
                             viewModel.takeNightPhoto(targetRotation = Surface.ROTATION_0)
+                        } else if (currentMode == CameraMode.PORTRAIT) {
+                            viewModel.takePortraitPhoto(targetRotation = Surface.ROTATION_0)
                         } else {
                             viewModel.takePhotoWithTimer(targetRotation = Surface.ROTATION_0)
                         }
                     },
                     isVideo = currentMode == CameraMode.VIDEO,
-                    enabled = !uiState.isCapturing && !uiState.isBurstCapturing && !uiState.isProcessingNightShot && uiState.timerCountdown == null,
+                    enabled = !uiState.isCapturing && !uiState.isBurstCapturing && !uiState.isProcessingNightShot && !uiState.isProcessingPortraitShot && uiState.timerCountdown == null,
                 )
 
                 // Camera Flip Button (48dp touch target)
@@ -997,5 +1023,78 @@ fun PreviewBoostBadge(
                 color = if (isActive) overlayColors.activeAccent else overlayColors.controlOnSurface,
             )
         }
+    }
+}
+
+@Composable
+private fun PortraitApertureSelector(
+    currentAperture: PortraitAperture,
+    onApertureSelected: (PortraitAperture) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val overlayColors = OptiLensTheme.overlayColors
+
+    LazyRow(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = OptiLensTheme.spacing.m),
+        horizontalArrangement = Arrangement.spacedBy(OptiLensTheme.spacing.s, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        items(PortraitAperture.entries) { aperture ->
+            val isSelected = aperture == currentAperture
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(if (isSelected) overlayColors.activeAccent else overlayColors.controlSurface)
+                    .border(
+                        width = 1.dp,
+                        color = if (isSelected) overlayColors.activeAccent else overlayColors.controlBorder,
+                        shape = RoundedCornerShape(16.dp),
+                    )
+                    .clickable { onApertureSelected(aperture) }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = aperture.label,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                        fontSize = 12.sp,
+                    ),
+                    color = if (isSelected) Color.Black else overlayColors.controlOnSurface,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PortraitStatusBadge(
+    aperture: PortraitAperture,
+    isProcessing: Boolean,
+    faceCount: Int,
+    modifier: Modifier = Modifier,
+) {
+    val overlayColors = OptiLensTheme.overlayColors
+
+    Box(
+        modifier = modifier
+            .clip(CircleShape)
+            .background(overlayColors.scrimBackground)
+            .border(width = 1.dp, color = overlayColors.controlBorder, shape = CircleShape)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = if (isProcessing) "Refining portrait..."
+                   else if (faceCount > 0) "Portrait (${faceCount} face${if (faceCount > 1) "s" else ""})"
+                   else "Portrait ${aperture.label}",
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 11.sp,
+            ),
+            color = overlayColors.controlOnSurface,
+        )
     }
 }

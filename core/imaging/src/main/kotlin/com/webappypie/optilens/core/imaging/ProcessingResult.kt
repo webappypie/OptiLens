@@ -12,5 +12,7 @@ data class ProcessingResult(
     val height: Int,
     val isHdrApplied: Boolean = false,
     val isNightModeApplied: Boolean = false,
+    val isPortraitApplied: Boolean = false,
+    val faceCount: Int = 0,
     val isFallbackUsed: Boolean = false,
 )

@@ -120,6 +120,9 @@ class FakeCameraController @Inject constructor() : CameraController {
     private val _nightExecutionPlan = MutableStateFlow<com.webappypie.optilens.core.camera.night.NightExecutionPlan?>(null)
     override val nightExecutionPlan: Flow<com.webappypie.optilens.core.camera.night.NightExecutionPlan?> = _nightExecutionPlan.asStateFlow()
 
+    private val _portraitExecutionPlan = MutableStateFlow<com.webappypie.optilens.core.camera.portrait.PortraitExecutionPlan?>(null)
+    override val portraitExecutionPlan: Flow<com.webappypie.optilens.core.camera.portrait.PortraitExecutionPlan?> = _portraitExecutionPlan.asStateFlow()
+
     private val _isPreviewBoostActive = MutableStateFlow(false)
     override val isPreviewBoostActive: Flow<Boolean> = _isPreviewBoostActive.asStateFlow()
 
@@ -147,6 +150,7 @@ class FakeCameraController @Inject constructor() : CameraController {
     fun emitFaces(faces: List<com.webappypie.optilens.core.camera.model.DetectedFace>) { _detectedFaces.value = faces }
     fun emitBurst(burst: com.webappypie.optilens.core.camera.burst.model.BurstResult?) { _lastBurstResult.value = burst }
     fun emitNightPlan(plan: com.webappypie.optilens.core.camera.night.NightExecutionPlan?) { _nightExecutionPlan.value = plan }
+    fun emitPortraitPlan(plan: com.webappypie.optilens.core.camera.portrait.PortraitExecutionPlan?) { _portraitExecutionPlan.value = plan }
     fun emitStability(assessment: com.webappypie.optilens.core.camera.night.StabilityAssessment) { _stabilityAssessment.value = assessment }
     fun emitThermalState(state: com.webappypie.optilens.core.camera.thermal.DeviceThermalState) { _thermalState.value = state }
 
@@ -240,7 +244,7 @@ class FakeCameraController @Inject constructor() : CameraController {
         return OptiResult.Success(Unit)
     }
 
-    override suspend fun capturePhoto(targetRotation: Int): OptiResult<CapturedPhoto> {
+    override suspend fun capturePhoto(targetRotation: Int, mirrorHorizontal: Boolean): OptiResult<CapturedPhoto> {
         _sessionState.value = CameraSessionState.CAPTURING
         val dummyUri = "content://media/external/images/media/fake_photo_${System.currentTimeMillis()}"
         val photo = CapturedPhoto(
@@ -308,6 +312,14 @@ class FakeCameraController @Inject constructor() : CameraController {
     }
 
     override suspend fun setNightPolicyPreference(preference: com.webappypie.optilens.core.camera.night.NightPolicyPreference) {
+        // Mock preference storage
+    }
+
+    override suspend fun setPortraitAperture(aperture: com.webappypie.optilens.core.camera.portrait.PortraitAperture): OptiResult<Unit> {
+        return OptiResult.Success(Unit)
+    }
+
+    override suspend fun setPortraitPolicyPreference(preference: com.webappypie.optilens.core.camera.portrait.PortraitPolicyPreference) {
         // Mock preference storage
     }
 

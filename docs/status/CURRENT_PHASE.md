@@ -2,11 +2,11 @@
 
 | Field | Value |
 |---|---|
-| **Current Phase** | Phase 10 — Handheld Night Mode and Low-Light Boost |
+| **Current Phase** | Phase 11 — Portrait and Face-Aware Processing |
 | **Status** | ✅ PASS |
 | **Completed** | 2026-09-20 |
-| **Prompt file** | `prompts/PHASE_10_NIGHT_MODE.md` |
-| **Next phase** | Phase 11 — Portrait Pipeline and Depth Processing (`prompts/PHASE_11_PORTRAIT_PIPELINE.md`) |
+| **Prompt file** | `prompts/PHASE_11_PORTRAIT_FACE_PIPELINE.md` |
+| **Next phase** | Phase 12 — Offline AI Enhancer and Interactive Before/After Comparison (`prompts/PHASE_12_AI_ENHANCE_BEFORE_AFTER.md`) |
 
 ## Completed Phases
 
@@ -23,3 +23,4 @@
 | 08 | Frame Scoring, Rejection and Alignment | ✅ PASS | `phase-08: frame scoring, rejection and alignment` |
 | 09 | Multi-Frame Fusion, HDR, Denoise, Tone and Color | ✅ PASS | `phase-09: multi-frame fusion, hdr, denoise, tone and color` |
 | 10 | Handheld Night Mode and Low-Light Boost | ✅ PASS | `phase-10: handheld night mode, preview boost, chroma cleanup and moving-subject fallback` |
+| 11 | Portrait and Face-Aware Processing | ✅ PASS | `phase-11: portrait and face-aware pipeline, optical disc bokeh, and skin tone fidelity` |

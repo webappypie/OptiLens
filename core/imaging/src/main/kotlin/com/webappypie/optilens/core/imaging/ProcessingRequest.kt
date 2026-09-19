@@ -21,4 +21,5 @@ data class ProcessingRequest(
     val keepOriginal: Boolean = true,
     val applyDenoise: Boolean = true,
     val enhanceLighting: Boolean = true,
+    val portraitConfig: com.webappypie.optilens.core.imaging.portrait.PortraitConfig? = null,
 )

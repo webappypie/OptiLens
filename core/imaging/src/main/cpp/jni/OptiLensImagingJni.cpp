@@ -8,6 +8,7 @@
 #include "../fusion/TemporalFusionEngine.hpp"
 #include "../fusion/ToneMapper.hpp"
 #include "../fusion/ColorCorrector.hpp"
+#include "../portrait/PortraitProcessor.hpp"
 
 #define LOG_TAG "OptiLensImagingJni"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -441,6 +442,106 @@ Java_com_webappypie_optilens_core_imaging_fusion_NativeFusionBridge_nativeToneMa
     env->ReleasePrimitiveArrayCritical(inY, yData, JNI_ABORT);
 
     return JNI_TRUE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_webappypie_optilens_core_imaging_portrait_NativePortraitBridge_nativeProcessPortrait(
+    JNIEnv* env,
+    jclass /* clazz */,
+    jbyteArray yPlane,
+    jbyteArray uPlane,
+    jbyteArray vPlane,
+    jint width,
+    jint height,
+    jint yStride,
+    jint uvStride,
+    jfloatArray faceBoxesArray,
+    jfloatArray landmarksArray,
+    jfloat apertureFNumber,
+    jfloat skinSmoothingStrength,
+    jfloat faceEvCompensation,
+    jboolean isBacklit,
+    jboolean enableDetailProtection,
+    jboolean enableEyeSparkle
+) {
+    if (!yPlane || !uPlane || !vPlane || width <= 0 || height <= 0) {
+        return JNI_FALSE;
+    }
+
+    jbyte* yData = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(yPlane, nullptr));
+    jbyte* uData = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(uPlane, nullptr));
+    jbyte* vData = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(vPlane, nullptr));
+
+    if (!yData || !uData || !vData) {
+        if (vData) env->ReleasePrimitiveArrayCritical(vPlane, vData, JNI_ABORT);
+        if (uData) env->ReleasePrimitiveArrayCritical(uPlane, uData, JNI_ABORT);
+        if (yData) env->ReleasePrimitiveArrayCritical(yPlane, yData, JNI_ABORT);
+        return JNI_FALSE;
+    }
+
+    // Parse face boxes: each face has 5 floats [left, top, right, bottom, meanLuminance]
+    std::vector<optilens::FaceBox> faces;
+    if (faceBoxesArray != nullptr) {
+        jsize faceCountFloats = env->GetArrayLength(faceBoxesArray);
+        if (faceCountFloats >= 5) {
+            std::vector<float> faceFloats(faceCountFloats);
+            env->GetFloatArrayRegion(faceBoxesArray, 0, faceCountFloats, faceFloats.data());
+            for (size_t i = 0; i + 4 < faceFloats.size(); i += 5) {
+                optilens::FaceBox fb;
+                fb.left = faceFloats[i];
+                fb.top = faceFloats[i + 1];
+                fb.right = faceFloats[i + 2];
+                fb.bottom = faceFloats[i + 3];
+                fb.meanLuminance = faceFloats[i + 4];
+                faces.push_back(fb);
+            }
+        }
+    }
+
+    // Parse landmarks: each landmark has 4 floats [type, x, y, radius]
+    std::vector<optilens::LandmarkCoord> landmarks;
+    if (landmarksArray != nullptr) {
+        jsize lmCountFloats = env->GetArrayLength(landmarksArray);
+        if (lmCountFloats >= 4) {
+            std::vector<float> lmFloats(lmCountFloats);
+            env->GetFloatArrayRegion(landmarksArray, 0, lmCountFloats, lmFloats.data());
+            for (size_t i = 0; i + 3 < lmFloats.size(); i += 4) {
+                optilens::LandmarkCoord lm;
+                lm.type = static_cast<int>(lmFloats[i]);
+                lm.x = lmFloats[i + 1];
+                lm.y = lmFloats[i + 2];
+                lm.radius = lmFloats[i + 3];
+                landmarks.push_back(lm);
+            }
+        }
+    }
+
+    optilens::PortraitParams params;
+    params.apertureFNumber = apertureFNumber;
+    params.skinSmoothingStrength = skinSmoothingStrength;
+    params.faceEvCompensation = faceEvCompensation;
+    params.isBacklit = (isBacklit == JNI_TRUE);
+    params.enableDetailProtection = (enableDetailProtection == JNI_TRUE);
+    params.enableEyeSparkle = (enableEyeSparkle == JNI_TRUE);
+
+    bool success = optilens::PortraitProcessor::processPortrait(
+        reinterpret_cast<uint8_t*>(yData),
+        reinterpret_cast<uint8_t*>(uData),
+        reinterpret_cast<uint8_t*>(vData),
+        width,
+        height,
+        yStride,
+        uvStride,
+        faces,
+        landmarks,
+        params
+    );
+
+    env->ReleasePrimitiveArrayCritical(vPlane, vData, 0);
+    env->ReleasePrimitiveArrayCritical(uPlane, uData, 0);
+    env->ReleasePrimitiveArrayCritical(yPlane, yData, 0);
+
+    return success ? JNI_TRUE : JNI_FALSE;
 }
 
 } // extern "C"

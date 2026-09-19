@@ -47,6 +47,7 @@ class MediaStoreSaver @Inject constructor(
         orientationDegrees: Int = 0,
         expectedWidth: Int = 0,
         expectedHeight: Int = 0,
+        mirrorHorizontal: Boolean = false,
     ): OptiResult<CapturedPhoto> = withContext(dispatchers.io) {
         val timestamp = System.currentTimeMillis()
         val timeString = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(Date(timestamp))
@@ -74,10 +75,32 @@ class MediaStoreSaver @Inject constructor(
             return@withContext OptiResult.Error(OptiError.StorageFailed(cause = e))
         }
 
+        val bytesToPersist = if (mirrorHorizontal) {
+            try {
+                val original = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size)
+                if (original != null) {
+                    val matrix = Matrix().apply { postScale(-1f, 1f) }
+                    val mirrored = Bitmap.createBitmap(original, 0, 0, original.width, original.height, matrix, true)
+                    val stream = java.io.ByteArrayOutputStream()
+                    mirrored.compress(Bitmap.CompressFormat.JPEG, 95, stream)
+                    if (mirrored != original) original.recycle()
+                    mirrored.recycle()
+                    stream.toByteArray()
+                } else {
+                    jpegBytes
+                }
+            } catch (e: Exception) {
+                logger.w(TAG, "Failed mirroring JPEG bytes: ${e.message}")
+                jpegBytes
+            }
+        } else {
+            jpegBytes
+        }
+
         try {
             // 1. Stream JPEG bytes to storage
             contentResolver.openOutputStream(imageUri)?.use { outputStream ->
-                outputStream.write(jpegBytes)
+                outputStream.write(bytesToPersist)
                 outputStream.flush()
             } ?: throw IllegalStateException("Unable to open output stream for $imageUri")
 
@@ -105,7 +128,7 @@ class MediaStoreSaver @Inject constructor(
             }
 
             // 4. Generate thumbnail bitmap strictly on background thread
-            val thumbnail = createThumbnail(jpegBytes, orientationDegrees)
+            val thumbnail = createThumbnail(bytesToPersist, orientationDegrees, mirrorHorizontal = false)
 
             val capturedPhoto = CapturedPhoto(
                 uri = imageUri.toString(),
@@ -115,10 +138,10 @@ class MediaStoreSaver @Inject constructor(
                 timestampMs = timestamp,
                 thumbnail = thumbnail,
                 orientationDegrees = orientationDegrees,
-                fileSizeBytes = jpegBytes.size.toLong(),
+                fileSizeBytes = bytesToPersist.size.toLong(),
             )
 
-            logger.i(TAG, "Photo saved successfully to MediaStore: $imageUri (${jpegBytes.size} bytes)")
+            logger.i(TAG, "Photo saved successfully to MediaStore: $imageUri (${bytesToPersist.size} bytes)")
             OptiResult.Success(capturedPhoto)
         } catch (e: Exception) {
             logger.e(TAG, "Failed writing photo to MediaStore: ${e.message}", e)
@@ -130,7 +153,7 @@ class MediaStoreSaver @Inject constructor(
         }
     }
 
-    private fun createThumbnail(jpegBytes: ByteArray, orientationDegrees: Int): Bitmap? {
+    private fun createThumbnail(jpegBytes: ByteArray, orientationDegrees: Int, mirrorHorizontal: Boolean = false): Bitmap? {
         return try {
             val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size, boundsOptions)
@@ -153,8 +176,15 @@ class MediaStoreSaver @Inject constructor(
 
             val rawThumbnail = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size, decodeOptions) ?: return null
 
+            val matrix = Matrix()
+            if (mirrorHorizontal) {
+                matrix.postScale(-1f, 1f)
+            }
             if (orientationDegrees != 0) {
-                val matrix = Matrix().apply { postRotate(orientationDegrees.toFloat()) }
+                matrix.postRotate(orientationDegrees.toFloat())
+            }
+
+            if (!matrix.isIdentity) {
                 val rotated = Bitmap.createBitmap(rawThumbnail, 0, 0, rawThumbnail.width, rawThumbnail.height, matrix, true)
                 if (rotated != rawThumbnail) {
                     rawThumbnail.recycle()

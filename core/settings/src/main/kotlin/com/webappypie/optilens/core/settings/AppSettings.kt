@@ -52,6 +52,19 @@ interface AppSettings {
     val locationTaggingEnabled: Flow<Boolean>
     suspend fun setLocationTaggingEnabled(enabled: Boolean)
 
+    // ── Portrait & Selfie ────────────────────────────────────
+    /** Whether front-camera selfies are saved mirrored as previewed. Default: true. */
+    val mirrorFrontCameraSelfie: Flow<Boolean>
+    suspend fun setMirrorFrontCameraSelfie(enabled: Boolean)
+
+    /** Portrait mode bokeh blur strength factor (0.0 to 1.0). Default: 0.50f (f/2.8). */
+    val portraitBlurStrength: Flow<Float>
+    suspend fun setPortraitBlurStrength(strength: Float)
+
+    /** Portrait skin smoothing strength (0.0 to 1.0). Default: 0.25f (subtle cleanup). */
+    val portraitSkinSmoothingStrength: Flow<Float>
+    suspend fun setPortraitSkinSmoothingStrength(strength: Float)
+
     // ── Pro ──────────────────────────────────────────────────
     /** Whether the user has an active Pro entitlement. Set by billing layer. Default: false. */
     val isPro: Flow<Boolean>

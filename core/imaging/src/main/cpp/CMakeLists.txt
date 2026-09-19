@@ -17,6 +17,7 @@ add_library(
     fusion/TemporalFusionEngine.cpp
     fusion/ToneMapper.cpp
     fusion/ColorCorrector.cpp
+    portrait/PortraitProcessor.cpp
     jni/OptiLensImagingJni.cpp
 )
 
@@ -26,6 +27,7 @@ target_include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/scoring
     ${CMAKE_CURRENT_SOURCE_DIR}/alignment
     ${CMAKE_CURRENT_SOURCE_DIR}/fusion
+    ${CMAKE_CURRENT_SOURCE_DIR}/portrait
     ${CMAKE_CURRENT_SOURCE_DIR}/jni
 )
 

@@ -26,6 +26,9 @@ import com.webappypie.optilens.core.camera.night.NightModeType
 import com.webappypie.optilens.core.camera.night.StabilityAssessment
 import com.webappypie.optilens.core.camera.strategy.CaptureStrategy
 import com.webappypie.optilens.core.camera.thermal.DeviceThermalState
+import com.webappypie.optilens.core.camera.portrait.PortraitAperture
+import com.webappypie.optilens.core.camera.portrait.PortraitExecutionPlan
+import com.webappypie.optilens.core.settings.AppSettings
 import com.webappypie.optilens.core.common.result.OptiResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -75,11 +78,15 @@ data class CameraUiState(
     val captureStrategy: CaptureStrategy = CaptureStrategy.DEFAULT,
     val detectedFaces: List<DetectedFace> = emptyList(),
     val nightExecutionPlan: NightExecutionPlan? = null,
+    val portraitExecutionPlan: PortraitExecutionPlan? = null,
+    val portraitAperture: PortraitAperture = PortraitAperture.DEFAULT,
     val isPreviewBoostActive: Boolean = false,
     val holdSteadyRemainingSec: Float? = null,
     val stabilityAssessment: StabilityAssessment? = null,
     val thermalState: DeviceThermalState = DeviceThermalState.NORMAL,
     val isProcessingNightShot: Boolean = false,
+    val isProcessingPortraitShot: Boolean = false,
+    val mirrorFrontCameraSelfie: Boolean = true,
     val timerState: TimerState = TimerState.OFF,
     val timerCountdown: Int? = null,
     val aspectRatio: CameraAspectRatio = CameraAspectRatio.RATIO_4_3,
@@ -96,6 +103,7 @@ data class CameraUiState(
 @HiltViewModel
 class CameraViewModel @Inject constructor(
     private val cameraController: CameraController,
+    private val appSettings: AppSettings? = null,
 ) : ViewModel() {
 
     private val _internalState = MutableStateFlow(
@@ -114,6 +122,13 @@ class CameraViewModel @Inject constructor(
         viewModelScope.launch {
             cameraController.zoomStops.collect { stops ->
                 activeZoomStops = stops
+            }
+        }
+        appSettings?.let { settings ->
+            viewModelScope.launch {
+                settings.mirrorFrontCameraSelfie.collect { mirror ->
+                    _internalState.update { it.copy(mirrorFrontCameraSelfie = mirror) }
+                }
             }
         }
     }
@@ -141,6 +156,7 @@ class CameraViewModel @Inject constructor(
 
     private data class NightStreamState(
         val plan: NightExecutionPlan?,
+        val portraitPlan: PortraitExecutionPlan?,
         val isPreviewBoost: Boolean,
         val stability: StabilityAssessment,
         val thermal: DeviceThermalState,
@@ -175,11 +191,12 @@ class CameraViewModel @Inject constructor(
 
     private val _streamNight = combine(
         cameraController.nightExecutionPlan,
+        cameraController.portraitExecutionPlan,
         cameraController.isPreviewBoostActive,
         cameraController.stabilityAssessment,
         cameraController.thermalState,
-    ) { plan, boost, stab, therm ->
-        NightStreamState(plan, boost, stab, therm)
+    ) { plan, portPlan, boost, stab, therm ->
+        NightStreamState(plan, portPlan, boost, stab, therm)
     }
 
     val uiState: StateFlow<CameraUiState> = combine(
@@ -207,11 +224,15 @@ class CameraViewModel @Inject constructor(
             captureStrategy = intel.strategy,
             detectedFaces = intel.faces,
             nightExecutionPlan = night.plan,
+            portraitExecutionPlan = night.portraitPlan,
+            portraitAperture = internal.portraitAperture,
             isPreviewBoostActive = night.isPreviewBoost,
             holdSteadyRemainingSec = internal.holdSteadyRemainingSec,
             stabilityAssessment = night.stability,
             thermalState = night.thermal,
             isProcessingNightShot = internal.isProcessingNightShot,
+            isProcessingPortraitShot = internal.isProcessingPortraitShot,
+            mirrorFrontCameraSelfie = internal.mirrorFrontCameraSelfie,
             timerState = internal.timerState,
             timerCountdown = internal.timerCountdown,
             aspectRatio = internal.aspectRatio,
@@ -417,7 +438,8 @@ class CameraViewModel @Inject constructor(
                 _internalState.update { it.copy(isShutterBlinking = false) }
             }
 
-            when (val result = cameraController.capturePhoto(targetRotation)) {
+            val shouldMirror = _internalState.value.isFrontCamera && _internalState.value.mirrorFrontCameraSelfie
+            when (val result = cameraController.capturePhoto(targetRotation, mirrorHorizontal = shouldMirror)) {
                 is OptiResult.Success -> {
                     _internalState.update { it.copy(isCapturing = false) }
                 }
@@ -542,6 +564,50 @@ class CameraViewModel @Inject constructor(
         }
     }
 
+    fun setPortraitAperture(aperture: PortraitAperture) {
+        _internalState.update { it.copy(portraitAperture = aperture) }
+        viewModelScope.launch {
+            cameraController.setPortraitAperture(aperture)
+        }
+    }
+
+    fun takePortraitPhoto(targetRotation: Int = 0) {
+        if (_internalState.value.isCapturing) return
+
+        _internalState.update {
+            it.copy(
+                isCapturing = true,
+                isShutterBlinking = true,
+                isProcessingPortraitShot = true,
+            )
+        }
+
+        viewModelScope.launch {
+            launch {
+                delay(80L)
+                _internalState.update { it.copy(isShutterBlinking = false) }
+            }
+
+            val shouldMirror = _internalState.value.isFrontCamera && _internalState.value.mirrorFrontCameraSelfie
+            try {
+                when (val result = cameraController.capturePhoto(targetRotation, mirrorHorizontal = shouldMirror)) {
+                    is OptiResult.Error -> {
+                        _internalState.update { it.copy(errorMessage = result.error.displayMessage) }
+                    }
+                    else -> Unit
+                }
+            } finally {
+                delay(200L)
+                _internalState.update {
+                    it.copy(
+                        isCapturing = false,
+                        isProcessingPortraitShot = false,
+                    )
+                }
+            }
+        }
+    }
+
     fun clearErrorMessage() {
         _internalState.update { it.copy(errorMessage = null) }
     }
@@ -561,6 +627,9 @@ class CameraViewModel @Inject constructor(
         val isBurstCapturing: Boolean = false,
         val holdSteadyRemainingSec: Float? = null,
         val isProcessingNightShot: Boolean = false,
+        val isProcessingPortraitShot: Boolean = false,
+        val portraitAperture: PortraitAperture = PortraitAperture.DEFAULT,
+        val mirrorFrontCameraSelfie: Boolean = true,
         val focusTarget: Offset? = null,
         val isShutterBlinking: Boolean = false,
         val timerState: TimerState = TimerState.OFF,

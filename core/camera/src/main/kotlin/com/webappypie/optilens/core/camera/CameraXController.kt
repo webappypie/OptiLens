@@ -50,6 +50,10 @@ import com.webappypie.optilens.core.camera.night.StabilityAssessment
 import com.webappypie.optilens.core.camera.strategy.CaptureStrategy
 import com.webappypie.optilens.core.camera.thermal.DeviceThermalMonitor
 import com.webappypie.optilens.core.camera.thermal.DeviceThermalState
+import com.webappypie.optilens.core.camera.portrait.PortraitAperture
+import com.webappypie.optilens.core.camera.portrait.PortraitExecutionPlan
+import com.webappypie.optilens.core.camera.portrait.PortraitPolicyEngine
+import com.webappypie.optilens.core.camera.portrait.PortraitPolicyPreference
 import com.webappypie.optilens.core.camera.storage.MediaStoreSaver
 import com.webappypie.optilens.core.common.coroutines.AppDispatchers
 import com.webappypie.optilens.core.common.result.OptiError
@@ -153,6 +157,14 @@ class CameraXController @Inject constructor(
     private val _nightExecutionPlan = MutableStateFlow<NightExecutionPlan?>(null)
     override val nightExecutionPlan: Flow<NightExecutionPlan?> = _nightExecutionPlan.asStateFlow()
 
+    private val portraitPolicyEngine = PortraitPolicyEngine()
+    private val _portraitExecutionPlan = MutableStateFlow<PortraitExecutionPlan?>(null)
+    override val portraitExecutionPlan: Flow<PortraitExecutionPlan?> = _portraitExecutionPlan.asStateFlow()
+
+    private var portraitPolicyPreference: PortraitPolicyPreference = PortraitPolicyPreference.AUTO
+    private var portraitAperture: PortraitAperture = PortraitAperture.DEFAULT
+    private var portraitSkinSmoothingStrength: Float = 0.25f
+
     private val _isPreviewBoostActive = MutableStateFlow(false)
     override val isPreviewBoostActive: Flow<Boolean> = _isPreviewBoostActive.asStateFlow()
 
@@ -213,6 +225,7 @@ class CameraXController @Inject constructor(
                 activeCameraProfile = activeCamera
                 updateHardwareProfileCapabilities(activeCamera)
                 recomputeNightPlan()
+                recomputePortraitPlan()
             }
         }
 
@@ -220,6 +233,7 @@ class CameraXController @Inject constructor(
         scope.launch {
             thermalMonitor.thermalState.collectLatest {
                 recomputeNightPlan()
+                recomputePortraitPlan()
             }
         }
     }
@@ -243,6 +257,21 @@ class CameraXController @Inject constructor(
             isHighContrastOrNeon = _qualityMetrics.value.dynamicRangeScore > 65.0f,
         )
         _nightExecutionPlan.value = plan
+    }
+
+    private fun recomputePortraitPlan() {
+        val profile = activeCameraProfile
+        val tier = capabilityRepository.capabilityProfile.value?.performanceTier ?: PerformanceTier.MID_RANGE
+        val plan = portraitPolicyEngine.evaluatePolicy(
+            activeCameraProfile = profile,
+            performanceTier = tier,
+            detectedFaces = _detectedFaces.value,
+            sceneLuminance = _qualityMetrics.value.luminance,
+            aperture = portraitAperture,
+            skinSmoothingStrength = portraitSkinSmoothingStrength,
+            preference = portraitPolicyPreference,
+        )
+        _portraitExecutionPlan.value = plan
     }
 
     private fun updateHardwareProfileCapabilities(cameraProfile: CameraDeviceProfile?) {
@@ -316,13 +345,17 @@ class CameraXController @Inject constructor(
                 onQualityMetricsComputed = {
                     _qualityMetrics.value = it
                     recomputeNightPlan()
+                    recomputePortraitPlan()
                 },
                 onMotionStateComputed = {
                     _motionState.value = it
                     recomputeNightPlan()
                 },
                 onSceneClassificationComputed = { _sceneClassification.value = it },
-                onFacesDetected = { _detectedFaces.value = it },
+                onFacesDetected = {
+                    _detectedFaces.value = it
+                    recomputePortraitPlan()
+                },
                 onStrategyDecided = { _captureStrategy.value = it },
             )
             realtimeAnalyzer = analyzer
@@ -531,7 +564,7 @@ class CameraXController @Inject constructor(
         }
     }
 
-    override suspend fun capturePhoto(targetRotation: Int): OptiResult<CapturedPhoto> {
+    override suspend fun capturePhoto(targetRotation: Int, mirrorHorizontal: Boolean): OptiResult<CapturedPhoto> {
         val capture = imageCaptureUseCase ?: return OptiResult.Error(
             OptiError.CameraUnavailable("Camera is not active or preview is uninitialized")
         )
@@ -580,6 +613,7 @@ class CameraXController @Inject constructor(
             val saveResult = mediaStoreSaver.saveJpeg(
                 jpegBytes = jpegBytes,
                 orientationDegrees = rotationDegrees,
+                mirrorHorizontal = mirrorHorizontal,
             )
 
             if (saveResult is OptiResult.Success) {
@@ -597,7 +631,7 @@ class CameraXController @Inject constructor(
     }
 
     override suspend fun capturePhoto(): OptiResult<String> {
-        return capturePhoto(0).map { it.uri }
+        return capturePhoto(0, false).map { it.uri }
     }
 
     override suspend fun acquireBurst(
@@ -699,6 +733,17 @@ class CameraXController @Inject constructor(
     override suspend fun setNightPolicyPreference(preference: NightPolicyPreference) {
         nightPolicyPreference = preference
         recomputeNightPlan()
+    }
+
+    override suspend fun setPortraitAperture(aperture: PortraitAperture): OptiResult<Unit> {
+        portraitAperture = aperture
+        recomputePortraitPlan()
+        return OptiResult.Success(Unit)
+    }
+
+    override suspend fun setPortraitPolicyPreference(preference: PortraitPolicyPreference) {
+        portraitPolicyPreference = preference
+        recomputePortraitPlan()
     }
 
     override fun release() {
