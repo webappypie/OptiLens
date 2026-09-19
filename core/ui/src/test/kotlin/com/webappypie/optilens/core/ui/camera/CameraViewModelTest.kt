@@ -352,4 +352,54 @@ class CameraViewModelTest {
             cancelAndIgnoreRemainingEvents()
         }
     }
+
+    @Test
+    fun `takeBurstPhoto triggers burst acquisition and emits lastBurstResult`() = runTest {
+        viewModel.uiState.test {
+            awaitItem() // initial
+
+            viewModel.takeBurstPhoto(frameCount = 3)
+            testScheduler.advanceUntilIdle()
+
+            var latest = awaitItem()
+            while (latest.lastBurstResult == null) {
+                latest = awaitItem()
+            }
+
+            assertEquals(3, latest.lastBurstResult.frameCount)
+            assertFalse(latest.isBurstCapturing)
+
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `takeBurstPhoto uses recommendedFrameCount from active capture strategy`() = runTest {
+        cameraController.emitStrategy(
+            com.webappypie.optilens.core.camera.strategy.CaptureStrategy(
+                mode = com.webappypie.optilens.core.camera.strategy.CaptureStrategyMode.NIGHT_STACK,
+                recommendedFrameCount = 6,
+            )
+        )
+
+        viewModel.uiState.test {
+            var item = awaitItem()
+            while (item.captureStrategy.recommendedFrameCount != 6) {
+                item = awaitItem()
+            }
+
+            viewModel.takeBurstPhoto()
+            testScheduler.advanceUntilIdle()
+
+            var latest = awaitItem()
+            while (latest.lastBurstResult == null) {
+                latest = awaitItem()
+            }
+
+            assertEquals(6, latest.lastBurstResult.frameCount)
+            assertEquals(com.webappypie.optilens.core.camera.strategy.CaptureStrategyMode.NIGHT_STACK, latest.lastBurstResult.modeUsed)
+
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
 }

@@ -22,6 +22,9 @@ import com.webappypie.optilens.core.camera.analysis.face.FaceDetector
 import com.webappypie.optilens.core.camera.analysis.face.MlKitFaceDetector
 import com.webappypie.optilens.core.camera.analysis.motion.GyroMotionTracker
 import com.webappypie.optilens.core.camera.analyzer.RealtimeIntelligenceAnalyzer
+import com.webappypie.optilens.core.camera.burst.BurstAcquisitionEngine
+import com.webappypie.optilens.core.camera.burst.Camera2BurstAcquisitionEngine
+import com.webappypie.optilens.core.camera.burst.model.BurstResult
 import com.webappypie.optilens.core.camera.discovery.CameraCapabilityRepository
 import com.webappypie.optilens.core.camera.model.CameraDeviceProfile
 import com.webappypie.optilens.core.camera.model.CameraSessionState
@@ -134,6 +137,9 @@ class CameraXController @Inject constructor(
     private val _lastCapturedPhoto = MutableStateFlow<CapturedPhoto?>(null)
     override val lastCapturedPhoto: Flow<CapturedPhoto?> = _lastCapturedPhoto.asStateFlow()
 
+    private val _lastBurstResult = MutableStateFlow<BurstResult?>(null)
+    override val lastBurstResult: Flow<BurstResult?> = _lastBurstResult.asStateFlow()
+
     private var _isFrontCamera = false
     override val isFrontCamera: Boolean get() = _isFrontCamera
 
@@ -160,6 +166,18 @@ class CameraXController @Inject constructor(
     /** Dedicated background executor for image analysis (histogram). */
     private val analysisExecutor: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "optilens-camera-analysis")
+    }
+
+    /** Multi-frame burst acquisition engine using bounded buffer pool and Camera2 interop. */
+    private val burstEngine: BurstAcquisitionEngine by lazy {
+        Camera2BurstAcquisitionEngine(
+            imageCaptureProvider = { imageCaptureUseCase },
+            cameraControlProvider = { camera?.cameraControl },
+            gyroMotionTracker = gyroMotionTracker,
+            captureExecutor = captureExecutor,
+            dispatchers = dispatchers,
+            logger = logger,
+        )
     }
 
     init {
@@ -508,6 +526,43 @@ class CameraXController @Inject constructor(
         return capturePhoto(0).map { it.uri }
     }
 
+    override suspend fun acquireBurst(
+        frameCount: Int?,
+        evOffsets: List<Int>?,
+        targetRotation: Int,
+    ): OptiResult<BurstResult> = withContext(dispatchers.io) {
+        if (!isCapturing.compareAndSet(false, true)) {
+            return@withContext OptiResult.Error(OptiError.CameraUnavailable("Capture already in progress"))
+        }
+
+        try {
+            _sessionState.value = CameraSessionState.CAPTURING
+
+            val currentStrategy = _captureStrategy.value
+            val actualCount = frameCount ?: currentStrategy.recommendedFrameCount.coerceAtLeast(1)
+            val actualEvOffsets = evOffsets ?: currentStrategy.exposureEvOffsets
+
+            val result = burstEngine.acquireBurst(
+                frameCount = actualCount,
+                evOffsets = actualEvOffsets,
+                mode = currentStrategy.mode,
+                targetRotation = targetRotation,
+            )
+
+            if (result is OptiResult.Success) {
+                _lastBurstResult.value?.close()
+                _lastBurstResult.value = result.data
+            }
+            result
+        } catch (e: Exception) {
+            logger.e(TAG, "Burst acquisition failed: ${e.message}", e)
+            OptiResult.Error(OptiError.ProcessingFailed(stage = "Burst acquisition", cause = e))
+        } finally {
+            isCapturing.set(false)
+            _sessionState.value = CameraSessionState.PREVIEW_ACTIVE
+        }
+    }
+
     override suspend fun stopPreview() = withContext(dispatchers.main) {
         try {
             gyroMotionTracker.stop()
@@ -547,6 +602,8 @@ class CameraXController @Inject constructor(
 
     override fun release() {
         try {
+            _lastBurstResult.value?.close()
+            _lastBurstResult.value = null
             gyroMotionTracker.stop()
             faceDetector.release()
             cameraProvider?.unbindAll()

@@ -7,6 +7,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.webappypie.optilens.core.camera.CameraController
+import com.webappypie.optilens.core.camera.burst.model.BurstResult
 import com.webappypie.optilens.core.camera.model.CameraSessionState
 import com.webappypie.optilens.core.camera.model.CapturedPhoto
 import com.webappypie.optilens.core.camera.model.DetectedFace
@@ -74,7 +75,9 @@ data class CameraUiState(
     val aspectRatio: CameraAspectRatio = CameraAspectRatio.RATIO_4_3,
     val sessionState: CameraSessionState = CameraSessionState.IDLE,
     val isCapturing: Boolean = false,
+    val isBurstCapturing: Boolean = false,
     val lastCapturedPhoto: CapturedPhoto? = null,
+    val lastBurstResult: BurstResult? = null,
     val focusTarget: Offset? = null,
     val isShutterBlinking: Boolean = false,
     val errorMessage: String? = null,
@@ -115,6 +118,7 @@ class CameraViewModel @Inject constructor(
         val proState: ProCameraState,
         val histogram: HistogramData,
         val lastPhoto: CapturedPhoto?,
+        val lastBurst: BurstResult?,
     )
 
     private data class IntelligenceStreamState(
@@ -137,8 +141,9 @@ class CameraViewModel @Inject constructor(
         cameraController.proState,
         cameraController.histogramData,
         cameraController.lastCapturedPhoto,
-    ) { pro, hist, photo ->
-        HardwareStreamState2(pro, hist, photo)
+        cameraController.lastBurstResult,
+    ) { pro, hist, photo, burst ->
+        HardwareStreamState2(pro, hist, photo, burst)
     }
 
     private val _streamIntelligence = combine(
@@ -178,7 +183,9 @@ class CameraViewModel @Inject constructor(
             aspectRatio = internal.aspectRatio,
             sessionState = session,
             isCapturing = internal.isCapturing,
+            isBurstCapturing = internal.isBurstCapturing,
             lastCapturedPhoto = s2.lastPhoto,
+            lastBurstResult = s2.lastBurst,
             focusTarget = internal.focusTarget,
             isShutterBlinking = internal.isShutterBlinking,
             errorMessage = internal.errorMessage,
@@ -393,6 +400,38 @@ class CameraViewModel @Inject constructor(
         }
     }
 
+    fun takeBurstPhoto(frameCount: Int? = null, targetRotation: Int = 0) {
+        if (_internalState.value.isBurstCapturing || _internalState.value.isCapturing) return
+
+        _internalState.update { it.copy(isBurstCapturing = true, isShutterBlinking = true) }
+        viewModelScope.launch {
+            launch {
+                delay(80L)
+                _internalState.update { it.copy(isShutterBlinking = false) }
+            }
+
+            val strategy = uiState.value.captureStrategy
+            val count = frameCount ?: strategy.recommendedFrameCount
+            val evOffsets = strategy.exposureEvOffsets
+            when (val result = cameraController.acquireBurst(count, evOffsets, targetRotation)) {
+                is OptiResult.Success -> {
+                    _internalState.update { it.copy(isBurstCapturing = false) }
+                }
+                is OptiResult.Error -> {
+                    _internalState.update {
+                        it.copy(
+                            isBurstCapturing = false,
+                            errorMessage = result.error.displayMessage,
+                        )
+                    }
+                }
+                else -> {
+                    _internalState.update { it.copy(isBurstCapturing = false) }
+                }
+            }
+        }
+    }
+
     fun clearErrorMessage() {
         _internalState.update { it.copy(errorMessage = null) }
     }
@@ -409,6 +448,7 @@ class CameraViewModel @Inject constructor(
         val isFrontCamera: Boolean = false,
         val isTorchEnabled: Boolean = false,
         val isCapturing: Boolean = false,
+        val isBurstCapturing: Boolean = false,
         val focusTarget: Offset? = null,
         val isShutterBlinking: Boolean = false,
         val timerState: TimerState = TimerState.OFF,

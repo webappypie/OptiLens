@@ -71,6 +71,9 @@ interface CameraController {
     /** Most recently captured photo saved to MediaStore. */
     val lastCapturedPhoto: Flow<CapturedPhoto?>
 
+    /** Most recently acquired multi-frame burst result. */
+    val lastBurstResult: Flow<com.webappypie.optilens.core.camera.burst.model.BurstResult?>
+
     /** Whether the front camera is currently active. */
     val isFrontCamera: Boolean
 
@@ -144,6 +147,20 @@ interface CameraController {
      * @return [OptiResult.Success] with the [CapturedPhoto] record.
      */
     suspend fun capturePhoto(targetRotation: Int = 0): OptiResult<CapturedPhoto>
+
+    /**
+     * Acquires a synchronized multi-frame sequence with metadata based on the active
+     * or specified [CaptureStrategy].
+     *
+     * @param frameCount Number of frames to acquire, or null to query [CaptureStrategyEngine].
+     * @param evOffsets EV offsets for exposure bracketing, or null to query [CaptureStrategyEngine].
+     * @param targetRotation Display orientation degrees.
+     */
+    suspend fun acquireBurst(
+        frameCount: Int? = null,
+        evOffsets: List<Int>? = null,
+        targetRotation: Int = 0,
+    ): OptiResult<com.webappypie.optilens.core.camera.burst.model.BurstResult>
 
     /**
      * Legacy capturePhoto returning photo URI string for backward compatibility.

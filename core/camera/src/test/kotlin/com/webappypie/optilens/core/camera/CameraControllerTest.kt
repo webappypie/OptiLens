@@ -216,4 +216,18 @@ class CameraControllerTest {
         controller.emitFaces(faces)
         assertEquals(1, controller.detectedFaces.first().size)
     }
+
+    @Test
+    fun `acquireBurst acquires sequence and emits to lastBurstResult`() = runTest {
+        val result = controller.acquireBurst(frameCount = 4, evOffsets = listOf(0), targetRotation = 0)
+        assertTrue(result is OptiResult.Success)
+        val burst = (result as OptiResult.Success).data
+        assertEquals(4, burst.frameCount)
+
+        val lastBurst = controller.lastBurstResult.first()
+        assertNotNull(lastBurst)
+        assertEquals(4, lastBurst?.frameCount)
+
+        burst.close()
+    }
 }

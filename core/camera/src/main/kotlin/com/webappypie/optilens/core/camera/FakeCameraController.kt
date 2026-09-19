@@ -114,11 +114,17 @@ class FakeCameraController @Inject constructor() : CameraController {
     private val _lastCapturedPhoto = MutableStateFlow<CapturedPhoto?>(null)
     override val lastCapturedPhoto: Flow<CapturedPhoto?> = _lastCapturedPhoto.asStateFlow()
 
+    private val _lastBurstResult = MutableStateFlow<com.webappypie.optilens.core.camera.burst.model.BurstResult?>(null)
+    override val lastBurstResult: Flow<com.webappypie.optilens.core.camera.burst.model.BurstResult?> = _lastBurstResult.asStateFlow()
+
+    val fakeBurstEngine = com.webappypie.optilens.core.camera.burst.FakeBurstAcquisitionEngine()
+
     fun emitScene(scene: com.webappypie.optilens.core.camera.model.SceneClassification) { _sceneClassification.value = scene }
     fun emitQuality(quality: com.webappypie.optilens.core.camera.model.QualityMetrics) { _qualityMetrics.value = quality }
     fun emitMotion(motion: com.webappypie.optilens.core.camera.model.MotionState) { _motionState.value = motion }
     fun emitStrategy(strategy: com.webappypie.optilens.core.camera.strategy.CaptureStrategy) { _captureStrategy.value = strategy }
     fun emitFaces(faces: List<com.webappypie.optilens.core.camera.model.DetectedFace>) { _detectedFaces.value = faces }
+    fun emitBurst(burst: com.webappypie.optilens.core.camera.burst.model.BurstResult?) { _lastBurstResult.value = burst }
 
     private var _isFrontCamera = false
     override val isFrontCamera: Boolean get() = _isFrontCamera
@@ -230,6 +236,30 @@ class FakeCameraController @Inject constructor() : CameraController {
 
     override suspend fun capturePhoto(): OptiResult<String> {
         return capturePhoto(0).map { it.uri }
+    }
+
+    override suspend fun acquireBurst(
+        frameCount: Int?,
+        evOffsets: List<Int>?,
+        targetRotation: Int,
+    ): OptiResult<com.webappypie.optilens.core.camera.burst.model.BurstResult> {
+        _sessionState.value = CameraSessionState.CAPTURING
+        val actualCount = frameCount ?: _captureStrategy.value.recommendedFrameCount
+        val actualOffsets = evOffsets ?: _captureStrategy.value.exposureEvOffsets
+
+        val result = fakeBurstEngine.acquireBurst(
+            frameCount = actualCount,
+            evOffsets = actualOffsets,
+            mode = _captureStrategy.value.mode,
+            targetRotation = targetRotation,
+        )
+
+        if (result is OptiResult.Success) {
+            _lastBurstResult.value = result.data
+        }
+
+        _sessionState.value = CameraSessionState.PREVIEW_ACTIVE
+        return result
     }
 
     override suspend fun stopPreview() {
