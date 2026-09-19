@@ -18,19 +18,27 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
-import com.webappypie.optilens.core.camera.analyzer.HistogramAnalyzer
+import com.webappypie.optilens.core.camera.analysis.face.FaceDetector
+import com.webappypie.optilens.core.camera.analysis.face.MlKitFaceDetector
+import com.webappypie.optilens.core.camera.analysis.motion.GyroMotionTracker
+import com.webappypie.optilens.core.camera.analyzer.RealtimeIntelligenceAnalyzer
 import com.webappypie.optilens.core.camera.discovery.CameraCapabilityRepository
 import com.webappypie.optilens.core.camera.model.CameraDeviceProfile
 import com.webappypie.optilens.core.camera.model.CameraSessionState
 import com.webappypie.optilens.core.camera.model.CapturedPhoto
+import com.webappypie.optilens.core.camera.model.DetectedFace
 import com.webappypie.optilens.core.camera.model.ExposureState
 import com.webappypie.optilens.core.camera.model.FlashMode
 import com.webappypie.optilens.core.camera.model.HistogramData
 import com.webappypie.optilens.core.camera.model.LensFacing
+import com.webappypie.optilens.core.camera.model.MotionState
 import com.webappypie.optilens.core.camera.model.ProCameraState
+import com.webappypie.optilens.core.camera.model.QualityMetrics
+import com.webappypie.optilens.core.camera.model.SceneClassification
 import com.webappypie.optilens.core.camera.model.WhiteBalanceMode
 import com.webappypie.optilens.core.camera.model.ZoomState
 import com.webappypie.optilens.core.camera.model.ZoomStop
+import com.webappypie.optilens.core.camera.strategy.CaptureStrategy
 import com.webappypie.optilens.core.camera.storage.MediaStoreSaver
 import com.webappypie.optilens.core.common.coroutines.AppDispatchers
 import com.webappypie.optilens.core.common.result.OptiError
@@ -108,18 +116,36 @@ class CameraXController @Inject constructor(
     private val _histogramData = MutableStateFlow(HistogramData.EMPTY)
     override val histogramData: Flow<HistogramData> = _histogramData.asStateFlow()
 
+    private val _sceneClassification = MutableStateFlow(SceneClassification.DEFAULT)
+    override val sceneClassification: Flow<SceneClassification> = _sceneClassification.asStateFlow()
+
+    private val _qualityMetrics = MutableStateFlow(QualityMetrics.DEFAULT)
+    override val qualityMetrics: Flow<QualityMetrics> = _qualityMetrics.asStateFlow()
+
+    private val _motionState = MutableStateFlow(MotionState.DEFAULT)
+    override val motionState: Flow<MotionState> = _motionState.asStateFlow()
+
+    private val _captureStrategy = MutableStateFlow(CaptureStrategy.DEFAULT)
+    override val captureStrategy: Flow<CaptureStrategy> = _captureStrategy.asStateFlow()
+
+    private val _detectedFaces = MutableStateFlow<List<DetectedFace>>(emptyList())
+    override val detectedFaces: Flow<List<DetectedFace>> = _detectedFaces.asStateFlow()
+
     private val _lastCapturedPhoto = MutableStateFlow<CapturedPhoto?>(null)
     override val lastCapturedPhoto: Flow<CapturedPhoto?> = _lastCapturedPhoto.asStateFlow()
 
     private var _isFrontCamera = false
     override val isFrontCamera: Boolean get() = _isFrontCamera
 
+    private val gyroMotionTracker = GyroMotionTracker(context)
+    private val faceDetector: FaceDetector = MlKitFaceDetector()
+    private var realtimeAnalyzer: RealtimeIntelligenceAnalyzer? = null
+
     private var cameraProvider: ProcessCameraProvider? = null
     private var camera: Camera? = null
     private var previewUseCase: Preview? = null
     private var imageCaptureUseCase: ImageCapture? = null
     private var imageAnalysisUseCase: ImageAnalysis? = null
-    private var histogramAnalyzer: HistogramAnalyzer? = null
 
     private var currentLifecycleOwner: LifecycleOwner? = null
     private var currentSurfaceProvider: Preview.SurfaceProvider? = null
@@ -205,11 +231,22 @@ class CameraXController @Inject constructor(
                 .build()
             imageCaptureUseCase = capture
 
-            // 3. Build ImageAnalysis Use Case for real-time luminance histogram
-            val analyzer = HistogramAnalyzer { hist ->
-                _histogramData.value = hist
-            }
-            histogramAnalyzer = analyzer
+            // 3. Start Gyro Motion Tracking
+            gyroMotionTracker.start()
+
+            // 4. Build Real-Time Intelligence Analyzer (Histogram, Metrics, Motion, Faces, Scene, Strategy)
+            val analyzer = RealtimeIntelligenceAnalyzer(
+                faceDetector = faceDetector,
+                gyroVelocityProvider = { gyroMotionTracker.angularVelocity.value },
+                analysisScope = scope,
+                onHistogramComputed = { _histogramData.value = it },
+                onQualityMetricsComputed = { _qualityMetrics.value = it },
+                onMotionStateComputed = { _motionState.value = it },
+                onSceneClassificationComputed = { _sceneClassification.value = it },
+                onFacesDetected = { _detectedFaces.value = it },
+                onStrategyDecided = { _captureStrategy.value = it },
+            )
+            realtimeAnalyzer = analyzer
 
             val analysis = ImageAnalysis.Builder()
                 .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
@@ -218,7 +255,7 @@ class CameraXController @Inject constructor(
             analysis.setAnalyzer(analysisExecutor, analyzer)
             imageAnalysisUseCase = analysis
 
-            // 4. Bind to Lifecycle
+            // 5. Bind to Lifecycle
             val boundCamera = provider.bindToLifecycle(
                 lifecycleOwner,
                 selector,
@@ -334,7 +371,7 @@ class CameraXController @Inject constructor(
     }
 
     override fun setHistogramEnabled(enabled: Boolean) {
-        histogramAnalyzer?.isEnabled = enabled
+        realtimeAnalyzer?.isEnabled = enabled
     }
 
     private fun applyCamera2CaptureOptions() {
@@ -473,6 +510,8 @@ class CameraXController @Inject constructor(
 
     override suspend fun stopPreview() = withContext(dispatchers.main) {
         try {
+            gyroMotionTracker.stop()
+            realtimeAnalyzer?.reset()
             cameraProvider?.unbindAll()
             camera = null
             previewUseCase = null
@@ -508,6 +547,8 @@ class CameraXController @Inject constructor(
 
     override fun release() {
         try {
+            gyroMotionTracker.stop()
+            faceDetector.release()
             cameraProvider?.unbindAll()
             camera = null
             captureExecutor.shutdown()

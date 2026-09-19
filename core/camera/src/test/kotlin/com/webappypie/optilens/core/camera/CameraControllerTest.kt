@@ -183,4 +183,37 @@ class CameraControllerTest {
         controller.setHistogramEnabled(false)
         assertFalse(controller.isHistogramEnabled)
     }
+
+    @Test
+    fun `sceneClassification stream emits default and custom scenes`() = runTest {
+        val initial = controller.sceneClassification.first()
+        assertEquals(com.webappypie.optilens.core.camera.model.SceneType.GENERAL, initial.primaryScene)
+
+        controller.emitScene(com.webappypie.optilens.core.camera.model.SceneClassification(primaryScene = com.webappypie.optilens.core.camera.model.SceneType.PORTRAIT))
+        assertEquals(com.webappypie.optilens.core.camera.model.SceneType.PORTRAIT, controller.sceneClassification.first().primaryScene)
+    }
+
+    @Test
+    fun `qualityMetrics and motionState streams emit updates`() = runTest {
+        controller.emitQuality(com.webappypie.optilens.core.camera.model.QualityMetrics(luminance = 200f, isBacklit = true))
+        val q = controller.qualityMetrics.first()
+        assertEquals(200f, q.luminance, 0.01f)
+        assertTrue(q.isBacklit)
+
+        controller.emitMotion(com.webappypie.optilens.core.camera.model.MotionState(cameraShakeLevel = com.webappypie.optilens.core.camera.model.CameraShakeLevel.HIGH))
+        val m = controller.motionState.first()
+        assertTrue(m.isCameraShaking)
+    }
+
+    @Test
+    fun `captureStrategy and detectedFaces streams emit updates`() = runTest {
+        controller.emitStrategy(com.webappypie.optilens.core.camera.strategy.CaptureStrategy(mode = com.webappypie.optilens.core.camera.strategy.CaptureStrategyMode.NIGHT_STACK, recommendedFrameCount = 8))
+        val s = controller.captureStrategy.first()
+        assertEquals(com.webappypie.optilens.core.camera.strategy.CaptureStrategyMode.NIGHT_STACK, s.mode)
+        assertEquals(8, s.recommendedFrameCount)
+
+        val faces = listOf(com.webappypie.optilens.core.camera.model.DetectedFace(bounds = com.webappypie.optilens.core.camera.model.NormalizedRect(0f, 0f, 0.5f, 0.5f)))
+        controller.emitFaces(faces)
+        assertEquals(1, controller.detectedFaces.first().size)
+    }
 }

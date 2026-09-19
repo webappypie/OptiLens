@@ -5,13 +5,18 @@ import androidx.camera.core.Preview
 import androidx.lifecycle.LifecycleOwner
 import com.webappypie.optilens.core.camera.model.CameraSessionState
 import com.webappypie.optilens.core.camera.model.CapturedPhoto
+import com.webappypie.optilens.core.camera.model.DetectedFace
 import com.webappypie.optilens.core.camera.model.ExposureState
 import com.webappypie.optilens.core.camera.model.FlashMode
 import com.webappypie.optilens.core.camera.model.HistogramData
+import com.webappypie.optilens.core.camera.model.MotionState
 import com.webappypie.optilens.core.camera.model.ProCameraState
+import com.webappypie.optilens.core.camera.model.QualityMetrics
+import com.webappypie.optilens.core.camera.model.SceneClassification
 import com.webappypie.optilens.core.camera.model.WhiteBalanceMode
 import com.webappypie.optilens.core.camera.model.ZoomState
 import com.webappypie.optilens.core.camera.model.ZoomStop
+import com.webappypie.optilens.core.camera.strategy.CaptureStrategy
 import com.webappypie.optilens.core.common.result.OptiResult
 import kotlinx.coroutines.flow.Flow
 
@@ -19,7 +24,8 @@ import kotlinx.coroutines.flow.Flow
  * Abstraction over the camera hardware controller.
  *
  * Exposes core capture, preview, hardware-derived zoom stops,
- * live histogram analysis, and Pro manual photography controls.
+ * live histogram analysis, real-time scene/quality intelligence,
+ * and Pro manual photography controls.
  */
 interface CameraController {
 
@@ -46,6 +52,21 @@ interface CameraController {
 
     /** Live 64-bin luminance histogram from incoming viewfinder frames. */
     val histogramData: Flow<HistogramData>
+
+    /** Real-time scene classification stream. */
+    val sceneClassification: Flow<SceneClassification>
+
+    /** Real-time optical and radiometric quality metrics stream. */
+    val qualityMetrics: Flow<QualityMetrics>
+
+    /** Real-time physical device and subject motion state stream. */
+    val motionState: Flow<MotionState>
+
+    /** Real-time computational capture strategy and UI hint recommendation stream. */
+    val captureStrategy: Flow<CaptureStrategy>
+
+    /** Stream of detected faces and landmarks. */
+    val detectedFaces: Flow<List<DetectedFace>>
 
     /** Most recently captured photo saved to MediaStore. */
     val lastCapturedPhoto: Flow<CapturedPhoto?>

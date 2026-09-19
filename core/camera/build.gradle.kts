@@ -41,6 +41,9 @@ dependencies {
     implementation(libs.androidx.camera.view)
     implementation(libs.androidx.camera.extensions)
 
+    // ML Kit Face Detection (On-device)
+    implementation(libs.mlkit.face.detection)
+
     // Serialization & Coroutines
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)

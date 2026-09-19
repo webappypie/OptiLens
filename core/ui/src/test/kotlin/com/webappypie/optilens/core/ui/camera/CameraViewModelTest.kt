@@ -291,4 +291,65 @@ class CameraViewModelTest {
             cancelAndIgnoreRemainingEvents()
         }
     }
+
+    @Test
+    fun `intelligence stream updates propagate scene, quality, motion, strategy, and faces to uiState`() = runTest {
+        viewModel.uiState.test {
+            awaitItem()
+
+            // 1. Emit scene
+            cameraController.emitScene(
+                com.webappypie.optilens.core.camera.model.SceneClassification(
+                    primaryScene = com.webappypie.optilens.core.camera.model.SceneType.PORTRAIT,
+                    confidence = 0.92f,
+                )
+            )
+            testScheduler.advanceUntilIdle()
+            assertEquals(com.webappypie.optilens.core.camera.model.SceneType.PORTRAIT, awaitItem().sceneClassification.primaryScene)
+
+            // 2. Emit quality metrics
+            cameraController.emitQuality(
+                com.webappypie.optilens.core.camera.model.QualityMetrics(
+                    luminance = 210f,
+                    isBacklit = true,
+                )
+            )
+            testScheduler.advanceUntilIdle()
+            val qualityItem = awaitItem()
+            assertEquals(210f, qualityItem.qualityMetrics.luminance, 0.01f)
+            assertTrue(qualityItem.qualityMetrics.isBacklit)
+
+            // 3. Emit motion state
+            cameraController.emitMotion(
+                com.webappypie.optilens.core.camera.model.MotionState(
+                    cameraShakeLevel = com.webappypie.optilens.core.camera.model.CameraShakeLevel.HIGH,
+                )
+            )
+            testScheduler.advanceUntilIdle()
+            assertTrue(awaitItem().motionState.isCameraShaking)
+
+            // 4. Emit capture strategy
+            cameraController.emitStrategy(
+                com.webappypie.optilens.core.camera.strategy.CaptureStrategy(
+                    mode = com.webappypie.optilens.core.camera.strategy.CaptureStrategyMode.NIGHT_STACK,
+                    recommendedFrameCount = 8,
+                    uiHint = com.webappypie.optilens.core.camera.strategy.CaptureUiHint.NIGHT_SUGGESTED,
+                )
+            )
+            testScheduler.advanceUntilIdle()
+            val strategyItem = awaitItem()
+            assertEquals(com.webappypie.optilens.core.camera.strategy.CaptureStrategyMode.NIGHT_STACK, strategyItem.captureStrategy.mode)
+            assertEquals(com.webappypie.optilens.core.camera.strategy.CaptureUiHint.NIGHT_SUGGESTED, strategyItem.captureStrategy.uiHint)
+
+            // 5. Emit faces
+            val face = com.webappypie.optilens.core.camera.model.DetectedFace(
+                bounds = com.webappypie.optilens.core.camera.model.NormalizedRect(0.2f, 0.2f, 0.8f, 0.8f)
+            )
+            cameraController.emitFaces(listOf(face))
+            testScheduler.advanceUntilIdle()
+            assertEquals(1, awaitItem().detectedFaces.size)
+
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
 }

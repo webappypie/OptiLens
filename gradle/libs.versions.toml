@@ -74,6 +74,9 @@ androidx-camera-lifecycle  = { group = "androidx.camera", name = "camera-lifecyc
 androidx-camera-view       = { group = "androidx.camera", name = "camera-view",       version.ref = "camerax" }
 androidx-camera-extensions = { group = "androidx.camera", name = "camera-extensions", version.ref = "camerax" }
 
+# ── ML Kit ─────────────────────────────────────────────────
+mlkit-face-detection       = { group = "com.google.mlkit", name = "face-detection",    version = "16.1.7" }
+
 # ── Kotlin Serialization ───────────────────────────────────
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version = "1.8.0" }
 

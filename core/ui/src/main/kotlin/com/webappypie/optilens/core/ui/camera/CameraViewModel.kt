@@ -9,13 +9,18 @@ import androidx.lifecycle.viewModelScope
 import com.webappypie.optilens.core.camera.CameraController
 import com.webappypie.optilens.core.camera.model.CameraSessionState
 import com.webappypie.optilens.core.camera.model.CapturedPhoto
+import com.webappypie.optilens.core.camera.model.DetectedFace
 import com.webappypie.optilens.core.camera.model.ExposureState
 import com.webappypie.optilens.core.camera.model.FlashMode
 import com.webappypie.optilens.core.camera.model.HistogramData
+import com.webappypie.optilens.core.camera.model.MotionState
 import com.webappypie.optilens.core.camera.model.ProCameraState
+import com.webappypie.optilens.core.camera.model.QualityMetrics
+import com.webappypie.optilens.core.camera.model.SceneClassification
 import com.webappypie.optilens.core.camera.model.WhiteBalanceMode
 import com.webappypie.optilens.core.camera.model.ZoomState
 import com.webappypie.optilens.core.camera.model.ZoomStop
+import com.webappypie.optilens.core.camera.strategy.CaptureStrategy
 import com.webappypie.optilens.core.common.result.OptiResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -59,6 +64,11 @@ data class CameraUiState(
     val proState: ProCameraState = ProCameraState(),
     val histogramData: HistogramData = HistogramData.EMPTY,
     val isHistogramVisible: Boolean = false,
+    val sceneClassification: SceneClassification = SceneClassification.DEFAULT,
+    val qualityMetrics: QualityMetrics = QualityMetrics.DEFAULT,
+    val motionState: MotionState = MotionState.DEFAULT,
+    val captureStrategy: CaptureStrategy = CaptureStrategy.DEFAULT,
+    val detectedFaces: List<DetectedFace> = emptyList(),
     val timerState: TimerState = TimerState.OFF,
     val timerCountdown: Int? = null,
     val aspectRatio: CameraAspectRatio = CameraAspectRatio.RATIO_4_3,
@@ -107,6 +117,14 @@ class CameraViewModel @Inject constructor(
         val lastPhoto: CapturedPhoto?,
     )
 
+    private data class IntelligenceStreamState(
+        val scene: SceneClassification,
+        val quality: QualityMetrics,
+        val motion: MotionState,
+        val strategy: CaptureStrategy,
+        val faces: List<DetectedFace>,
+    )
+
     private val _stream1 = combine(
         cameraController.zoomStops,
         cameraController.flashMode,
@@ -123,12 +141,22 @@ class CameraViewModel @Inject constructor(
         HardwareStreamState2(pro, hist, photo)
     }
 
+    private val _streamIntelligence = combine(
+        cameraController.sceneClassification,
+        cameraController.qualityMetrics,
+        cameraController.motionState,
+        cameraController.captureStrategy,
+        cameraController.detectedFaces,
+    ) { scene, quality, motion, strategy, faces ->
+        IntelligenceStreamState(scene, quality, motion, strategy, faces)
+    }
+
     val uiState: StateFlow<CameraUiState> = combine(
         _internalState,
         cameraController.sessionState,
         cameraController.zoomState,
-        combine(_stream1, _stream2) { s1, s2 -> s1 to s2 }
-    ) { internal, session, zoom, (s1, s2) ->
+        combine(_stream1, _stream2, _streamIntelligence) { s1, s2, intel -> Triple(s1, s2, intel) }
+    ) { internal, session, zoom, (s1, s2, intel) ->
         CameraUiState(
             hasCameraPermission = internal.hasPermission,
             isFrontCamera = internal.isFrontCamera,
@@ -140,6 +168,11 @@ class CameraViewModel @Inject constructor(
             proState = s2.proState,
             histogramData = s2.histogram,
             isHistogramVisible = internal.isHistogramVisible,
+            sceneClassification = intel.scene,
+            qualityMetrics = intel.quality,
+            motionState = intel.motion,
+            captureStrategy = intel.strategy,
+            detectedFaces = intel.faces,
             timerState = internal.timerState,
             timerCountdown = internal.timerCountdown,
             aspectRatio = internal.aspectRatio,

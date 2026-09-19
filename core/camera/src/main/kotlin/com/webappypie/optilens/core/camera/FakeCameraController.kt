@@ -96,8 +96,29 @@ class FakeCameraController @Inject constructor() : CameraController {
     )
     override val histogramData: Flow<HistogramData> = _histogramData.asStateFlow()
 
+    private val _sceneClassification = MutableStateFlow(com.webappypie.optilens.core.camera.model.SceneClassification.DEFAULT)
+    override val sceneClassification: Flow<com.webappypie.optilens.core.camera.model.SceneClassification> = _sceneClassification.asStateFlow()
+
+    private val _qualityMetrics = MutableStateFlow(com.webappypie.optilens.core.camera.model.QualityMetrics.DEFAULT)
+    override val qualityMetrics: Flow<com.webappypie.optilens.core.camera.model.QualityMetrics> = _qualityMetrics.asStateFlow()
+
+    private val _motionState = MutableStateFlow(com.webappypie.optilens.core.camera.model.MotionState.DEFAULT)
+    override val motionState: Flow<com.webappypie.optilens.core.camera.model.MotionState> = _motionState.asStateFlow()
+
+    private val _captureStrategy = MutableStateFlow(com.webappypie.optilens.core.camera.strategy.CaptureStrategy.DEFAULT)
+    override val captureStrategy: Flow<com.webappypie.optilens.core.camera.strategy.CaptureStrategy> = _captureStrategy.asStateFlow()
+
+    private val _detectedFaces = MutableStateFlow<List<com.webappypie.optilens.core.camera.model.DetectedFace>>(emptyList())
+    override val detectedFaces: Flow<List<com.webappypie.optilens.core.camera.model.DetectedFace>> = _detectedFaces.asStateFlow()
+
     private val _lastCapturedPhoto = MutableStateFlow<CapturedPhoto?>(null)
     override val lastCapturedPhoto: Flow<CapturedPhoto?> = _lastCapturedPhoto.asStateFlow()
+
+    fun emitScene(scene: com.webappypie.optilens.core.camera.model.SceneClassification) { _sceneClassification.value = scene }
+    fun emitQuality(quality: com.webappypie.optilens.core.camera.model.QualityMetrics) { _qualityMetrics.value = quality }
+    fun emitMotion(motion: com.webappypie.optilens.core.camera.model.MotionState) { _motionState.value = motion }
+    fun emitStrategy(strategy: com.webappypie.optilens.core.camera.strategy.CaptureStrategy) { _captureStrategy.value = strategy }
+    fun emitFaces(faces: List<com.webappypie.optilens.core.camera.model.DetectedFace>) { _detectedFaces.value = faces }
 
     private var _isFrontCamera = false
     override val isFrontCamera: Boolean get() = _isFrontCamera

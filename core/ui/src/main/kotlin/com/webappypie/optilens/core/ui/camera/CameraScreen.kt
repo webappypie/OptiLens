@@ -101,6 +101,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.webappypie.optilens.core.camera.model.FlashMode
 import com.webappypie.optilens.core.camera.model.ZoomStop
 import com.webappypie.optilens.core.ui.camera.histogram.HistogramOverlay
+import com.webappypie.optilens.core.ui.camera.overlay.FaceBoundingBoxOverlay
+import com.webappypie.optilens.core.ui.camera.overlay.SceneHintPill as IntelligentSceneHintPill
 import com.webappypie.optilens.core.ui.camera.pro.ProControlsBar
 import com.webappypie.optilens.core.ui.camera.sensor.HorizonSensor
 import com.webappypie.optilens.core.ui.components.OptiCameraModeChip
@@ -306,6 +308,11 @@ fun CameraScreen(
                     FocusReticle(offset = target)
                 }
 
+                // Real-time Face & Landmark Detection Overlay
+                FaceBoundingBoxOverlay(
+                    faces = uiState.detectedFaces,
+                )
+
                 // Timer Countdown Large Visual Overlay
                 if (uiState.timerCountdown != null) {
                     Box(
@@ -336,17 +343,15 @@ fun CameraScreen(
                 }
             }
 
-            // Floating Scene Hint Pill
-            AnimatedVisibility(
-                visible = currentMode == CameraMode.NIGHT,
-                enter = fadeIn(),
-                exit = fadeOut(),
+            // Real-Time Intelligent Scene & Acquisition Hint Pill
+            IntelligentSceneHintPill(
+                scene = uiState.sceneClassification,
+                strategy = uiState.captureStrategy,
+                motion = uiState.motionState,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .padding(top = topInset + 64.dp),
-            ) {
-                SceneHintPill(text = "Low Light • Handheld Night Active")
-            }
+            )
 
             // Live Luminance Histogram Overlay (in Pro Mode or when toggled)
             if (uiState.isHistogramVisible || currentMode == CameraMode.PRO) {
