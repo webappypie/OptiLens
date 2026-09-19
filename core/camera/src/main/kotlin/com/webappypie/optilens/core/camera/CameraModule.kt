@@ -18,7 +18,7 @@ abstract class CameraModule {
 
     @Binds
     @Singleton
-    abstract fun bindCameraController(impl: FakeCameraController): CameraController
+    abstract fun bindCameraController(impl: CameraXController): CameraController
 
     @Binds
     @Singleton

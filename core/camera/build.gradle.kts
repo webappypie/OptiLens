@@ -24,6 +24,10 @@ android {
     buildTypes {
         release { isMinifyEnabled = false }
     }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {

@@ -1,15 +1,28 @@
 package com.webappypie.optilens.core.ui.camera
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings
+import android.view.Surface
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.SurfaceOrientedMeteringPointFactory
+import androidx.camera.view.PreviewView
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -24,6 +37,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -50,9 +64,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -62,19 +77,30 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.webappypie.optilens.core.camera.model.FlashMode
 import com.webappypie.optilens.core.ui.components.OptiCameraModeChip
 import com.webappypie.optilens.core.ui.components.OptiIconButton
 import com.webappypie.optilens.core.ui.components.OptiIconButtonVariant
+import com.webappypie.optilens.core.ui.components.OptiPermissionState
 import com.webappypie.optilens.core.ui.theme.OptiLensCameraTypography
 import com.webappypie.optilens.core.ui.theme.OptiLensTheme
+import kotlin.math.roundToInt
 
 enum class CameraMode(val label: String) {
     PHOTO("Photo"),
@@ -84,23 +110,21 @@ enum class CameraMode(val label: String) {
     VIDEO("Video"),
 }
 
-enum class FlashState { AUTO, ON, OFF }
 enum class HdrState { AUTO, ON, OFF }
 enum class TimerState(val seconds: Int) { OFF(0), SEC_3(3), SEC_10(10) }
 
 /**
- * Camera Screen Layout for OptiLens.
+ * Production Camera Screen for OptiLens.
  *
- * Employs a neutral fake preview surface for layout verification in Phase 02,
- * complete with:
- * - Edge-to-edge safe insets.
- * - Viewfinder with rule-of-thirds grid overlay and horizon level line.
- * - Top chrome: Flash, HDR, Timer, Settings.
- * - Scene hint pill indicator.
- * - Zoom selector: 0.6x, 1x, 2x, 5x.
- * - Shooting mode carousel (Photo, Night, Portrait, Pro, Video).
- * - Tactile shutter button with outer contrast ring.
- * - Gallery shortcut and camera flip buttons with 48dp+ touch targets.
+ * Integrates:
+ * - Real CameraX viewfinder with [PreviewView].
+ * - Camera permission verification and fallback via [OptiPermissionState].
+ * - Tap-to-focus with animated reticle indicator.
+ * - Pinch-to-zoom gesture and discrete zoom selector chips.
+ * - Flash mode toggle cycling (Auto, On, Off).
+ * - Shutter button with tactile animation, capture lock, and blink feedback.
+ * - Camera flip (rear/front).
+ * - Gallery thumbnail shortcut showing the most recent capture.
  */
 @Composable
 fun CameraScreen(
@@ -110,13 +134,51 @@ fun CameraScreen(
     onShutterClick: () -> Unit = {},
     showGrid: Boolean = true,
     showLevel: Boolean = true,
+    viewModel: CameraViewModel = hiltViewModel(),
 ) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
     var currentMode by remember { mutableStateOf(CameraMode.PHOTO) }
-    var zoomRatio by remember { mutableFloatStateOf(1.0f) }
-    var flashState by remember { mutableStateOf(FlashState.AUTO) }
     var hdrState by remember { mutableStateOf(HdrState.AUTO) }
     var timerState by remember { mutableStateOf(TimerState.OFF) }
-    var isFrontCamera by remember { mutableStateOf(false) }
+    var previewViewRef by remember { mutableStateOf<PreviewView?>(null) }
+
+    // Check camera permission on composition & launch
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { isGranted ->
+        viewModel.onPermissionResult(isGranted)
+    }
+
+    LaunchedEffect(Unit) {
+        val granted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.CAMERA,
+        ) == PackageManager.PERMISSION_GRANTED
+        viewModel.onPermissionResult(granted)
+        if (!granted) {
+            permissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    if (!uiState.hasCameraPermission) {
+        OptiPermissionState(
+            title = "Camera Access Required",
+            description = "OptiLens requires camera access to preview and capture photos. No gallery or media permissions are requested.",
+            onRequestPermission = { permissionLauncher.launch(Manifest.permission.CAMERA) },
+            onOpenSettings = {
+                val intent = Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.fromParts("package", context.packageName, null),
+                )
+                context.startActivity(intent)
+            },
+            modifier = modifier,
+        )
+        return
+    }
 
     val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -127,13 +189,29 @@ fun CameraScreen(
             .fillMaxSize()
             .background(Color.Black),
     ) {
-        // ── 1. Viewfinder Surface (Neutral Fake Preview) ───────────────────
+        // ── 1. Viewfinder Surface ──────────────────────────────────────────
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFF0E1117))
+                .background(Color.Black)
+                .pointerInput(uiState.zoomState) {
+                    detectTransformGestures { _, _, zoom, _ ->
+                        if (zoom != 1.0f) {
+                            val current = uiState.zoomState.currentZoom
+                            val minZ = if (uiState.zoomState.minZoom > 0f) uiState.zoomState.minZoom else 0.5f
+                            val maxZ = if (uiState.zoomState.maxZoom > 0f) uiState.zoomState.maxZoom else 10.0f
+                            val target = (current * zoom).coerceIn(minZ, maxZ)
+                            viewModel.onZoomRatioChanged(target)
+                        }
+                    }
+                }
                 .pointerInput(Unit) {
-                    detectTapGestures { /* Tap to focus in Phase 04 */ }
+                    detectTapGestures { tapOffset ->
+                        val factory = previewViewRef?.meteringPointFactory
+                        val point = factory?.createPoint(tapOffset.x, tapOffset.y)
+                            ?: SurfaceOrientedMeteringPointFactory(1f, 1f).createPoint(0.5f, 0.5f)
+                        viewModel.onTapToFocus(tapOffset, point)
+                    }
                 },
             contentAlignment = Alignment.Center,
         ) {
@@ -144,6 +222,22 @@ fun CameraScreen(
                     .aspectRatio(3f / 4f)
                     .background(Color(0xFF0A0C10)),
             ) {
+                // Live CameraX Preview
+                AndroidView(
+                    factory = { ctx ->
+                        PreviewView(ctx).apply {
+                            scaleType = PreviewView.ScaleType.FILL_CENTER
+                            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                            previewViewRef = this
+                            viewModel.bindPreview(lifecycleOwner, this.surfaceProvider)
+                        }
+                    },
+                    update = { view ->
+                        previewViewRef = view
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
+
                 // Rule-of-thirds grid
                 if (showGrid) {
                     ViewfinderGridOverlay(color = overlayColors.gridLine)
@@ -154,6 +248,24 @@ fun CameraScreen(
                     HorizonLevelIndicator(
                         tiltAngleDegrees = 0f,
                         modifier = Modifier.align(Alignment.Center),
+                    )
+                }
+
+                // Tap-to-focus animated reticle
+                uiState.focusTarget?.let { target ->
+                    FocusReticle(offset = target)
+                }
+
+                // Shutter blink visual feedback
+                AnimatedVisibility(
+                    visible = uiState.isShutterBlinking,
+                    enter = fadeIn(tween(20)),
+                    exit = fadeOut(tween(80)),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.85f)),
                     )
                 }
             }
@@ -190,20 +302,15 @@ fun CameraScreen(
             ) {
                 // Flash Toggle
                 OptiIconButton(
-                    icon = when (flashState) {
-                        FlashState.AUTO -> Icons.Default.FlashAuto
-                        FlashState.ON   -> Icons.Default.FlashOn
-                        FlashState.OFF  -> Icons.Default.FlashOff
+                    icon = when (uiState.flashMode) {
+                        FlashMode.AUTO -> Icons.Default.FlashAuto
+                        FlashMode.ON   -> Icons.Default.FlashOn
+                        FlashMode.OFF  -> Icons.Default.FlashOff
+                        FlashMode.TORCH -> Icons.Default.FlashOn
                     },
-                    contentDescription = "Flash mode: ${flashState.name}",
-                    variant = if (flashState == FlashState.ON) OptiIconButtonVariant.OVERLAY_ACTIVE else OptiIconButtonVariant.OVERLAY,
-                    onClick = {
-                        flashState = when (flashState) {
-                            FlashState.AUTO -> FlashState.ON
-                            FlashState.ON   -> FlashState.OFF
-                            FlashState.OFF  -> FlashState.AUTO
-                        }
-                    },
+                    contentDescription = "Flash mode: ${uiState.flashMode.name}",
+                    variant = if (uiState.flashMode != FlashMode.OFF) OptiIconButtonVariant.OVERLAY_ACTIVE else OptiIconButtonVariant.OVERLAY,
+                    onClick = { viewModel.toggleFlashMode() },
                 )
 
                 // HDR Toggle
@@ -264,8 +371,8 @@ fun CameraScreen(
         ) {
             // Zoom Selector Bar
             ZoomSelector(
-                currentZoom = zoomRatio,
-                onZoomSelected = { zoomRatio = it },
+                currentZoom = uiState.zoomState.currentZoom,
+                onZoomSelected = { ratio -> viewModel.onZoomRatioChanged(ratio) },
                 availableRatios = listOf(0.6f, 1.0f, 2.0f, 5.0f),
                 modifier = Modifier.padding(bottom = OptiLensTheme.spacing.s),
             )
@@ -297,7 +404,7 @@ fun CameraScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Gallery Shortcut Button (48dp touch target)
+                // Gallery Shortcut Button with Recent Thumbnail
                 Box(
                     modifier = Modifier
                         .size(OptiLensTheme.iconSizes.minTouchTarget)
@@ -311,18 +418,34 @@ fun CameraScreen(
                         ),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.PhotoLibrary,
-                        contentDescription = "Open Gallery",
-                        tint = overlayColors.controlOnSurface,
-                        modifier = Modifier.size(OptiLensTheme.iconSizes.standard),
-                    )
+                    val thumb = uiState.lastCapturedPhoto?.thumbnail
+                    if (thumb != null) {
+                        Image(
+                            bitmap = thumb.asImageBitmap(),
+                            contentDescription = "Open Gallery with recent photo",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(CircleShape),
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.PhotoLibrary,
+                            contentDescription = "Open Gallery",
+                            tint = overlayColors.controlOnSurface,
+                            modifier = Modifier.size(OptiLensTheme.iconSizes.standard),
+                        )
+                    }
                 }
 
                 // Tactile Shutter Button
                 CameraShutterButton(
-                    onClick = onShutterClick,
+                    onClick = {
+                        onShutterClick()
+                        viewModel.takePhoto(targetRotation = Surface.ROTATION_0)
+                    },
                     isVideo = currentMode == CameraMode.VIDEO,
+                    enabled = !uiState.isCapturing,
                 )
 
                 // Camera Flip Button (48dp touch target)
@@ -335,13 +458,13 @@ fun CameraScreen(
                         .clickable(
                             indication = ripple(bounded = true),
                             interactionSource = remember { MutableInteractionSource() },
-                            onClick = { isFrontCamera = !isFrontCamera },
+                            onClick = { viewModel.flipCamera() },
                         ),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         imageVector = Icons.Default.Cameraswitch,
-                        contentDescription = "Flip camera to ${if (isFrontCamera) "rear" else "front"}",
+                        contentDescription = "Flip camera to ${if (uiState.isFrontCamera) "rear" else "front"}",
                         tint = overlayColors.controlOnSurface,
                         modifier = Modifier.size(OptiLensTheme.iconSizes.standard),
                     )
@@ -360,13 +483,14 @@ fun CameraShutterButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     isVideo: Boolean = false,
+    enabled: Boolean = true,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val overlayColors = OptiLensTheme.overlayColors
 
     val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.90f else 1.0f,
+        targetValue = if (isPressed && enabled) 0.90f else 1.0f,
         animationSpec = tween(durationMillis = 100),
         label = "shutterScale",
     )
@@ -382,6 +506,7 @@ fun CameraShutterButton(
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
+                enabled = enabled,
                 onClick = onClick,
             ),
         contentAlignment = Alignment.Center,
@@ -399,9 +524,52 @@ fun CameraShutterButton(
 
         Box(
             modifier = Modifier
-                .size(if (isPressed) 52.dp else 60.dp)
+                .size(if (isPressed && enabled) 52.dp else 60.dp)
                 .clip(coreShape)
-                .background(coreColor),
+                .background(if (enabled) coreColor else coreColor.copy(alpha = 0.5f)),
+        )
+    }
+}
+
+/**
+ * Animated reticle displayed on tap-to-focus position.
+ */
+@Composable
+fun FocusReticle(
+    offset: Offset,
+    modifier: Modifier = Modifier,
+) {
+    val scale = remember { Animatable(1.3f) }
+    val alpha = remember { Animatable(0.4f) }
+
+    LaunchedEffect(offset) {
+        scale.snapTo(1.3f)
+        alpha.snapTo(0.4f)
+        scale.animateTo(1.0f, tween(durationMillis = 200))
+        alpha.animateTo(1.0f, tween(durationMillis = 150))
+    }
+
+    val reticleSize = 64.dp
+    val overlayColors = OptiLensTheme.overlayColors
+
+    Box(
+        modifier = modifier
+            .offset {
+                IntOffset(
+                    x = (offset.x - reticleSize.toPx() / 2).roundToInt(),
+                    y = (offset.y - reticleSize.toPx() / 2).roundToInt(),
+                )
+            }
+            .size(reticleSize)
+            .scale(scale.value)
+            .border(1.5.dp, overlayColors.focusSuccess.copy(alpha = alpha.value), CircleShape)
+            .padding(4.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(4.dp)
+                .background(overlayColors.focusSuccess.copy(alpha = alpha.value), CircleShape),
         )
     }
 }
@@ -428,7 +596,7 @@ fun ZoomSelector(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         availableRatios.forEach { ratio ->
-            val isSelected = (currentZoom == ratio)
+            val isSelected = (kotlin.math.abs(currentZoom - ratio) < 0.15f)
             val label = if (ratio < 1.0f) "${ratio}x" else "${ratio.toInt()}x"
 
             Box(
