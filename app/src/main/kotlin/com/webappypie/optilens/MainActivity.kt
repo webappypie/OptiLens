@@ -18,8 +18,10 @@ import com.webappypie.optilens.core.navigation.NavigationCommand
 import com.webappypie.optilens.core.navigation.NavigationManager
 import com.webappypie.optilens.core.settings.AppSettings
 import com.webappypie.optilens.core.settings.ThemeMode
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.webappypie.optilens.core.ui.camera.CameraScreen
 import com.webappypie.optilens.core.ui.screens.AiToolsScreen
+import com.webappypie.optilens.core.ui.screens.CameraDiagnosticsScreen
 import com.webappypie.optilens.core.ui.screens.GalleryScreen
 import com.webappypie.optilens.core.ui.screens.ProUpgradeScreen
 import com.webappypie.optilens.core.ui.screens.SettingsScreen
@@ -115,6 +117,7 @@ fun OptiLensNavigationShell(
                 appSettings = appSettings,
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToPro = { navController.navigate(AppDestination.ProUpgrade) },
+                onNavigateToDiagnostics = { navController.navigate(AppDestination.CameraDiagnostics) },
             )
         },
         aiToolsScreen = {
@@ -124,6 +127,12 @@ fun OptiLensNavigationShell(
         },
         proUpgradeScreen = {
             ProUpgradeScreen(
+                onNavigateBack = { navController.popBackStack() },
+            )
+        },
+        cameraDiagnosticsScreen = {
+            CameraDiagnosticsScreen(
+                viewModel = hiltViewModel(),
                 onNavigateBack = { navController.popBackStack() },
             )
         },

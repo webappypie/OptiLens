@@ -51,6 +51,16 @@ class NavigationManagerTest {
     }
 
     @Test
+    fun `navigate to CameraDiagnostics emits NavigateTo command`() = runTest {
+        navManager.navigate(AppDestination.CameraDiagnostics)
+        val command = navManager.navigationCommands.first()
+
+        assertTrue(command is NavigationCommand.NavigateTo)
+        val navigateTo = command as NavigationCommand.NavigateTo
+        assertEquals(AppDestination.CameraDiagnostics, navigateTo.destination)
+    }
+
+    @Test
     fun `navigateBack emits NavigateBack command`() = runTest {
         navManager.navigateBack()
         val command = navManager.navigationCommands.first()

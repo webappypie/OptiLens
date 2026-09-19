@@ -25,20 +25,22 @@ fun AppNavHost(
     photoDetailScreen: @Composable (AppDestination.PhotoDetail) -> Unit = { NavigationPlaceholderScreen("Photo Detail") },
     proUpgradeScreen: @Composable () -> Unit = { NavigationPlaceholderScreen("Pro Upgrade") },
     onboardingScreen: @Composable () -> Unit = { NavigationPlaceholderScreen("Onboarding") },
+    cameraDiagnosticsScreen: @Composable () -> Unit = { NavigationPlaceholderScreen("Camera Diagnostics") },
 ) {
     NavHost(
         navController = navController,
         startDestination = startDestination,
         modifier = modifier,
     ) {
-        composable<AppDestination.Camera>      { cameraScreen() }
-        composable<AppDestination.Gallery>     { galleryScreen() }
-        composable<AppDestination.Settings>    { settingsScreen() }
-        composable<AppDestination.AiTools>     { aiToolsScreen() }
-        composable<AppDestination.PhotoDetail> { backStackEntry ->
+        composable<AppDestination.Camera>            { cameraScreen() }
+        composable<AppDestination.Gallery>           { galleryScreen() }
+        composable<AppDestination.Settings>          { settingsScreen() }
+        composable<AppDestination.AiTools>           { aiToolsScreen() }
+        composable<AppDestination.PhotoDetail>       { backStackEntry ->
             photoDetailScreen(backStackEntry.toRoute())
         }
-        composable<AppDestination.ProUpgrade>  { proUpgradeScreen() }
-        composable<AppDestination.Onboarding>  { onboardingScreen() }
+        composable<AppDestination.ProUpgrade>        { proUpgradeScreen() }
+        composable<AppDestination.Onboarding>        { onboardingScreen() }
+        composable<AppDestination.CameraDiagnostics> { cameraDiagnosticsScreen() }
     }
 }

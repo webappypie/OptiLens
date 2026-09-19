@@ -24,3 +24,24 @@ data class CameraCapability(
     /** Telephoto (zoom) multipliers available (e.g. [1.0f, 2.0f, 5.0f]). */
     val availableZoomRatios: List<Float> = listOf(1.0f),
 )
+
+/**
+ * Converts a detailed [com.webappypie.optilens.core.camera.model.CameraCapabilityProfile]
+ * into the legacy [CameraCapability] for backwards compatibility with [CameraController].
+ */
+fun com.webappypie.optilens.core.camera.model.CameraCapabilityProfile.toLegacyCameraCapability(): CameraCapability {
+    val backCam = primaryBackCamera
+    val hasFront = primaryFrontCamera != null
+    val hasBack = backCam != null
+
+    return CameraCapability(
+        hasRearCamera = hasBack,
+        hasFrontCamera = hasFront,
+        hasOis = backCam?.stabilization?.opticalImageStabilization == true,
+        supportsRaw = backCam?.streamCapabilities?.supportsRaw == true,
+        supportsHdrCapture = backCam?.extensions?.hdr == true || backCam?.streamCapabilities?.supportsTenBitHdr == true,
+        maxCaptureStreams = if (backCam?.hardwareLevel == com.webappypie.optilens.core.camera.model.CameraHardwareLevel.LEVEL_3) 3 else 2,
+        hasLogicalMultiCamera = backCam?.streamCapabilities?.isLogicalMultiCamera == true,
+        availableZoomRatios = backCam?.computeAvailableZoomRatios() ?: listOf(1.0f),
+    )
+}

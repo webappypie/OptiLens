@@ -47,4 +47,10 @@ sealed interface AppDestination {
     /** First-run permission onboarding. */
     @Serializable
     data object Onboarding : AppDestination
+
+    // ── Diagnostics ───────────────────────────────────────────────────
+
+    /** Hardware and camera capability diagnostics screen. */
+    @Serializable
+    data object CameraDiagnostics : AppDestination
 }

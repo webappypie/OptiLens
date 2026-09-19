@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.outlined.ColorLens
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.GridOn
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Photo
 import androidx.compose.material.icons.outlined.Star
@@ -56,12 +57,14 @@ import kotlinx.coroutines.launch
  * - Color profile selection (Natural, Balanced, Vivid).
  * - Location tagging and photo storage options.
  * - Pro membership status and upgrade navigation.
+ * - Hardware and camera capability diagnostics.
  */
 @Composable
 fun SettingsScreen(
     appSettings: AppSettings,
     onNavigateBack: () -> Unit,
     onNavigateToPro: () -> Unit,
+    onNavigateToDiagnostics: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -327,6 +330,21 @@ fun SettingsScreen(
                 onCheckedChange = { checked ->
                     coroutineScope.launch { appSettings.setLocationTaggingEnabled(checked) }
                 },
+            )
+
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = OptiLensTheme.spacing.s),
+                color = MaterialTheme.colorScheme.outlineVariant,
+            )
+
+            // ── Hardware & Diagnostics ─────────────────────────────────────
+            SettingsSectionHeader(title = "Hardware & Advanced")
+
+            OptiSettingsRow(
+                title = "Hardware Diagnostics",
+                subtitle = "View camera specs, sensor array, RAW modes & quirks",
+                leadingIcon = Icons.Outlined.Info,
+                onClick = onNavigateToDiagnostics,
             )
 
             Spacer(modifier = Modifier.height(OptiLensTheme.spacing.giant))
