@@ -4,53 +4,81 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.navigation.compose.rememberNavController
+import com.webappypie.optilens.core.logging.AppLogger
+import com.webappypie.optilens.core.navigation.AppNavHost
+import com.webappypie.optilens.core.navigation.NavigationCommand
+import com.webappypie.optilens.core.navigation.NavigationManager
 import com.webappypie.optilens.ui.theme.OptiLensTheme
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
-/**
- * Phase 00 — Temporary development entry point.
- *
- * This screen exists only to validate that the project compiles, launches,
- * and renders Compose content. It will be replaced entirely in Phase 02
- * (Design System and Navigation).
- */
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject
+    lateinit var navigationManager: NavigationManager
+
+    @Inject
+    lateinit var logger: AppLogger
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        logger.d(TAG, "MainActivity created")
+
         setContent {
             OptiLensTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    InitScreen(modifier = Modifier.padding(innerPadding))
+                    OptiLensNavigationShell(
+                        navigationManager = navigationManager,
+                        modifier = Modifier.padding(innerPadding),
+                    )
                 }
             }
         }
     }
-}
 
-@Composable
-fun InitScreen(modifier: Modifier = Modifier) {
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier = modifier.fillMaxSize(),
-    ) {
-        Text(text = "OptiLens — Project initialized")
+    companion object {
+        private const val TAG = "MainActivity"
     }
 }
 
-@Preview(showBackground = true)
 @Composable
-fun InitScreenPreview() {
-    OptiLensTheme {
-        InitScreen()
+fun OptiLensNavigationShell(
+    navigationManager: NavigationManager,
+    modifier: Modifier = Modifier,
+) {
+    val navController = rememberNavController()
+
+    LaunchedEffect(navController, navigationManager) {
+        navigationManager.navigationCommands.collect { command ->
+            when (command) {
+                is NavigationCommand.NavigateTo -> {
+                    navController.navigate(command.destination) {
+                        command.popUpTo?.let { popDest ->
+                            popUpTo(popDest) {
+                                inclusive = command.inclusive
+                            }
+                        }
+                        launchSingleTop = command.singleTop
+                    }
+                }
+                is NavigationCommand.NavigateBack -> {
+                    navController.popBackStack()
+                }
+            }
+        }
     }
+
+    AppNavHost(
+        modifier = modifier,
+        navController = navController,
+    )
 }

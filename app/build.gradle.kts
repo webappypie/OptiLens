@@ -2,6 +2,8 @@ plugins {
     alias(libs.plugins.android.application)
     // kotlin.android intentionally omitted: AGP 9.0+ includes Kotlin support built-in.
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.hilt)
 }
 
 android {
@@ -73,22 +75,39 @@ android {
 }
 
 dependencies {
-    // ── AndroidX Core ──────────────────────────────────────
-    implementation(libs.androidx.core.ktx)
+    // ── Core modules ───────────────────────────────────────
+    implementation(project(":core:common"))
+    implementation(project(":core:logging"))
+    implementation(project(":core:settings"))
+    implementation(project(":core:navigation"))
+    implementation(project(":core:ui"))
+    implementation(project(":core:camera"))
+    implementation(project(":core:imaging"))
 
-    // ── Lifecycle ──────────────────────────────────────────
+    // ── Hilt DI ────────────────────────────────────────────
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.compiler)
+    implementation(libs.hilt.navigation.compose)
+
+    // ── AndroidX Core & Lifecycle ──────────────────────────
+    implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
 
     // ── Activity ───────────────────────────────────────────
     implementation(libs.androidx.activity.compose)
 
-    // ── Compose BOM (pin all Compose versions via single BOM) ──
+    // ── Compose BOM ────────────────────────────────────────
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.ui.graphics)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.material3)
+
+    // ── Navigation ─────────────────────────────────────────
+    implementation(libs.androidx.navigation.compose)
 
     // ── Debug tooling ──────────────────────────────────────
     debugImplementation(libs.compose.ui.tooling)
@@ -96,6 +115,9 @@ dependencies {
 
     // ── Unit tests ─────────────────────────────────────────
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.turbine)
+    testImplementation(libs.hilt.android.testing)
 
     // ── Instrumented tests ─────────────────────────────────
     androidTestImplementation(libs.androidx.junit.ext)

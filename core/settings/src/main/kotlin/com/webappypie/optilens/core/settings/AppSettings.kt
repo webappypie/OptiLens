@@ -1,0 +1,65 @@
+package com.webappypie.optilens.core.settings
+
+import kotlinx.coroutines.flow.Flow
+
+/**
+ * App-wide user preferences interface.
+ *
+ * All settings are exposed as [Flow] so the UI can react to changes
+ * in real time. Writes are suspend functions.
+ *
+ * Default values are documented beside each property.
+ */
+interface AppSettings {
+
+    // ── Theme ────────────────────────────────────────────────
+    /** User's chosen theme. Default: [ThemeMode.SYSTEM]. */
+    val themeMode: Flow<ThemeMode>
+    suspend fun setThemeMode(mode: ThemeMode)
+
+    // ── Camera ───────────────────────────────────────────────
+    /** Whether the grid overlay is shown in the viewfinder. Default: false. */
+    val gridEnabled: Flow<Boolean>
+    suspend fun setGridEnabled(enabled: Boolean)
+
+    /** Whether the level/horizon indicator is shown. Default: false. */
+    val levelEnabled: Flow<Boolean>
+    suspend fun setLevelEnabled(enabled: Boolean)
+
+    /** Whether shutter sound is played (subject to device/locale rules). Default: true. */
+    val shutterSoundEnabled: Flow<Boolean>
+    suspend fun setShutterSoundEnabled(enabled: Boolean)
+
+    /** Whether haptic feedback fires on shutter. Default: true. */
+    val hapticFeedbackEnabled: Flow<Boolean>
+    suspend fun setHapticFeedbackEnabled(enabled: Boolean)
+
+    /** Whether volume keys act as a shutter trigger. Default: false. */
+    val volumeKeyShutterEnabled: Flow<Boolean>
+    suspend fun setVolumeKeyShutterEnabled(enabled: Boolean)
+
+    // ── Processing ───────────────────────────────────────────
+    /** Active color profile. Default: [ColorProfile.BALANCED]. */
+    val colorProfile: Flow<ColorProfile>
+    suspend fun setColorProfile(profile: ColorProfile)
+
+    /** Whether the original photo is kept alongside the processed result. Default: true. */
+    val keepOriginalEnabled: Flow<Boolean>
+    suspend fun setKeepOriginalEnabled(enabled: Boolean)
+
+    // ── Storage & Privacy ────────────────────────────────────
+    /** Whether location tagging is enabled. Default: false (opt-in only). */
+    val locationTaggingEnabled: Flow<Boolean>
+    suspend fun setLocationTaggingEnabled(enabled: Boolean)
+
+    // ── Pro ──────────────────────────────────────────────────
+    /** Whether the user has an active Pro entitlement. Set by billing layer. Default: false. */
+    val isPro: Flow<Boolean>
+    suspend fun setIsPro(isPro: Boolean)
+}
+
+/** User-visible theme preference. */
+enum class ThemeMode { SYSTEM, LIGHT, DARK }
+
+/** Color rendering profile for processed photos. */
+enum class ColorProfile { NATURAL, BALANCED, VIVID }

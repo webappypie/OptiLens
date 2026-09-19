@@ -22,3 +22,11 @@ dependencyResolutionManagement {
 
 rootProject.name = "OptiLens"
 include(":app")
+include(":core:common")
+include(":core:logging")
+include(":core:settings")
+include(":core:navigation")
+include(":core:ui")
+include(":core:camera")
+include(":core:imaging")
+
