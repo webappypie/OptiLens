@@ -1,0 +1,49 @@
+[versions]
+# ── Core toolchain ─────────────────────────────────────────
+# NOTE: AGP 9.0+ includes Kotlin support built-in.
+# org.jetbrains.kotlin.android is NO LONGER required or permitted.
+agp                     = "9.4.0"
+kotlin-compose          = "2.4.20"   # Compose Kotlin compiler plugin (still required separately)
+
+# ── AndroidX / Jetpack ─────────────────────────────────────
+compose-bom             = "2026.09.00"
+core-ktx                = "1.16.0"
+lifecycle               = "2.9.1"
+activity-compose        = "1.10.1"
+
+# ── Testing ────────────────────────────────────────────────
+junit                   = "4.13.2"
+junit-ext               = "1.2.1"
+espresso                = "3.6.1"
+
+[libraries]
+# ── AndroidX Core ──────────────────────────────────────────
+androidx-core-ktx       = { group = "androidx.core",     name = "core-ktx",            version.ref = "core-ktx" }
+
+# ── Lifecycle ──────────────────────────────────────────────
+androidx-lifecycle-runtime-ktx    = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx",    version.ref = "lifecycle" }
+androidx-lifecycle-viewmodel-ktx  = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-ktx",  version.ref = "lifecycle" }
+
+# ── Activity ───────────────────────────────────────────────
+androidx-activity-compose = { group = "androidx.activity", name = "activity-compose",  version.ref = "activity-compose" }
+
+# ── Compose BOM ────────────────────────────────────────────
+compose-bom             = { group = "androidx.compose",  name = "compose-bom",         version.ref = "compose-bom" }
+compose-ui              = { group = "androidx.compose.ui", name = "ui" }
+compose-ui-graphics     = { group = "androidx.compose.ui", name = "ui-graphics" }
+compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
+compose-material3       = { group = "androidx.compose.material3", name = "material3" }
+compose-ui-tooling      = { group = "androidx.compose.ui", name = "ui-tooling" }
+compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
+compose-ui-test-junit4  = { group = "androidx.compose.ui", name = "ui-test-junit4" }
+
+# ── Unit Testing ───────────────────────────────────────────
+junit                   = { group = "junit",             name = "junit",               version.ref = "junit" }
+androidx-junit-ext      = { group = "androidx.test.ext", name = "junit",               version.ref = "junit-ext" }
+androidx-espresso-core  = { group = "androidx.test.espresso", name = "espresso-core",  version.ref = "espresso" }
+
+[plugins]
+android-application     = { id = "com.android.application",                    version.ref = "agp" }
+android-library         = { id = "com.android.library",                        version.ref = "agp" }
+# kotlin-android is intentionally omitted: AGP 9.0+ includes Kotlin support built-in.
+kotlin-compose          = { id = "org.jetbrains.kotlin.plugin.compose",        version.ref = "kotlin-compose" }

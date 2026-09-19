@@ -1,0 +1,38 @@
+# OptiLens — Git line-ending normalization
+# Ensures consistent LF in the repository regardless of OS.
+
+# Default: normalize all text files to LF in repo
+* text=auto eol=lf
+
+# Explicitly text files
+*.kt        text eol=lf
+*.kts       text eol=lf
+*.java      text eol=lf
+*.xml       text eol=lf
+*.toml      text eol=lf
+*.json      text eol=lf
+*.md        text eol=lf
+*.txt       text eol=lf
+*.pro       text eol=lf
+*.properties text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.sh        text eol=lf
+
+# Windows batch — keep CRLF on checkout for Windows compatibility
+*.bat       text eol=crlf
+
+# Binary files — never touch
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.jar       binary
+*.zip       binary
+*.apk       binary
+*.aab       binary
+*.so        binary
+*.a         binary
+*.keystore  binary
+*.jks       binary

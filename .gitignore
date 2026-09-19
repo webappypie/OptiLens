@@ -1,0 +1,84 @@
+# ============================================================
+# OptiLens — .gitignore
+# ============================================================
+
+# --- Gradle build output ---
+.gradle/
+build/
+**/build/
+out/
+
+# --- Gradle wrapper jar (committed deliberately — see gradle/wrapper/) ---
+# gradle-wrapper.jar is tracked intentionally.
+
+# --- Android local configuration ---
+local.properties
+*.iml
+
+# --- Android Studio / IntelliJ IDEA ---
+.idea/
+*.iml
+.idea/caches/
+.idea/libraries/
+.idea/modules.xml
+.idea/workspace.xml
+.idea/navEditor.xml
+.idea/assetWizardSettings.xml
+
+# --- Android generated files ---
+gen/
+bin/
+lint/
+proguard/
+captures/
+*.apk
+*.aab
+*.ap_
+
+# --- Native build output ---
+.externalNativeBuild/
+.cxx/
+*.so
+*.o
+*.a
+obj/
+jni/libs/
+
+# --- Keystores and signing ---
+*.jks
+*.keystore
+release-keystore.jks
+keystore.properties
+signing.properties
+
+# --- Credentials and secrets ---
+google-services.json
+google-services-debug.json
+*.p12
+*.pem
+secrets.properties
+credentials.properties
+firebase.properties
+
+# --- OS files ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Test results ---
+test-results/
+.test-results/
+
+# --- Coverage reports ---
+coverage/
+jacoco/
+
+# --- Profiling ---
+*.hprof
+
+# --- Misc ---
+*.log
+*.tmp
+*.bak
+*.swp
+~$*
