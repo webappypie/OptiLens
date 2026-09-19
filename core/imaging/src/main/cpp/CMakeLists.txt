@@ -14,6 +14,9 @@ add_library(
     scoring/FrameScorer.cpp
     alignment/PyramidalOpticalFlow.cpp
     alignment/GhostMaskEstimator.cpp
+    fusion/TemporalFusionEngine.cpp
+    fusion/ToneMapper.cpp
+    fusion/ColorCorrector.cpp
     jni/OptiLensImagingJni.cpp
 )
 
@@ -22,6 +25,7 @@ target_include_directories(
     PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/scoring
     ${CMAKE_CURRENT_SOURCE_DIR}/alignment
+    ${CMAKE_CURRENT_SOURCE_DIR}/fusion
     ${CMAKE_CURRENT_SOURCE_DIR}/jni
 )
 

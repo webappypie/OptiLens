@@ -2,11 +2,11 @@
 
 | Field | Value |
 |---|---|
-| **Current Phase** | Phase 08 — Frame Scoring, Rejection and Alignment |
+| **Current Phase** | Phase 09 — Multi-Frame Fusion, HDR, Denoise, Tone and Color |
 | **Status** | ✅ PASS |
 | **Completed** | 2026-09-20 |
-| **Prompt file** | `prompts/PHASE_08_FRAME_SCORING_ALIGNMENT.md` |
-| **Next phase** | Phase 09 — Multi-Frame Fusion (HDR, Night, Denoise) (`prompts/PHASE_09_MULTIFRAME_FUSION.md`) |
+| **Prompt file** | `prompts/PHASE_09_FUSION_HDR_DENOISE_COLOR.md` |
+| **Next phase** | Phase 10 — Handheld Night Mode (`prompts/PHASE_10_NIGHT_MODE.md`) |
 
 ## Completed Phases
 
@@ -21,3 +21,4 @@
 | 06 | Real-Time Scene and Quality Analysis | ✅ PASS | `phase-06: real-time scene and quality analysis` |
 | 07 | Burst and Multi-Frame Acquisition | ✅ PASS | `phase-07: burst and multi-frame acquisition` |
 | 08 | Frame Scoring, Rejection and Alignment | ✅ PASS | `phase-08: frame scoring, rejection and alignment` |
+| 09 | Multi-Frame Fusion, HDR, Denoise, Tone and Color | ✅ PASS | `phase-09: multi-frame fusion, hdr, denoise, tone and color` |

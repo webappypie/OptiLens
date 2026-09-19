@@ -5,6 +5,9 @@
 #include "../scoring/FrameScorer.hpp"
 #include "../alignment/PyramidalOpticalFlow.hpp"
 #include "../alignment/GhostMaskEstimator.hpp"
+#include "../fusion/TemporalFusionEngine.hpp"
+#include "../fusion/ToneMapper.hpp"
+#include "../fusion/ColorCorrector.hpp"
 
 #define LOG_TAG "OptiLensImagingJni"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -177,6 +180,261 @@ Java_com_webappypie_optilens_core_imaging_alignment_NativeAlignmentBridge_native
     env->ReleasePrimitiveArrayCritical(refYPlane, refData, JNI_ABORT);
 
     return result.motionCoverageFraction;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_webappypie_optilens_core_imaging_fusion_NativeFusionBridge_nativeFuseStack(
+    JNIEnv* env,
+    jclass /* clazz */,
+    jbyteArray refYPlane,
+    jbyteArray refUPlane,
+    jbyteArray refVPlane,
+    jobjectArray candYPlanes,
+    jobjectArray candUPlanes,
+    jobjectArray candVPlanes,
+    jobjectArray ghostMasks,
+    jfloatArray homographies,
+    jfloatArray exposureFactors,
+    jint width,
+    jint height,
+    jint stride,
+    jint uvPixelStride,
+    jint uvRowStride,
+    jboolean enableHdr,
+    jboolean enableDenoise,
+    jfloatArray outFusedY,
+    jfloatArray outFusedU,
+    jfloatArray outFusedV,
+    jfloatArray outMetrics
+) {
+    if (!refYPlane || !outFusedY || !outFusedU || !outFusedV || !outMetrics || width <= 0 || height <= 0) {
+        return JNI_FALSE;
+    }
+
+    const int totalPixels = width * height;
+
+    // 1. Reference frame buffers
+    jbyte* refYData = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(refYPlane, nullptr));
+    if (!refYData) return JNI_FALSE;
+
+    jbyte* refUData = refUPlane ? static_cast<jbyte*>(env->GetPrimitiveArrayCritical(refUPlane, nullptr)) : nullptr;
+    jbyte* refVData = refVPlane ? static_cast<jbyte*>(env->GetPrimitiveArrayCritical(refVPlane, nullptr)) : nullptr;
+
+    const int numCands = candYPlanes ? env->GetArrayLength(candYPlanes) : 0;
+
+    std::vector<jbyteArray> candYArrays(numCands);
+    std::vector<jbyte*> candYData(numCands, nullptr);
+    std::vector<jbyteArray> candUArrays(numCands);
+    std::vector<jbyte*> candUData(numCands, nullptr);
+    std::vector<jbyteArray> candVArrays(numCands);
+    std::vector<jbyte*> candVData(numCands, nullptr);
+    std::vector<jbyteArray> maskArrays(numCands);
+    std::vector<jbyte*> maskData(numCands, nullptr);
+
+    for (int i = 0; i < numCands; ++i) {
+        candYArrays[i] = static_cast<jbyteArray>(env->GetObjectArrayElement(candYPlanes, i));
+        if (candYArrays[i]) {
+            candYData[i] = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(candYArrays[i], nullptr));
+        }
+
+        if (candUPlanes) {
+            candUArrays[i] = static_cast<jbyteArray>(env->GetObjectArrayElement(candUPlanes, i));
+            if (candUArrays[i]) {
+                candUData[i] = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(candUArrays[i], nullptr));
+            }
+        }
+        if (candVPlanes) {
+            candVArrays[i] = static_cast<jbyteArray>(env->GetObjectArrayElement(candVPlanes, i));
+            if (candVArrays[i]) {
+                candVData[i] = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(candVArrays[i], nullptr));
+            }
+        }
+        if (ghostMasks) {
+            maskArrays[i] = static_cast<jbyteArray>(env->GetObjectArrayElement(ghostMasks, i));
+            if (maskArrays[i]) {
+                maskData[i] = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(maskArrays[i], nullptr));
+            }
+        }
+    }
+
+    std::vector<float> flatHomographies(numCands * 9, 0.0f);
+    if (homographies && numCands > 0) {
+        env->GetFloatArrayRegion(homographies, 0, numCands * 9, flatHomographies.data());
+    }
+
+    std::vector<float> flatExposure(1 + numCands, 1.0f);
+    if (exposureFactors) {
+        env->GetFloatArrayRegion(exposureFactors, 0, 1 + numCands, flatExposure.data());
+    }
+
+    // Assemble input frame descriptors
+    std::vector<optilens::FusionFrameInput> frameInputs;
+    frameInputs.reserve(1 + numCands);
+
+    // Anchor reference frame
+    frameInputs.push_back({
+        reinterpret_cast<const uint8_t*>(refYData),
+        reinterpret_cast<const uint8_t*>(refUData),
+        reinterpret_cast<const uint8_t*>(refVData),
+        uvPixelStride,
+        uvRowStride,
+        nullptr, // Reference frame has no ghost mask against itself
+        nullptr, // Identity homography
+        flatExposure[0],
+        true
+    });
+
+    // Candidate frames
+    for (int i = 0; i < numCands; ++i) {
+        if (!candYData[i]) continue;
+        frameInputs.push_back({
+            reinterpret_cast<const uint8_t*>(candYData[i]),
+            reinterpret_cast<const uint8_t*>(candUData[i]),
+            reinterpret_cast<const uint8_t*>(candVData[i]),
+            uvPixelStride,
+            uvRowStride,
+            reinterpret_cast<const uint8_t*>(maskData[i]),
+            flatHomographies.data() + (i * 9),
+            flatExposure[1 + i],
+            false
+        });
+    }
+
+    // Execute multi-frame temporal fusion
+    optilens::FusionOutput output = optilens::TemporalFusionEngine::fuse(
+        frameInputs,
+        width,
+        height,
+        stride,
+        enableHdr == JNI_TRUE,
+        enableDenoise == JNI_TRUE
+    );
+
+    // Release candidate buffers
+    for (int i = 0; i < numCands; ++i) {
+        if (maskData[i]) env->ReleasePrimitiveArrayCritical(maskArrays[i], maskData[i], JNI_ABORT);
+        if (candVData[i]) env->ReleasePrimitiveArrayCritical(candVArrays[i], candVData[i], JNI_ABORT);
+        if (candUData[i]) env->ReleasePrimitiveArrayCritical(candUArrays[i], candUData[i], JNI_ABORT);
+        if (candYData[i]) env->ReleasePrimitiveArrayCritical(candYArrays[i], candYData[i], JNI_ABORT);
+    }
+
+    // Release reference buffers
+    if (refVData) env->ReleasePrimitiveArrayCritical(refVPlane, refVData, JNI_ABORT);
+    if (refUData) env->ReleasePrimitiveArrayCritical(refUPlane, refUData, JNI_ABORT);
+    env->ReleasePrimitiveArrayCritical(refYPlane, refYData, JNI_ABORT);
+
+    // Write back fused outputs
+    env->SetFloatArrayRegion(outFusedY, 0, totalPixels, output.fusedY.data());
+    env->SetFloatArrayRegion(outFusedU, 0, totalPixels, output.fusedU.data());
+    env->SetFloatArrayRegion(outFusedV, 0, totalPixels, output.fusedV.data());
+
+    float metrics[4] = {
+        output.snrGainDb,
+        output.dynamicRangeExtensionEv,
+        output.ghostPixelFraction,
+        static_cast<float>(output.usedFrameCount)
+    };
+    env->SetFloatArrayRegion(outMetrics, 0, 4, metrics);
+
+    return JNI_TRUE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_webappypie_optilens_core_imaging_fusion_NativeFusionBridge_nativeToneMapAndColor(
+    JNIEnv* env,
+    jclass /* clazz */,
+    jfloatArray inY,
+    jfloatArray inU,
+    jfloatArray inV,
+    jint width,
+    jint height,
+    jboolean enableHighlightRollOff,
+    jboolean enableShadowRecovery,
+    jfloat shadowLiftAmount,
+    jfloat highlightKnee,
+    jfloat exposureCompensation,
+    jint profile,
+    jboolean enableAwb,
+    jfloat awbGain,
+    jboolean protectSkinTones,
+    jfloat sharpnessBoost,
+    jbyteArray outY,
+    jbyteArray outU,
+    jbyteArray outV
+) {
+    if (!inY || !inU || !inV || !outY || !outU || !outV || width <= 0 || height <= 0) {
+        return JNI_FALSE;
+    }
+
+    const int totalPixels = width * height;
+
+    jfloat* yData = static_cast<jfloat*>(env->GetPrimitiveArrayCritical(inY, nullptr));
+    if (!yData) return JNI_FALSE;
+    jfloat* uData = static_cast<jfloat*>(env->GetPrimitiveArrayCritical(inU, nullptr));
+    if (!uData) {
+        env->ReleasePrimitiveArrayCritical(inY, yData, JNI_ABORT);
+        return JNI_FALSE;
+    }
+    jfloat* vData = static_cast<jfloat*>(env->GetPrimitiveArrayCritical(inV, nullptr));
+    if (!vData) {
+        env->ReleasePrimitiveArrayCritical(inU, uData, JNI_ABORT);
+        env->ReleasePrimitiveArrayCritical(inY, yData, JNI_ABORT);
+        return JNI_FALSE;
+    }
+
+    jbyte* outYData = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(outY, nullptr));
+    jbyte* outUData = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(outU, nullptr));
+    jbyte* outVData = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(outV, nullptr));
+
+    if (!outYData || !outUData || !outVData) {
+        if (outVData) env->ReleasePrimitiveArrayCritical(outV, outVData, JNI_ABORT);
+        if (outUData) env->ReleasePrimitiveArrayCritical(outU, outUData, JNI_ABORT);
+        if (outYData) env->ReleasePrimitiveArrayCritical(outY, outYData, JNI_ABORT);
+        env->ReleasePrimitiveArrayCritical(inV, vData, JNI_ABORT);
+        env->ReleasePrimitiveArrayCritical(inU, uData, JNI_ABORT);
+        env->ReleasePrimitiveArrayCritical(inY, yData, JNI_ABORT);
+        return JNI_FALSE;
+    }
+
+    // 1. Tone Mapping (Shadow recovery + Highlight roll-off + Filmic S-curve)
+    std::vector<float> toneMappedY(totalPixels);
+    optilens::ToneMapperParams tmParams;
+    tmParams.enableHighlightRollOff = (enableHighlightRollOff == JNI_TRUE);
+    tmParams.enableShadowRecovery = (enableShadowRecovery == JNI_TRUE);
+    tmParams.shadowLiftAmount = shadowLiftAmount;
+    tmParams.highlightKnee = highlightKnee;
+    tmParams.exposureCompensation = exposureCompensation;
+
+    optilens::ToneMapper::mapLuminance(yData, width, height, tmParams, toneMappedY.data());
+
+    // 2. Color Correction (AWB + Profile + Skin Tone Protection + Detail Enhancement)
+    optilens::ColorCorrectionParams ccParams;
+    ccParams.profile = static_cast<optilens::NativeColorProfile>(profile);
+    ccParams.enableAwb = (enableAwb == JNI_TRUE);
+    ccParams.awbGain = awbGain;
+    ccParams.protectSkinTones = (protectSkinTones == JNI_TRUE);
+    ccParams.sharpnessBoost = sharpnessBoost;
+
+    optilens::ColorCorrector::correct(
+        toneMappedY.data(),
+        uData,
+        vData,
+        width,
+        height,
+        ccParams,
+        reinterpret_cast<uint8_t*>(outYData),
+        reinterpret_cast<uint8_t*>(outUData),
+        reinterpret_cast<uint8_t*>(outVData)
+    );
+
+    env->ReleasePrimitiveArrayCritical(outV, outVData, 0);
+    env->ReleasePrimitiveArrayCritical(outU, outUData, 0);
+    env->ReleasePrimitiveArrayCritical(outY, outYData, 0);
+    env->ReleasePrimitiveArrayCritical(inV, vData, JNI_ABORT);
+    env->ReleasePrimitiveArrayCritical(inU, uData, JNI_ABORT);
+    env->ReleasePrimitiveArrayCritical(inY, yData, JNI_ABORT);
+
+    return JNI_TRUE;
 }
 
 } // extern "C"
