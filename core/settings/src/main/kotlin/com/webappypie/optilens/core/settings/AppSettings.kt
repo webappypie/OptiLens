@@ -82,6 +82,15 @@ interface AppSettings {
 
     /** Records an AI enhance session outcome (kept or reverted) anonymously without photo content. */
     suspend fun recordAiEnhanceOutcome(kept: Boolean)
+
+    // ── Super Resolution & AI Zoom ───────────────────────────
+    /** Whether AI Super Resolution is enabled for digital zoom crops. Default: true. */
+    val superResEnabled: Flow<Boolean>
+    suspend fun setSuperResEnabled(enabled: Boolean)
+
+    /** Whether 4x Pro Super Resolution is enabled on supported hardware. Default: false. */
+    val superRes4xProEnabled: Flow<Boolean>
+    suspend fun setSuperRes4xProEnabled(enabled: Boolean)
 }
 
 /** User-visible theme preference. */

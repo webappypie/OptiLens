@@ -40,6 +40,8 @@ class AppSettingsImpl @Inject constructor(
         val IS_PRO                  = booleanPreferencesKey("is_pro")
         val AI_ENHANCE_KEPT_COUNT   = intPreferencesKey("ai_enhance_kept_count")
         val AI_ENHANCE_REVERTED_COUNT = intPreferencesKey("ai_enhance_reverted_count")
+        val SUPER_RES_ENABLED       = booleanPreferencesKey("super_res_enabled")
+        val SUPER_RES_4X_PRO_ENABLED = booleanPreferencesKey("super_res_4x_pro_enabled")
     }
 
     // ── Theme ─────────────────────────────────────────────────────────────
@@ -141,5 +143,16 @@ class AppSettingsImpl @Inject constructor(
                 prefs[Keys.AI_ENHANCE_REVERTED_COUNT] = current + 1
             }
         }
+    }
+
+    // ── Super Resolution & AI Zoom ────────────────────────────────────────
+    override val superResEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.SUPER_RES_ENABLED] ?: true }
+    override suspend fun setSuperResEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.SUPER_RES_ENABLED] = enabled }
+    }
+
+    override val superRes4xProEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.SUPER_RES_4X_PRO_ENABLED] ?: false }
+    override suspend fun setSuperRes4xProEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.SUPER_RES_4X_PRO_ENABLED] = enabled }
     }
 }

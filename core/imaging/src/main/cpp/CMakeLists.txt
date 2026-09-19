@@ -19,6 +19,7 @@ add_library(
     fusion/ColorCorrector.cpp
     portrait/PortraitProcessor.cpp
     enhance/AiEnhanceProcessor.cpp
+    sr/SuperResolutionProcessor.cpp
     jni/OptiLensImagingJni.cpp
 )
 
@@ -30,6 +31,7 @@ target_include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/fusion
     ${CMAKE_CURRENT_SOURCE_DIR}/portrait
     ${CMAKE_CURRENT_SOURCE_DIR}/enhance
+    ${CMAKE_CURRENT_SOURCE_DIR}/sr
     ${CMAKE_CURRENT_SOURCE_DIR}/jni
 )
 

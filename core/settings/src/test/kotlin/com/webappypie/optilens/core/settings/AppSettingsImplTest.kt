@@ -194,5 +194,23 @@ class AppSettingsImplTest {
         assertEquals(0.0f, settings.aiEnhanceKeepRate.first(), 0.001f)
     }
 
+    // ── Super Resolution & AI Zoom ────────────────────────────────────────
+
+    @Test
+    fun `default superResEnabled is true and toggles correctly`() = runTest {
+        val settings = createSettings(backgroundScope)
+        assertTrue(settings.superResEnabled.first())
+        settings.setSuperResEnabled(false)
+        assertFalse(settings.superResEnabled.first())
+    }
+
+    @Test
+    fun `default superRes4xProEnabled is false and toggles correctly`() = runTest {
+        val settings = createSettings(backgroundScope)
+        assertFalse(settings.superRes4xProEnabled.first())
+        settings.setSuperRes4xProEnabled(true)
+        assertTrue(settings.superRes4xProEnabled.first())
+    }
+
 }
 

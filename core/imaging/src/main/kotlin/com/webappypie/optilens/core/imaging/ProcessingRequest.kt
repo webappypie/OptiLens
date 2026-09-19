@@ -24,4 +24,6 @@ data class ProcessingRequest(
     val enhanceLighting: Boolean = true,
     val portraitConfig: com.webappypie.optilens.core.imaging.portrait.PortraitConfig? = null,
     val aiEnhanceConfig: com.webappypie.optilens.core.imaging.enhance.AiEnhanceConfig? = null,
+    val superResConfig: com.webappypie.optilens.core.imaging.sr.SuperResolutionConfig? = null,
+    val targetZoomRatio: Float = 1.0f,
 )

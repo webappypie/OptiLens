@@ -10,6 +10,7 @@
 #include "../fusion/ColorCorrector.hpp"
 #include "../portrait/PortraitProcessor.hpp"
 #include "../enhance/AiEnhanceProcessor.hpp"
+#include "../sr/SuperResolutionProcessor.hpp"
 
 #define LOG_TAG "OptiLensImagingJni"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -602,6 +603,284 @@ Java_com_webappypie_optilens_core_imaging_enhance_NativeAiEnhanceBridge_nativePr
     env->ReleasePrimitiveArrayCritical(yPlane, yData, 0);
 
     return success ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_webappypie_optilens_core_imaging_sr_NativeSuperResolutionBridge_nativeProcessMultiFrameSr(
+    JNIEnv* env,
+    jclass /* clazz */,
+    jbyteArray refYPlane,
+    jbyteArray refUPlane,
+    jbyteArray refVPlane,
+    jobjectArray candYPlanes,
+    jobjectArray candUPlanes,
+    jobjectArray candVPlanes,
+    jobjectArray ghostMasks,
+    jfloatArray subPixelShiftsArray,
+    jint inWidth,
+    jint inHeight,
+    jint inYStride,
+    jint inUvStride,
+    jfloat scaleFactor,
+    jfloat confidenceThreshold,
+    jfloat coringThreshold,
+    jboolean enableHaloSuppression,
+    jfloat residualRejectionThreshold,
+    jfloat sharpnessBoost,
+    jbyteArray outYPlane,
+    jbyteArray outUPlane,
+    jbyteArray outVPlane,
+    jint outWidth,
+    jint outHeight
+) {
+    if (!refYPlane || !outYPlane || inWidth <= 0 || inHeight <= 0 || outWidth <= 0 || outHeight <= 0) {
+        return JNI_FALSE;
+    }
+
+    jbyte* refYData = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(refYPlane, nullptr));
+    if (!refYData) return JNI_FALSE;
+
+    jbyte* refUData = refUPlane ? static_cast<jbyte*>(env->GetPrimitiveArrayCritical(refUPlane, nullptr)) : nullptr;
+    jbyte* refVData = refVPlane ? static_cast<jbyte*>(env->GetPrimitiveArrayCritical(refVPlane, nullptr)) : nullptr;
+
+    const int numCands = candYPlanes ? env->GetArrayLength(candYPlanes) : 0;
+    std::vector<jbyteArray> candYArrays(numCands);
+    std::vector<jbyte*> candYData(numCands, nullptr);
+    std::vector<jbyteArray> candUArrays(numCands);
+    std::vector<jbyte*> candUData(numCands, nullptr);
+    std::vector<jbyteArray> candVArrays(numCands);
+    std::vector<jbyte*> candVData(numCands, nullptr);
+    std::vector<jbyteArray> maskArrays(numCands);
+    std::vector<jbyte*> maskData(numCands, nullptr);
+
+    for (int i = 0; i < numCands; ++i) {
+        candYArrays[i] = static_cast<jbyteArray>(env->GetObjectArrayElement(candYPlanes, i));
+        if (candYArrays[i]) candYData[i] = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(candYArrays[i], nullptr));
+
+        if (candUPlanes) {
+            candUArrays[i] = static_cast<jbyteArray>(env->GetObjectArrayElement(candUPlanes, i));
+            if (candUArrays[i]) candUData[i] = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(candUArrays[i], nullptr));
+        }
+        if (candVPlanes) {
+            candVArrays[i] = static_cast<jbyteArray>(env->GetObjectArrayElement(candVPlanes, i));
+            if (candVArrays[i]) candVData[i] = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(candVArrays[i], nullptr));
+        }
+        if (ghostMasks) {
+            maskArrays[i] = static_cast<jbyteArray>(env->GetObjectArrayElement(ghostMasks, i));
+            if (maskArrays[i]) maskData[i] = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(maskArrays[i], nullptr));
+        }
+    }
+
+    std::vector<std::pair<float, float>> shifts;
+    if (subPixelShiftsArray && numCands > 0) {
+        jsize len = env->GetArrayLength(subPixelShiftsArray);
+        if (len >= numCands * 2) {
+            std::vector<float> shiftFloats(len);
+            env->GetFloatArrayRegion(subPixelShiftsArray, 0, len, shiftFloats.data());
+            for (int i = 0; i < numCands; ++i) {
+                shifts.emplace_back(shiftFloats[i * 2], shiftFloats[i * 2 + 1]);
+            }
+        }
+    }
+
+    jbyte* outYData = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(outYPlane, nullptr));
+    jbyte* outUData = outUPlane ? static_cast<jbyte*>(env->GetPrimitiveArrayCritical(outUPlane, nullptr)) : nullptr;
+    jbyte* outVData = outVPlane ? static_cast<jbyte*>(env->GetPrimitiveArrayCritical(outVPlane, nullptr)) : nullptr;
+
+    if (!outYData) {
+        if (outVData) env->ReleasePrimitiveArrayCritical(outVPlane, outVData, JNI_ABORT);
+        if (outUData) env->ReleasePrimitiveArrayCritical(outUPlane, outUData, JNI_ABORT);
+        for (int i = 0; i < numCands; ++i) {
+            if (maskData[i]) env->ReleasePrimitiveArrayCritical(maskArrays[i], maskData[i], JNI_ABORT);
+            if (candVData[i]) env->ReleasePrimitiveArrayCritical(candVArrays[i], candVData[i], JNI_ABORT);
+            if (candUData[i]) env->ReleasePrimitiveArrayCritical(candUArrays[i], candUData[i], JNI_ABORT);
+            if (candYData[i]) env->ReleasePrimitiveArrayCritical(candYArrays[i], candYData[i], JNI_ABORT);
+        }
+        if (refVData) env->ReleasePrimitiveArrayCritical(refVPlane, refVData, JNI_ABORT);
+        if (refUData) env->ReleasePrimitiveArrayCritical(refUPlane, refUData, JNI_ABORT);
+        env->ReleasePrimitiveArrayCritical(refYPlane, refYData, JNI_ABORT);
+        return JNI_FALSE;
+    }
+
+    std::vector<const uint8_t*> candYList(numCands);
+    std::vector<const uint8_t*> candUList(numCands);
+    std::vector<const uint8_t*> candVList(numCands);
+    std::vector<const uint8_t*> maskList(numCands);
+
+    for (int i = 0; i < numCands; ++i) {
+        candYList[i] = reinterpret_cast<const uint8_t*>(candYData[i]);
+        candUList[i] = reinterpret_cast<const uint8_t*>(candUData[i]);
+        candVList[i] = reinterpret_cast<const uint8_t*>(candVData[i]);
+        maskList[i] = reinterpret_cast<const uint8_t*>(maskData[i]);
+    }
+
+    optilens::SuperResolutionParams params;
+    params.scaleFactor = scaleFactor;
+    params.confidenceThreshold = confidenceThreshold;
+    params.coringThreshold = coringThreshold;
+    params.enableHaloSuppression = (enableHaloSuppression == JNI_TRUE);
+    params.residualRejectionThreshold = residualRejectionThreshold;
+    params.sharpnessBoost = sharpnessBoost;
+
+    bool success = optilens::SuperResolutionProcessor::processMultiFrameSr(
+        reinterpret_cast<const uint8_t*>(refYData),
+        reinterpret_cast<const uint8_t*>(refUData),
+        reinterpret_cast<const uint8_t*>(refVData),
+        candYList,
+        candUList,
+        candVList,
+        maskList,
+        shifts,
+        inWidth,
+        inHeight,
+        inYStride,
+        inUvStride,
+        params,
+        reinterpret_cast<uint8_t*>(outYData),
+        reinterpret_cast<uint8_t*>(outUData),
+        reinterpret_cast<uint8_t*>(outVData),
+        outWidth,
+        outHeight
+    );
+
+    if (outVData) env->ReleasePrimitiveArrayCritical(outVPlane, outVData, 0);
+    if (outUData) env->ReleasePrimitiveArrayCritical(outUPlane, outUData, 0);
+    env->ReleasePrimitiveArrayCritical(outYPlane, outYData, 0);
+
+    for (int i = 0; i < numCands; ++i) {
+        if (maskData[i]) env->ReleasePrimitiveArrayCritical(maskArrays[i], maskData[i], JNI_ABORT);
+        if (candVData[i]) env->ReleasePrimitiveArrayCritical(candVArrays[i], candVData[i], JNI_ABORT);
+        if (candUData[i]) env->ReleasePrimitiveArrayCritical(candUArrays[i], candUData[i], JNI_ABORT);
+        if (candYData[i]) env->ReleasePrimitiveArrayCritical(candYArrays[i], candYData[i], JNI_ABORT);
+    }
+    if (refVData) env->ReleasePrimitiveArrayCritical(refVPlane, refVData, JNI_ABORT);
+    if (refUData) env->ReleasePrimitiveArrayCritical(refUPlane, refUData, JNI_ABORT);
+    env->ReleasePrimitiveArrayCritical(refYPlane, refYData, JNI_ABORT);
+
+    return success ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_webappypie_optilens_core_imaging_sr_NativeSuperResolutionBridge_nativeProcessSingleFrameSr(
+    JNIEnv* env,
+    jclass /* clazz */,
+    jbyteArray inYPlane,
+    jbyteArray inUPlane,
+    jbyteArray inVPlane,
+    jint inWidth,
+    jint inHeight,
+    jint inYStride,
+    jint inUvStride,
+    jfloat scaleFactor,
+    jfloat confidenceThreshold,
+    jfloat coringThreshold,
+    jboolean enableHaloSuppression,
+    jfloat sharpnessBoost,
+    jbyteArray outYPlane,
+    jbyteArray outUPlane,
+    jbyteArray outVPlane,
+    jint outWidth,
+    jint outHeight
+) {
+    if (!inYPlane || !outYPlane || inWidth <= 0 || inHeight <= 0 || outWidth <= 0 || outHeight <= 0) {
+        return JNI_FALSE;
+    }
+
+    jbyte* inYData = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(inYPlane, nullptr));
+    if (!inYData) return JNI_FALSE;
+
+    jbyte* inUData = inUPlane ? static_cast<jbyte*>(env->GetPrimitiveArrayCritical(inUPlane, nullptr)) : nullptr;
+    jbyte* inVData = inVPlane ? static_cast<jbyte*>(env->GetPrimitiveArrayCritical(inVPlane, nullptr)) : nullptr;
+
+    jbyte* outYData = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(outYPlane, nullptr));
+    jbyte* outUData = outUPlane ? static_cast<jbyte*>(env->GetPrimitiveArrayCritical(outUPlane, nullptr)) : nullptr;
+    jbyte* outVData = outVPlane ? static_cast<jbyte*>(env->GetPrimitiveArrayCritical(outVPlane, nullptr)) : nullptr;
+
+    if (!outYData) {
+        if (outVData) env->ReleasePrimitiveArrayCritical(outVPlane, outVData, JNI_ABORT);
+        if (outUData) env->ReleasePrimitiveArrayCritical(outUPlane, outUData, JNI_ABORT);
+        if (inVData) env->ReleasePrimitiveArrayCritical(inVPlane, inVData, JNI_ABORT);
+        if (inUData) env->ReleasePrimitiveArrayCritical(inUPlane, inUData, JNI_ABORT);
+        env->ReleasePrimitiveArrayCritical(inYPlane, inYData, JNI_ABORT);
+        return JNI_FALSE;
+    }
+
+    optilens::SuperResolutionParams params;
+    params.scaleFactor = scaleFactor;
+    params.confidenceThreshold = confidenceThreshold;
+    params.coringThreshold = coringThreshold;
+    params.enableHaloSuppression = (enableHaloSuppression == JNI_TRUE);
+    params.sharpnessBoost = sharpnessBoost;
+
+    bool success = optilens::SuperResolutionProcessor::processSingleFrameSr(
+        reinterpret_cast<const uint8_t*>(inYData),
+        reinterpret_cast<const uint8_t*>(inUData),
+        reinterpret_cast<const uint8_t*>(inVData),
+        inWidth,
+        inHeight,
+        inYStride,
+        inUvStride,
+        params,
+        reinterpret_cast<uint8_t*>(outYData),
+        reinterpret_cast<uint8_t*>(outUData),
+        reinterpret_cast<uint8_t*>(outVData),
+        outWidth,
+        outHeight
+    );
+
+    if (outVData) env->ReleasePrimitiveArrayCritical(outVPlane, outVData, 0);
+    if (outUData) env->ReleasePrimitiveArrayCritical(outUPlane, outUData, 0);
+    env->ReleasePrimitiveArrayCritical(outYPlane, outYData, 0);
+
+    if (inVData) env->ReleasePrimitiveArrayCritical(inVPlane, inVData, JNI_ABORT);
+    if (inUData) env->ReleasePrimitiveArrayCritical(inUPlane, inUData, JNI_ABORT);
+    env->ReleasePrimitiveArrayCritical(inYPlane, inYData, JNI_ABORT);
+
+    return success ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_webappypie_optilens_core_imaging_sr_NativeSuperResolutionBridge_nativeRunBenchmark(
+    JNIEnv* env,
+    jclass /* clazz */,
+    jbyteArray testYPlane,
+    jint width,
+    jint height,
+    jint stride,
+    jfloat scaleFactor,
+    jfloatArray outFlatMetrics
+) {
+    if (!testYPlane || !outFlatMetrics || width <= 0 || height <= 0) {
+        return JNI_FALSE;
+    }
+
+    jbyte* yData = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(testYPlane, nullptr));
+    if (!yData) return JNI_FALSE;
+
+    std::vector<optilens::SrBenchmarkEntry> entries = optilens::SuperResolutionProcessor::runBenchmark(
+        reinterpret_cast<const uint8_t*>(yData),
+        width,
+        height,
+        stride,
+        scaleFactor
+    );
+
+    env->ReleasePrimitiveArrayCritical(testYPlane, yData, JNI_ABORT);
+
+    // Each entry has 6 floats: [methodId, durationMs, psnrDb, ssim, acutanceScore, memoryKb]
+    const int count = static_cast<int>(entries.size());
+    std::vector<float> flat(count * 6);
+    for (int i = 0; i < count; ++i) {
+        flat[i * 6 + 0] = static_cast<float>(entries[i].methodId);
+        flat[i * 6 + 1] = entries[i].durationMs;
+        flat[i * 6 + 2] = entries[i].psnrDb;
+        flat[i * 6 + 3] = entries[i].ssim;
+        flat[i * 6 + 4] = entries[i].acutanceScore;
+        flat[i * 6 + 5] = static_cast<float>(entries[i].memoryBytes / 1024);
+    }
+
+    env->SetFloatArrayRegion(outFlatMetrics, 0, count * 6, flat.data());
+    return JNI_TRUE;
 }
 
 } // extern "C"

@@ -196,10 +196,17 @@ class PhotoReviewViewModelTest {
         override val aiEnhanceKeptCount: Flow<Int> = _keptCount.asStateFlow()
         override val aiEnhanceRevertedCount: Flow<Int> = _revertedCount.asStateFlow()
         override val aiEnhanceKeepRate: Flow<Float> = MutableStateFlow(1.0f)
-
         override suspend fun recordAiEnhanceOutcome(kept: Boolean) {
             keptOutcomes.add(kept)
             if (kept) _keptCount.value += 1 else _revertedCount.value += 1
         }
+
+        private val _superResEnabled = MutableStateFlow(true)
+        override val superResEnabled: Flow<Boolean> = _superResEnabled.asStateFlow()
+        override suspend fun setSuperResEnabled(enabled: Boolean) { _superResEnabled.value = enabled }
+
+        private val _superRes4xProEnabled = MutableStateFlow(false)
+        override val superRes4xProEnabled: Flow<Boolean> = _superRes4xProEnabled.asStateFlow()
+        override suspend fun setSuperRes4xProEnabled(enabled: Boolean) { _superRes4xProEnabled.value = enabled }
     }
 }

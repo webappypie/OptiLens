@@ -21,6 +21,8 @@ class CaptureStrategyEngine {
         quality: QualityMetrics,
         motion: MotionState,
         supportsHdr: Boolean = true,
+        zoomRatio: Float = 1.0f,
+        isOpticalZoom: Boolean = true,
         diagnostics: AnalysisDiagnostics = AnalysisDiagnostics.EMPTY,
     ): CaptureStrategy {
         val isShaking = motion.cameraShakeLevel == CameraShakeLevel.HIGH
@@ -107,7 +109,20 @@ class CaptureStrategyEngine {
             )
         }
 
-        // 7. Standard Single Frame
+        // 7. Digital Zoom Super Resolution Strategy
+        if (zoomRatio >= 1.2f && !isOpticalZoom) {
+            val count = if (motion.cameraShakeLevel == CameraShakeLevel.STABLE) 4 else 2
+            return CaptureStrategy(
+                mode = CaptureStrategyMode.SUPER_RES_ZOOM,
+                recommendedFrameCount = count,
+                exposureEvOffsets = listOf(0),
+                uiHint = CaptureUiHint.AI_ZOOM_ACTIVE,
+                shutterPriority = ShutterPriority.AUTO,
+                diagnostics = diagnostics,
+            )
+        }
+
+        // 8. Standard Single Frame
         return CaptureStrategy(
             mode = CaptureStrategyMode.SINGLE_FRAME,
             recommendedFrameCount = 1,

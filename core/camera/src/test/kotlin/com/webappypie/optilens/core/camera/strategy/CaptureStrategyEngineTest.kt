@@ -108,4 +108,46 @@ class CaptureStrategyEngineTest {
         assertEquals(CaptureStrategyMode.ACTION_FREEZE, strategy.mode)
         assertEquals(ShutterPriority.FAST_ACTION, strategy.shutterPriority)
     }
+
+    @Test
+    fun decideStrategy_digitalZoom_recommendsSuperResZoom() {
+        val motion = MotionState(
+            cameraShakeLevel = CameraShakeLevel.STABLE,
+        )
+        val scene = SceneClassification(primaryScene = SceneType.GENERAL)
+        val quality = QualityMetrics(luminance = 100f)
+
+        val strategy = engine.decideStrategy(
+            scene = scene,
+            quality = quality,
+            motion = motion,
+            zoomRatio = 2.0f,
+            isOpticalZoom = false,
+        )
+
+        assertEquals(CaptureStrategyMode.SUPER_RES_ZOOM, strategy.mode)
+        assertEquals(4, strategy.recommendedFrameCount)
+        assertEquals(CaptureUiHint.AI_ZOOM_ACTIVE, strategy.uiHint)
+    }
+
+    @Test
+    fun decideStrategy_pureOpticalZoom_recommendsStandardSingleFrame() {
+        val motion = MotionState(
+            cameraShakeLevel = CameraShakeLevel.STABLE,
+        )
+        val scene = SceneClassification(primaryScene = SceneType.GENERAL)
+        val quality = QualityMetrics(luminance = 100f)
+
+        val strategy = engine.decideStrategy(
+            scene = scene,
+            quality = quality,
+            motion = motion,
+            zoomRatio = 2.0f,
+            isOpticalZoom = true,
+        )
+
+        assertEquals(CaptureStrategyMode.SINGLE_FRAME, strategy.mode)
+        assertEquals(1, strategy.recommendedFrameCount)
+        assertNull(strategy.uiHint)
+    }
 }

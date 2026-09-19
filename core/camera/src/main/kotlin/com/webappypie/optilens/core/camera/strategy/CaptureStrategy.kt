@@ -9,7 +9,8 @@ enum class CaptureStrategyMode {
     NIGHT_STACK,
     PORTRAIT_DEPTH,
     DOCUMENT_ENHANCE,
-    ACTION_FREEZE;
+    ACTION_FREEZE,
+    SUPER_RES_ZOOM;
 }
 
 /**
@@ -21,6 +22,7 @@ enum class CaptureUiHint(val message: String) {
     HDR_SUGGESTED("HDR recommended"),
     BACKLIGHT_DETECTED("Backlight detected"),
     DOCUMENT_DETECTED("Document detected"),
+    AI_ZOOM_ACTIVE("AI Zoom Active"),
     SCENE_CHIP("");
 }
 

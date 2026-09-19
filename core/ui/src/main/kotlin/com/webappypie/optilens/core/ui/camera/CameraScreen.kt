@@ -775,16 +775,42 @@ fun TruthfulZoomSelector(
     modifier: Modifier = Modifier,
 ) {
     val overlayColors = OptiLensTheme.overlayColors
+    val isOpticalCurrent = zoomStops.any { it.isOptical && kotlin.math.abs(it.ratio - currentZoom) < 0.15f }
+    val isAiZoomActive = currentZoom >= 1.2f && !isOpticalCurrent
 
-    Row(
-        modifier = modifier
-            .clip(CircleShape)
-            .background(overlayColors.controlSurface)
-            .border(1.dp, overlayColors.controlBorder, CircleShape)
-            .padding(horizontal = 4.dp, vertical = 2.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier,
     ) {
+        if (isAiZoomActive) {
+            Box(
+                modifier = Modifier
+                    .padding(bottom = 2.dp)
+                    .clip(CircleShape)
+                    .background(overlayColors.scrimBackground)
+                    .border(1.dp, overlayColors.activeAccent.copy(alpha = 0.6f), CircleShape)
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
+            ) {
+                Text(
+                    text = "AI Zoom ${String.format(java.util.Locale.US, "%.1fx", currentZoom)}",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    ),
+                    color = overlayColors.activeAccent,
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .clip(CircleShape)
+                .background(overlayColors.controlSurface)
+                .border(1.dp, overlayColors.controlBorder, CircleShape)
+                .padding(horizontal = 4.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
         zoomStops.forEach { stop ->
             val isSelected = (kotlin.math.abs(currentZoom - stop.ratio) < 0.15f)
 
@@ -818,6 +844,7 @@ fun TruthfulZoomSelector(
             }
         }
     }
+}
 }
 
 /**
