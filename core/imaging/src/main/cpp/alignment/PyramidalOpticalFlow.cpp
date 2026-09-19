@@ -105,10 +105,8 @@ PyramidalOpticalFlow::Point2D PyramidalOpticalFlow::coarseShift(
 
     for (int dx = -searchRange; dx <= searchRange; ++dx) {
         int64_t diff = 0;
-        int count = 0;
         for (int x = searchRange; x < w2 - searchRange; ++x) {
             diff += std::abs(projXRef[x] - projXCand[x + dx]);
-            count++;
         }
         if (minDiffX == -1 || diff < minDiffX) {
             minDiffX = diff;
@@ -121,10 +119,8 @@ PyramidalOpticalFlow::Point2D PyramidalOpticalFlow::coarseShift(
 
     for (int dy = -searchRange; dy <= searchRange; ++dy) {
         int64_t diff = 0;
-        int count = 0;
         for (int y = searchRange; y < h2 - searchRange; ++y) {
             diff += std::abs(projYRef[y] - projYCand[y + dy]);
-            count++;
         }
         if (minDiffY == -1 || diff < minDiffY) {
             minDiffY = diff;
@@ -229,6 +225,8 @@ AlignmentTransform PyramidalOpticalFlow::fitAffineRANSAC(
     int width,
     int height
 ) {
+    (void)width;
+    (void)height;
     AlignmentTransform result;
     // Default identity matrix
     result.h[0] = 1.0f; result.h[1] = 0.0f; result.h[2] = 0.0f;

@@ -126,7 +126,6 @@ GhostMaskResult GhostMaskEstimator::computeGhostMask(
     }
 
     std::vector<uint8_t> rawMask(width * height, 0);
-    int movingPixelCount = 0;
     const int totalPixels = width * height;
 
     const float h0 = homography[0], h1 = homography[1], h2 = homography[2];
@@ -144,7 +143,6 @@ GhostMaskResult GhostMaskEstimator::computeGhostMask(
             // If outside boundaries, mark as non-aligned boundary (moving/ghost)
             if (cx < 0 || cx >= width - 1 || cy < 0 || cy >= height - 1) {
                 mRow[x] = 255;
-                movingPixelCount++;
                 continue;
             }
 
@@ -154,7 +152,6 @@ GhostMaskResult GhostMaskEstimator::computeGhostMask(
             const int diff = std::abs(static_cast<int>(candVal) - static_cast<int>(refVal));
             if (diff > residualThreshold) {
                 mRow[x] = 255;
-                movingPixelCount++;
             } else {
                 mRow[x] = 0;
             }
