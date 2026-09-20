@@ -122,6 +122,9 @@ bool SuperResolutionProcessor::processMultiFrameSr(
         return false;
     }
 
+    (void)candUList;
+    (void)candVList;
+
     const float scale = params.scaleFactor;
     const int totalOutPixels = outWidth * outHeight;
 

@@ -164,8 +164,11 @@ data class DynamicRemoteQuirk(
  */
 @Singleton
 class DeviceQuirkRegistry @Inject constructor(
-    private val remoteConfigRepository: RemoteConfigRepository? = null,
+    private val remoteConfigRepository: RemoteConfigRepository,
 ) {
+
+    // Secondary constructor for testing or standalone usage without DI
+    constructor() : this(com.webappypie.optilens.core.common.config.LocalRemoteConfigRepository())
 
     companion object {
         val ALL_KNOWN_QUIRKS: Map<String, DeviceQuirk> = listOf(
@@ -281,21 +284,19 @@ class DeviceQuirkRegistry @Inject constructor(
         // Deduplicate locally detected quirks
         val quirkList = activeQuirks.distinctBy { it.id }.toMutableList()
 
-        // 12. Apply Remote Config emergency additions and suppressions if repository is available
-        remoteConfigRepository?.let { repo ->
-            val baseIds = quirkList.map { it.id }
-            val effectiveIds = repo.getEffectiveQuirks(baseIds, model)
+        // 12. Apply Remote Config emergency additions and suppressions
+        val baseIds = quirkList.map { it.id }
+        val effectiveIds = remoteConfigRepository.getEffectiveQuirks(baseIds, model)
 
-            // Remove quirks suppressed by Remote Config
-            quirkList.retainAll { it.id in effectiveIds }
+        // Remove quirks suppressed by Remote Config
+        quirkList.retainAll { it.id in effectiveIds }
 
-            // Add emergency quirks injected by Remote Config
-            val existingIds = quirkList.map { it.id }.toSet()
-            for (id in effectiveIds) {
-                if (id !in existingIds) {
-                    val knownQuirk = ALL_KNOWN_QUIRKS[id] ?: DynamicRemoteQuirk(id)
-                    quirkList.add(knownQuirk)
-                }
+        // Add emergency quirks injected by Remote Config
+        val existingIds = quirkList.map { it.id }.toSet()
+        for (id in effectiveIds) {
+            if (id !in existingIds) {
+                val knownQuirk = ALL_KNOWN_QUIRKS[id] ?: DynamicRemoteQuirk(id)
+                quirkList.add(knownQuirk)
             }
         }
 

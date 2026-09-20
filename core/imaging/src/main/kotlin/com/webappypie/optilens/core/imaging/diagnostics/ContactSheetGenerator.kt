@@ -95,7 +95,24 @@ class ContactSheetGenerator {
     }
 
     private fun encodeGrayscaleJpeg(yData: ByteArray, width: Int, height: Int): ByteArray {
-        // Attempt desktop ImageIO if available
+        // 1. Attempt Android Bitmap compression if running on Android runtime
+        try {
+            val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+            val pixels = IntArray(width * height)
+            for (i in 0 until width * height) {
+                val lum = yData[i].toInt() and 0xFF
+                pixels[i] = (0xFF shl 24) or (lum shl 16) or (lum shl 8) or lum
+            }
+            bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
+            val stream = ByteArrayOutputStream()
+            val success = bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, stream)
+            bitmap.recycle()
+            if (success && stream.size() > 0) return stream.toByteArray()
+        } catch (_: Throwable) {
+            // Fallback for JVM host testing
+        }
+
+        // 2. Attempt desktop ImageIO if available on host JVM
         try {
             val img = java.awt.image.BufferedImage(width, height, java.awt.image.BufferedImage.TYPE_BYTE_GRAY)
             val raster = img.raster
