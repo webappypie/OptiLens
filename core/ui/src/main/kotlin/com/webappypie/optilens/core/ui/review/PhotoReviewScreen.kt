@@ -27,6 +27,7 @@ import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -61,6 +62,7 @@ import com.webappypie.optilens.core.imaging.enhance.AiEnhanceStage
 fun PhotoReviewScreen(
     photoUri: String,
     onNavigateBack: () -> Unit,
+    onNavigateToAiTools: (String) -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: PhotoReviewViewModel = hiltViewModel(),
 ) {
@@ -211,28 +213,56 @@ fun PhotoReviewScreen(
                         trackColor = Color.White.copy(alpha = 0.2f),
                     )
                 } else if (!uiState.isEnhanced) {
-                    // One-Tap AI Enhance Action
-                    Button(
-                        onClick = { viewModel.enhance() },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp),
-                        shape = RoundedCornerShape(26.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                        ),
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.AutoAwesome,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp),
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "One-Tap AI Enhance",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                        )
+                        Button(
+                            onClick = { viewModel.enhance() },
+                            modifier = Modifier
+                                .weight(1.1f)
+                                .height(52.dp),
+                            shape = RoundedCornerShape(26.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                            ),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AutoAwesome,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = Color.Black,
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "AI Enhance",
+                                color = Color.Black,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = { onNavigateToAiTools(photoUri) },
+                            modifier = Modifier
+                                .weight(0.9f)
+                                .height(52.dp),
+                            shape = RoundedCornerShape(26.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Tune,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = Color.White,
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "AI Tools",
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
                     }
                 } else {
                     // Enhanced mode actions: Revert and Save Copy

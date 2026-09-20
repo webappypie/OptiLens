@@ -69,7 +69,7 @@ object LocalFeatureFlags : FeatureFlags {
     override val superResolutionEnabled: Boolean            = true
     override val aiEnhanceEnabled: Boolean                  = true
     override val proRawEnabled: Boolean                     = true
-    override val advancedAiToolsEnabled: Boolean            = false  // gated until Phase 18
+    override val advancedAiToolsEnabled: Boolean            = true   // Phase 18 Advanced AI Tools active
     override val diagnosticsEnabled: Boolean                = false  // enabled per-build via BuildInfo
 
     override val adsEnabled: Boolean                        = true

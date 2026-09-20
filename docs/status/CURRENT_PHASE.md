@@ -2,11 +2,11 @@
 
 | Field | Value |
 |---|---|
-| **Current Phase** | Phase 17 — Firebase Remote Config, Billing and Safe Ads |
+| **Current Phase** | Phase 18 — Advanced AI Tools |
 | **Status** | ✅ PASS |
 | **Completed** | 2026-09-21 |
-| **Prompt file** | `prompts/PHASE_17_MONETIZATION_REMOTE_CONFIG.md` |
-| **Next phase** | Phase 18 — Advanced AI Tools (`prompts/PHASE_18_ADVANCED_AI_TOOLS.md`) |
+| **Prompt file** | `prompts/PHASE_18_ADVANCED_AI_TOOLS.md` |
+| **Next phase** | Phase 19 — Performance, Thermal, and Baseline Profiles (`prompts/PHASE_19_PERFORMANCE_THERMAL_BASELINE_PROFILES.md`) |
 
 ## Completed Phases
 
@@ -30,3 +30,4 @@
 | 15 | Gallery, Storage and Existing Photos | ✅ PASS | `phase-15: gallery media browser, scoped storage, photo picker, and detail inspection` |
 | 16 | Specialized Modes and Best Shot | ✅ PASS | `phase-16: specialized modes, best shot ranking, pet, food, document and lens intelligence` |
 | 17 | Firebase Remote Config, Billing and Safe Ads | ✅ PASS | `phase-17: remote config, play billing, safe ads and entitlement repository` |
+| 18 | Advanced AI Tools | ✅ PASS | `phase-18: advanced ai tools framework, deblur, inpainting, upscale and restoration` |
