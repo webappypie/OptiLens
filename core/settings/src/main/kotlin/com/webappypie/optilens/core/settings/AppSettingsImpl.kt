@@ -42,6 +42,12 @@ class AppSettingsImpl @Inject constructor(
         val AI_ENHANCE_REVERTED_COUNT = intPreferencesKey("ai_enhance_reverted_count")
         val SUPER_RES_ENABLED       = booleanPreferencesKey("super_res_enabled")
         val SUPER_RES_4X_PRO_ENABLED = booleanPreferencesKey("super_res_4x_pro_enabled")
+        val RAW_CAPTURE_ENABLED     = booleanPreferencesKey("raw_capture_enabled")
+        val RAW_CAPTURE_FORMAT      = stringPreferencesKey("raw_capture_format")
+        val RAW_COMPANION_JPEG      = booleanPreferencesKey("raw_companion_jpeg")
+        val FOCUS_PEAKING_ENABLED   = booleanPreferencesKey("focus_peaking_enabled")
+        val EXPOSURE_ZEBRA_ENABLED  = booleanPreferencesKey("exposure_zebra_enabled")
+        val HISTOGRAM_MODE          = stringPreferencesKey("histogram_mode")
     }
 
     // ── Theme ─────────────────────────────────────────────────────────────
@@ -154,5 +160,42 @@ class AppSettingsImpl @Inject constructor(
     override val superRes4xProEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.SUPER_RES_4X_PRO_ENABLED] ?: false }
     override suspend fun setSuperRes4xProEnabled(enabled: Boolean) {
         dataStore.edit { it[Keys.SUPER_RES_4X_PRO_ENABLED] = enabled }
+    }
+
+    // ── Pro & RAW / DNG ───────────────────────────────────────────────────
+    override val rawCaptureEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.RAW_CAPTURE_ENABLED] ?: false }
+    override suspend fun setRawCaptureEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.RAW_CAPTURE_ENABLED] = enabled }
+    }
+
+    override val rawCaptureFormat: Flow<RawCaptureFormatSetting> = dataStore.data.map { prefs ->
+        prefs[Keys.RAW_CAPTURE_FORMAT]?.let { runCatching { RawCaptureFormatSetting.valueOf(it) }.getOrNull() }
+            ?: RawCaptureFormatSetting.RAW_SENSOR
+    }
+    override suspend fun setRawCaptureFormat(format: RawCaptureFormatSetting) {
+        dataStore.edit { it[Keys.RAW_CAPTURE_FORMAT] = format.name }
+    }
+
+    override val rawCompanionJpegEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.RAW_COMPANION_JPEG] ?: true }
+    override suspend fun setRawCompanionJpegEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.RAW_COMPANION_JPEG] = enabled }
+    }
+
+    override val focusPeakingEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.FOCUS_PEAKING_ENABLED] ?: false }
+    override suspend fun setFocusPeakingEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.FOCUS_PEAKING_ENABLED] = enabled }
+    }
+
+    override val exposureZebraEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.EXPOSURE_ZEBRA_ENABLED] ?: false }
+    override suspend fun setExposureZebraEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.EXPOSURE_ZEBRA_ENABLED] = enabled }
+    }
+
+    override val histogramMode: Flow<HistogramModeSetting> = dataStore.data.map { prefs ->
+        prefs[Keys.HISTOGRAM_MODE]?.let { runCatching { HistogramModeSetting.valueOf(it) }.getOrNull() }
+            ?: HistogramModeSetting.LUMINANCE
+    }
+    override suspend fun setHistogramMode(mode: HistogramModeSetting) {
+        dataStore.edit { it[Keys.HISTOGRAM_MODE] = mode.name }
     }
 }

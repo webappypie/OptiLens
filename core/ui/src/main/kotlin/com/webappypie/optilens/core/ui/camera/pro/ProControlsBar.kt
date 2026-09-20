@@ -41,12 +41,14 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.webappypie.optilens.core.camera.model.HistogramMode
 import com.webappypie.optilens.core.camera.model.ProCameraState
+import com.webappypie.optilens.core.camera.model.RawCaptureFormat
 import com.webappypie.optilens.core.camera.model.WhiteBalanceMode
 import com.webappypie.optilens.core.ui.theme.OptiLensTheme
 
 enum class ProControlTab {
-    NONE, ISO, SHUTTER, EV, FOCUS, WB
+    NONE, ISO, SHUTTER, EV, FOCUS, WB, RAW
 }
 
 /**
@@ -54,7 +56,9 @@ enum class ProControlTab {
  *
  * Implements:
  * - Direct ISO, Shutter, Focus, WB, and EV adjustments.
- * - Hardware capability detection: unsupported controls are explicitly disabled with visual badges.
+ * - RAW/DNG format selector and companion JPEG toggle.
+ * - Viewfinder assistance quick toggles: Focus Peaking, Exposure Zebra stripes, and Histogram mode.
+ * - Hardware capability detection: unsupported controls are explicitly disabled with visual badges and guidance messages.
  * - One-tap AUTO Reset button to immediately restore full 3A automation.
  */
 @Composable
@@ -66,6 +70,12 @@ fun ProControlsBar(
     onWhiteBalanceChanged: (WhiteBalanceMode) -> Unit,
     onEvChanged: (Int) -> Unit,
     onResetToAuto: () -> Unit,
+    onRawEnabledToggled: ((Boolean) -> Unit)? = null,
+    onRawFormatChanged: ((RawCaptureFormat) -> Unit)? = null,
+    onSaveCompanionJpegToggled: ((Boolean) -> Unit)? = null,
+    onFocusPeakingToggled: (() -> Unit)? = null,
+    onExposureZebraToggled: (() -> Unit)? = null,
+    onHistogramModeChanged: ((HistogramMode) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     var activeTab by remember { mutableStateOf(ProControlTab.NONE) }
@@ -97,10 +107,12 @@ fun ProControlsBar(
                     ProControlTab.ISO -> IsoControlSlider(
                         currentIso = proState.iso,
                         range = proState.isoRange ?: 50..3200,
+                        isSupported = proState.isIsoManualSupported,
                         onIsoSelected = onIsoChanged,
                     )
                     ProControlTab.SHUTTER -> ShutterControlPicker(
                         currentNanos = proState.shutterSpeedNanos,
+                        isSupported = proState.isShutterManualSupported,
                         onShutterSelected = onShutterSpeedChanged,
                     )
                     ProControlTab.EV -> EvControlSlider(
@@ -111,11 +123,23 @@ fun ProControlsBar(
                     )
                     ProControlTab.FOCUS -> FocusControlSlider(
                         currentFocus = proState.focusDistanceDiopters,
+                        isSupported = proState.isFocusManualSupported,
                         onFocusSelected = onFocusDistanceChanged,
                     )
                     ProControlTab.WB -> WhiteBalanceModeRow(
                         currentMode = proState.whiteBalanceMode,
                         onModeSelected = onWhiteBalanceChanged,
+                    )
+                    ProControlTab.RAW -> RawControlPicker(
+                        isRawSupported = proState.isRawSupported,
+                        isRawEnabled = proState.isRawEnabled,
+                        currentFormat = proState.rawFormat,
+                        companionJpeg = proState.saveCompanionJpeg,
+                        supportsRaw10 = proState.supportsRaw10,
+                        supportsRaw12 = proState.supportsRaw12,
+                        onRawToggled = { onRawEnabledToggled?.invoke(it) },
+                        onFormatSelected = { onRawFormatChanged?.invoke(it) },
+                        onCompanionToggled = { onSaveCompanionJpegToggled?.invoke(it) },
                     )
                     ProControlTab.NONE -> Unit
                 }
@@ -127,7 +151,7 @@ fun ProControlsBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.SpaceEvenly,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // ISO Tab
@@ -170,7 +194,7 @@ fun ProControlsBar(
             // Focus Tab
             ProTabChip(
                 label = "FOCUS",
-                value = if (proState.focusDistanceDiopters != null) String.format(java.util.Locale.US, "%.1f", proState.focusDistanceDiopters) else "AF",
+                value = if (!proState.isFocusManualSupported) "FIXED" else if (proState.focusDistanceDiopters != null) String.format(java.util.Locale.US, "%.1f", proState.focusDistanceDiopters) else "AF",
                 isActive = activeTab == ProControlTab.FOCUS,
                 isManual = proState.focusDistanceDiopters != null,
                 isEnabled = proState.isFocusManualSupported,
@@ -188,6 +212,56 @@ fun ProControlsBar(
                 isEnabled = proState.isWhiteBalanceSupported,
                 onClick = {
                     activeTab = if (activeTab == ProControlTab.WB) ProControlTab.NONE else ProControlTab.WB
+                },
+            )
+
+            // RAW Tab
+            val rawValue = when {
+                !proState.isRawSupported -> "N/A"
+                !proState.isRawEnabled -> "OFF"
+                proState.saveCompanionJpeg -> "RAW+JPG"
+                else -> "RAW"
+            }
+            ProTabChip(
+                label = "FORMAT",
+                value = rawValue,
+                isActive = activeTab == ProControlTab.RAW,
+                isManual = proState.isRawEnabled,
+                isEnabled = proState.isRawSupported,
+                onClick = {
+                    activeTab = if (activeTab == ProControlTab.RAW) ProControlTab.NONE else ProControlTab.RAW
+                },
+            )
+
+            // Visual Assistance: Focus Peaking Quick Toggle
+            ProTabChip(
+                label = "PEAK",
+                value = if (proState.focusPeakingEnabled) "ON" else "OFF",
+                isActive = false,
+                isManual = proState.focusPeakingEnabled,
+                isEnabled = true,
+                onClick = { onFocusPeakingToggled?.invoke() },
+            )
+
+            // Visual Assistance: Exposure Zebra Quick Toggle
+            ProTabChip(
+                label = "ZEBRA",
+                value = if (proState.exposureZebraEnabled) "ON" else "OFF",
+                isActive = false,
+                isManual = proState.exposureZebraEnabled,
+                isEnabled = true,
+                onClick = { onExposureZebraToggled?.invoke() },
+            )
+
+            // Visual Assistance: Histogram Mode Cycle
+            ProTabChip(
+                label = "HIST",
+                value = proState.histogramMode.label,
+                isActive = false,
+                isManual = false,
+                isEnabled = true,
+                onClick = {
+                    onHistogramModeChanged?.invoke(proState.histogramMode.next())
                 },
             )
 
@@ -275,9 +349,25 @@ private fun ProTabChip(
 private fun IsoControlSlider(
     currentIso: Int?,
     range: ClosedRange<Int>,
+    isSupported: Boolean = true,
     onIsoSelected: (Int?) -> Unit,
 ) {
     val overlayColors = OptiLensTheme.overlayColors
+    if (!isSupported) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Auto-only exposure · Manual ISO unavailable",
+                fontSize = 11.sp,
+                color = overlayColors.controlOnSurface.copy(alpha = 0.6f),
+                fontFamily = FontFamily.Monospace,
+            )
+        }
+        return
+    }
     val displayVal = currentIso ?: range.start
 
     Row(
@@ -320,9 +410,26 @@ private fun IsoControlSlider(
 @Composable
 private fun ShutterControlPicker(
     currentNanos: Long?,
+    isSupported: Boolean = true,
     onShutterSelected: (Long?) -> Unit,
 ) {
     val overlayColors = OptiLensTheme.overlayColors
+    if (!isSupported) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Auto-only exposure · Manual Shutter unavailable",
+                fontSize = 11.sp,
+                color = overlayColors.controlOnSurface.copy(alpha = 0.6f),
+                fontFamily = FontFamily.Monospace,
+            )
+        }
+        return
+    }
+
     // Standard stepped shutter speeds (nanoseconds)
     val shutterSteps = listOf(
         null, // AUTO
@@ -357,7 +464,7 @@ private fun ShutterControlPicker(
                     .clip(RoundedCornerShape(4.dp))
                     .background(if (isSelected) overlayColors.controlSurfaceActive else Color.Transparent)
                     .border(0.5.dp, if (isSelected) overlayColors.activeAccent else overlayColors.controlBorder, RoundedCornerShape(4.dp))
-                .clickable { onShutterSelected(stepNanos) }
+                    .clickable { onShutterSelected(stepNanos) }
                     .padding(horizontal = 8.dp, vertical = 4.dp),
             ) {
                 Text(
@@ -423,9 +530,25 @@ private fun EvControlSlider(
 @Composable
 private fun FocusControlSlider(
     currentFocus: Float?,
+    isSupported: Boolean = true,
     onFocusSelected: (Float?) -> Unit,
 ) {
     val overlayColors = OptiLensTheme.overlayColors
+    if (!isSupported) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Fixed-focus lens · Manual focus unavailable",
+                fontSize = 11.sp,
+                color = overlayColors.controlOnSurface.copy(alpha = 0.6f),
+                fontFamily = FontFamily.Monospace,
+            )
+        }
+        return
+    }
     val displayVal = currentFocus ?: 0f
 
     Row(
@@ -494,6 +617,153 @@ private fun WhiteBalanceModeRow(
                     fontSize = 11.sp,
                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                     color = if (isSelected) overlayColors.controlOnSurfaceActive else overlayColors.controlOnSurface,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RawControlPicker(
+    isRawSupported: Boolean,
+    isRawEnabled: Boolean,
+    currentFormat: RawCaptureFormat,
+    companionJpeg: Boolean,
+    supportsRaw10: Boolean,
+    supportsRaw12: Boolean,
+    onRawToggled: (Boolean) -> Unit,
+    onFormatSelected: (RawCaptureFormat) -> Unit,
+    onCompanionToggled: (Boolean) -> Unit,
+) {
+    val overlayColors = OptiLensTheme.overlayColors
+
+    if (!isRawSupported) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "RAW capture unsupported on this hardware sensor",
+                fontSize = 11.sp,
+                color = overlayColors.controlOnSurface.copy(alpha = 0.6f),
+                fontFamily = FontFamily.Monospace,
+            )
+        }
+        return
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // JPEG ONLY chip (turns RAW off)
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(4.dp))
+                .background(if (!isRawEnabled) overlayColors.controlSurfaceActive else Color.Transparent)
+                .border(0.5.dp, if (!isRawEnabled) overlayColors.activeAccent else overlayColors.controlBorder, RoundedCornerShape(4.dp))
+                .clickable { onRawToggled(false) }
+                .padding(horizontal = 10.dp, vertical = 5.dp),
+        ) {
+            Text(
+                text = "JPEG ONLY",
+                fontSize = 11.sp,
+                fontWeight = if (!isRawEnabled) FontWeight.Bold else FontWeight.Normal,
+                fontFamily = FontFamily.Monospace,
+                color = if (!isRawEnabled) overlayColors.controlOnSurfaceActive else overlayColors.controlOnSurface,
+            )
+        }
+
+        // RAW DNG chip
+        val isDngSelected = isRawEnabled && currentFormat == RawCaptureFormat.RAW_SENSOR
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(4.dp))
+                .background(if (isDngSelected) overlayColors.controlSurfaceActive else Color.Transparent)
+                .border(0.5.dp, if (isDngSelected) overlayColors.activeAccent else overlayColors.controlBorder, RoundedCornerShape(4.dp))
+                .clickable {
+                    onRawToggled(true)
+                    onFormatSelected(RawCaptureFormat.RAW_SENSOR)
+                }
+                .padding(horizontal = 10.dp, vertical = 5.dp),
+        ) {
+            Text(
+                text = "RAW (DNG)",
+                fontSize = 11.sp,
+                fontWeight = if (isDngSelected) FontWeight.Bold else FontWeight.Normal,
+                fontFamily = FontFamily.Monospace,
+                color = if (isDngSelected) overlayColors.controlOnSurfaceActive else overlayColors.controlOnSurface,
+            )
+        }
+
+        if (supportsRaw10) {
+            val isRaw10Selected = isRawEnabled && currentFormat == RawCaptureFormat.RAW10
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(if (isRaw10Selected) overlayColors.controlSurfaceActive else Color.Transparent)
+                    .border(0.5.dp, if (isRaw10Selected) overlayColors.activeAccent else overlayColors.controlBorder, RoundedCornerShape(4.dp))
+                    .clickable {
+                        onRawToggled(true)
+                        onFormatSelected(RawCaptureFormat.RAW10)
+                    }
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+            ) {
+                Text(
+                    text = "RAW10",
+                    fontSize = 11.sp,
+                    fontWeight = if (isRaw10Selected) FontWeight.Bold else FontWeight.Normal,
+                    fontFamily = FontFamily.Monospace,
+                    color = if (isRaw10Selected) overlayColors.controlOnSurfaceActive else overlayColors.controlOnSurface,
+                )
+            }
+        }
+
+        if (supportsRaw12) {
+            val isRaw12Selected = isRawEnabled && currentFormat == RawCaptureFormat.RAW12
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(if (isRaw12Selected) overlayColors.controlSurfaceActive else Color.Transparent)
+                    .border(0.5.dp, if (isRaw12Selected) overlayColors.activeAccent else overlayColors.controlBorder, RoundedCornerShape(4.dp))
+                    .clickable {
+                        onRawToggled(true)
+                        onFormatSelected(RawCaptureFormat.RAW12)
+                    }
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+            ) {
+                Text(
+                    text = "RAW12",
+                    fontSize = 11.sp,
+                    fontWeight = if (isRaw12Selected) FontWeight.Bold else FontWeight.Normal,
+                    fontFamily = FontFamily.Monospace,
+                    color = if (isRaw12Selected) overlayColors.controlOnSurfaceActive else overlayColors.controlOnSurface,
+                )
+            }
+        }
+
+        if (isRawEnabled) {
+            Spacer(modifier = Modifier.width(4.dp))
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(if (companionJpeg) overlayColors.activeAccent.copy(alpha = 0.2f) else Color.Transparent)
+                    .border(0.5.dp, if (companionJpeg) overlayColors.activeAccent else overlayColors.controlBorder, RoundedCornerShape(4.dp))
+                    .clickable { onCompanionToggled(!companionJpeg) }
+                    .padding(horizontal = 8.dp, vertical = 5.dp),
+            ) {
+                Text(
+                    text = if (companionJpeg) "+ JPEG COMPANION" else "RAW ONLY",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = FontFamily.Monospace,
+                    color = if (companionJpeg) overlayColors.activeAccent else overlayColors.controlOnSurface.copy(alpha = 0.7f),
                 )
             }
         }

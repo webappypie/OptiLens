@@ -56,4 +56,7 @@ data class CapturedPhoto(
     val thumbnail: Bitmap? = null,
     val orientationDegrees: Int = 0,
     val fileSizeBytes: Long = 0L,
+    val companionUri: String? = null,
+    val isRaw: Boolean = false,
+    val rawFormat: RawCaptureFormat? = null,
 )

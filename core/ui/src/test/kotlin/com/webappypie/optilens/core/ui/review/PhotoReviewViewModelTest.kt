@@ -7,6 +7,8 @@ import com.webappypie.optilens.core.imaging.enhance.NativeAiEnhanceEngine
 import com.webappypie.optilens.core.logging.NoOpLogger
 import com.webappypie.optilens.core.settings.AppSettings
 import com.webappypie.optilens.core.settings.ColorProfile
+import com.webappypie.optilens.core.settings.HistogramModeSetting
+import com.webappypie.optilens.core.settings.RawCaptureFormatSetting
 import com.webappypie.optilens.core.settings.ThemeMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -208,5 +210,23 @@ class PhotoReviewViewModelTest {
         private val _superRes4xProEnabled = MutableStateFlow(false)
         override val superRes4xProEnabled: Flow<Boolean> = _superRes4xProEnabled.asStateFlow()
         override suspend fun setSuperRes4xProEnabled(enabled: Boolean) { _superRes4xProEnabled.value = enabled }
+
+        override val rawCaptureEnabled: Flow<Boolean> = MutableStateFlow(false)
+        override suspend fun setRawCaptureEnabled(enabled: Boolean) {}
+
+        override val rawCaptureFormat: Flow<RawCaptureFormatSetting> = MutableStateFlow(RawCaptureFormatSetting.RAW_SENSOR)
+        override suspend fun setRawCaptureFormat(format: RawCaptureFormatSetting) {}
+
+        override val rawCompanionJpegEnabled: Flow<Boolean> = MutableStateFlow(true)
+        override suspend fun setRawCompanionJpegEnabled(enabled: Boolean) {}
+
+        override val focusPeakingEnabled: Flow<Boolean> = MutableStateFlow(false)
+        override suspend fun setFocusPeakingEnabled(enabled: Boolean) {}
+
+        override val exposureZebraEnabled: Flow<Boolean> = MutableStateFlow(false)
+        override suspend fun setExposureZebraEnabled(enabled: Boolean) {}
+
+        override val histogramMode: Flow<HistogramModeSetting> = MutableStateFlow(HistogramModeSetting.LUMINANCE)
+        override suspend fun setHistogramMode(mode: HistogramModeSetting) {}
     }
 }

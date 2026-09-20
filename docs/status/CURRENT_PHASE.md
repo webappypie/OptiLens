@@ -2,11 +2,11 @@
 
 | Field | Value |
 |---|---|
-| **Current Phase** | Phase 13 — Super Resolution and AI Zoom |
+| **Current Phase** | Phase 14 — Full Pro Mode and RAW/DNG |
 | **Status** | ✅ PASS |
 | **Completed** | 2026-09-20 |
-| **Prompt file** | `prompts/PHASE_13_SUPER_RESOLUTION_AI_ZOOM.md` |
-| **Next phase** | Phase 14 — Pro Mode and RAW/DNG (`prompts/PHASE_14_PRO_RAW_DNG.md`) |
+| **Prompt file** | `prompts/PHASE_14_PRO_RAW_DNG.md` |
+| **Next phase** | Phase 15 — Gallery, Storage and Existing Photos (`prompts/PHASE_15_GALLERY_STORAGE_EXISTING_PHOTOS.md`) |
 
 ## Completed Phases
 
@@ -26,3 +26,4 @@
 | 11 | Portrait and Face-Aware Processing | ✅ PASS | `phase-11: portrait and face-aware pipeline, optical disc bokeh, and skin tone fidelity` |
 | 12 | One-Tap AI Enhance and Before/After Review | ✅ PASS | `phase-12: one-tap ai enhance, before-after split slider, and reversible non-destructive workflow` |
 | 13 | Super Resolution and AI Zoom | ✅ PASS | `phase-13: super resolution and ai zoom, optical-first routing, and honest comparative benchmarking` |
+| 14 | Full Pro Mode and RAW/DNG | ✅ PASS | `phase-14: full pro mode, dng creator raw engine, and assistance visual aids` |

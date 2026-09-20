@@ -103,10 +103,14 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.webappypie.optilens.core.camera.model.FlashMode
+import com.webappypie.optilens.core.camera.model.RawCaptureFormat
 import com.webappypie.optilens.core.camera.model.ZoomStop
 import com.webappypie.optilens.core.ui.camera.histogram.HistogramOverlay
+import com.webappypie.optilens.core.ui.camera.overlay.ExposureZebraOverlay
 import com.webappypie.optilens.core.ui.camera.overlay.FaceBoundingBoxOverlay
+import com.webappypie.optilens.core.ui.camera.overlay.FocusPeakingOverlay
 import com.webappypie.optilens.core.ui.camera.overlay.SceneHintPill as IntelligentSceneHintPill
+import com.webappypie.optilens.core.ui.camera.pro.LensMetadataHud
 import com.webappypie.optilens.core.ui.camera.pro.ProControlsBar
 import com.webappypie.optilens.core.ui.camera.sensor.HorizonSensor
 import com.webappypie.optilens.core.ui.components.OptiCameraModeChip
@@ -325,6 +329,16 @@ fun CameraScreen(
                     faces = uiState.detectedFaces,
                 )
 
+                // High-Contrast Focus Peaking Neon Highlights Overlay
+                FocusPeakingOverlay(
+                    data = uiState.focusPeakingData,
+                )
+
+                // Highlight Overexposure Clipping Zebra Stripes Overlay
+                ExposureZebraOverlay(
+                    data = uiState.exposureZebraData,
+                )
+
                 // Timer Countdown Large Visual Overlay
                 if (uiState.timerCountdown != null) {
                     Box(
@@ -404,13 +418,26 @@ fun CameraScreen(
                 )
             }
 
-            // Live Luminance Histogram Overlay (in Pro Mode or when toggled)
+            // Live 64-Bin Luminance & RGB Histogram Overlay (in Pro Mode or when toggled)
             if (uiState.isHistogramVisible || currentMode == CameraMode.PRO) {
                 HistogramOverlay(
                     data = uiState.histogramData,
+                    mode = uiState.proState.histogramMode,
+                    onToggleMode = { viewModel.cycleHistogramMode() },
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(top = topInset + 56.dp, end = 16.dp),
+                )
+            }
+
+            // Lens Optical & Exposure Readout HUD Strip (shown in PRO Mode)
+            if (currentMode == CameraMode.PRO) {
+                LensMetadataHud(
+                    metadata = uiState.lensMetadata,
+                    isRawActive = uiState.proState.isRawEnabled,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(bottom = 12.dp, start = 16.dp),
                 )
             }
         }
@@ -521,6 +548,12 @@ fun CameraScreen(
                     onWhiteBalanceChanged = { viewModel.setWhiteBalance(it) },
                     onEvChanged = { viewModel.onExposureCompensationChanged(it) },
                     onResetToAuto = { viewModel.resetProToAuto() },
+                    onRawEnabledToggled = { viewModel.setRawCaptureEnabled(it) },
+                    onRawFormatChanged = { viewModel.setRawCaptureFormat(it) },
+                    onSaveCompanionJpegToggled = { viewModel.setSaveCompanionJpeg(it) },
+                    onFocusPeakingToggled = { viewModel.toggleFocusPeaking() },
+                    onExposureZebraToggled = { viewModel.toggleExposureZebra() },
+                    onHistogramModeChanged = { viewModel.setHistogramMode(it) },
                     modifier = Modifier.padding(bottom = OptiLensTheme.spacing.xs),
                 )
             }

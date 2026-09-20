@@ -91,6 +91,31 @@ interface AppSettings {
     /** Whether 4x Pro Super Resolution is enabled on supported hardware. Default: false. */
     val superRes4xProEnabled: Flow<Boolean>
     suspend fun setSuperRes4xProEnabled(enabled: Boolean)
+
+    // ── Pro & RAW / DNG ──────────────────────────────────────
+    /** Whether RAW sensor capture mode is enabled. Default: false. */
+    val rawCaptureEnabled: Flow<Boolean>
+    suspend fun setRawCaptureEnabled(enabled: Boolean)
+
+    /** Desired RAW output format. Default: [RawCaptureFormatSetting.RAW_SENSOR]. */
+    val rawCaptureFormat: Flow<RawCaptureFormatSetting>
+    suspend fun setRawCaptureFormat(format: RawCaptureFormatSetting)
+
+    /** Whether companion JPEG is saved alongside RAW capture. Default: true. */
+    val rawCompanionJpegEnabled: Flow<Boolean>
+    suspend fun setRawCompanionJpegEnabled(enabled: Boolean)
+
+    /** Whether focus peaking edge detection overlay is enabled. Default: false. */
+    val focusPeakingEnabled: Flow<Boolean>
+    suspend fun setFocusPeakingEnabled(enabled: Boolean)
+
+    /** Whether exposure clipping zebra stripes overlay is enabled. Default: false. */
+    val exposureZebraEnabled: Flow<Boolean>
+    suspend fun setExposureZebraEnabled(enabled: Boolean)
+
+    /** Live histogram channel display mode. Default: [HistogramModeSetting.LUMINANCE]. */
+    val histogramMode: Flow<HistogramModeSetting>
+    suspend fun setHistogramMode(mode: HistogramModeSetting)
 }
 
 /** User-visible theme preference. */
@@ -98,3 +123,10 @@ enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
 /** Color rendering profile for processed photos. */
 enum class ColorProfile { NATURAL, BALANCED, VIVID }
+
+/** RAW output format setting. */
+enum class RawCaptureFormatSetting { RAW_SENSOR, RAW10, RAW12, RAW_PRIVATE }
+
+/** Live histogram mode setting. */
+enum class HistogramModeSetting { LUMINANCE, RGB, BOTH }
+

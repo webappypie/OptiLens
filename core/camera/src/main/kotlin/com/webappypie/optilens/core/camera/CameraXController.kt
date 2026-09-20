@@ -54,8 +54,17 @@ import com.webappypie.optilens.core.camera.portrait.PortraitAperture
 import com.webappypie.optilens.core.camera.portrait.PortraitExecutionPlan
 import com.webappypie.optilens.core.camera.portrait.PortraitPolicyEngine
 import com.webappypie.optilens.core.camera.portrait.PortraitPolicyPreference
+import com.webappypie.optilens.core.camera.model.FocusPeakingData
+import com.webappypie.optilens.core.camera.model.ExposureZebraData
+import com.webappypie.optilens.core.camera.model.LensMetadata
+import com.webappypie.optilens.core.camera.model.RawCaptureFormat
+import com.webappypie.optilens.core.camera.model.HistogramMode
 import com.webappypie.optilens.core.camera.storage.MediaStoreSaver
 import com.webappypie.optilens.core.common.coroutines.AppDispatchers
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import com.webappypie.optilens.core.common.result.OptiError
 import com.webappypie.optilens.core.common.result.OptiResult
 import com.webappypie.optilens.core.logging.AppLogger
@@ -132,6 +141,15 @@ class CameraXController @Inject constructor(
 
     private val _histogramData = MutableStateFlow(HistogramData.EMPTY)
     override val histogramData: Flow<HistogramData> = _histogramData.asStateFlow()
+
+    private val _focusPeakingData = MutableStateFlow(FocusPeakingData.EMPTY)
+    override val focusPeakingData: Flow<FocusPeakingData> = _focusPeakingData.asStateFlow()
+
+    private val _exposureZebraData = MutableStateFlow(ExposureZebraData.EMPTY)
+    override val exposureZebraData: Flow<ExposureZebraData> = _exposureZebraData.asStateFlow()
+
+    private val _lensMetadata = MutableStateFlow(LensMetadata.EMPTY)
+    override val lensMetadata: Flow<LensMetadata> = _lensMetadata.asStateFlow()
 
     private val _sceneClassification = MutableStateFlow(SceneClassification.DEFAULT)
     override val sceneClassification: Flow<SceneClassification> = _sceneClassification.asStateFlow()
@@ -280,8 +298,11 @@ class CameraXController @Inject constructor(
         // 1. Truthful zoom stops
         _zoomStops.value = ZoomStop.deriveFromProfile(cameraProfile)
 
-        // 2. Pro bounds
+        // 2. Pro bounds & optical lens metadata
         val streamCaps = cameraProfile.streamCapabilities
+        val rawCaps = cameraProfile.rawCapabilities
+        val controls = cameraProfile.controls
+
         val isoRange = if (streamCaps.isoRangeMin != null && streamCaps.isoRangeMax != null) {
             streamCaps.isoRangeMin..streamCaps.isoRangeMax
         } else null
@@ -290,13 +311,41 @@ class CameraXController @Inject constructor(
             streamCaps.exposureTimeRangeMinNs..streamCaps.exposureTimeRangeMaxNs
         } else null
 
+        val isFocusManualSupported = streamCaps.supportsManualSensor && controls.minFocusDistanceDiopters > 0.0f
+
+        // Derive 35mm equivalent focal length from sensor physical dimensions
+        val sensorDiag = kotlin.math.sqrt(
+            cameraProfile.sensorInfo.physicalWidthMm * cameraProfile.sensorInfo.physicalWidthMm +
+            cameraProfile.sensorInfo.physicalHeightMm * cameraProfile.sensorInfo.physicalHeightMm
+        )
+        val cropFactor = if (sensorDiag > 0.1f) 43.27f / sensorDiag else 1.0f
+        val primaryFocalLength = cameraProfile.focalLengthsMm.firstOrNull() ?: 0f
+        val primary35mmEq = kotlin.math.round(primaryFocalLength * cropFactor).toInt()
+        val primaryAperture = controls.apertures.firstOrNull() ?: 0f
+
+        val initialLensMeta = LensMetadata(
+            focalLengthMm = primaryFocalLength,
+            focalLength35mmEquivalent = primary35mmEq,
+            apertureFNumber = primaryAperture,
+            minFocusDistanceDiopters = controls.minFocusDistanceDiopters,
+            sensorWidthMm = cameraProfile.sensorInfo.physicalWidthMm,
+            sensorHeightMm = cameraProfile.sensorInfo.physicalHeightMm,
+            isFixedFocus = controls.minFocusDistanceDiopters <= 0.0f,
+        )
+        _lensMetadata.value = initialLensMeta
+
         _proState.value = _proState.value.copy(
             isoRange = isoRange,
             isIsoManualSupported = streamCaps.supportsManualSensor && isoRange != null,
             shutterSpeedRangeNanos = shutterRange,
             isShutterManualSupported = streamCaps.supportsManualSensor && shutterRange != null,
-            isFocusManualSupported = true,
+            isFocusManualSupported = isFocusManualSupported,
             isWhiteBalanceSupported = true,
+            isRawSupported = rawCaps.supportsRawSensor,
+            supportsRaw10 = rawCaps.supportsRaw10,
+            supportsRaw12 = rawCaps.supportsRaw12,
+            supportsRawPrivate = rawCaps.supportsRawPrivate,
+            lensMetadata = initialLensMeta,
         )
     }
 
@@ -327,16 +376,30 @@ class CameraXController @Inject constructor(
             previewUseCase = preview
 
             // 2. Build ImageCapture Use Case
-            val capture = ImageCapture.Builder()
+            val captureBuilder = ImageCapture.Builder()
                 .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
                 .setFlashMode(flashModeToCameraX(_flashMode.value))
-                .build()
+
+            // Configure RAW output format if requested and supported
+            if (_proState.value.isRawEnabled && _proState.value.isRawSupported) {
+                try {
+                    val rawFormat = if (_proState.value.saveCompanionJpeg) {
+                        ImageCapture.OUTPUT_FORMAT_RAW_JPEG
+                    } else {
+                        ImageCapture.OUTPUT_FORMAT_RAW
+                    }
+                    captureBuilder.setOutputFormat(rawFormat)
+                } catch (e: Exception) {
+                    logger.w(TAG, "Failed setting RAW output format on ImageCapture: ${e.message}")
+                }
+            }
+            val capture = captureBuilder.build()
             imageCaptureUseCase = capture
 
             // 3. Start Gyro Motion Tracking
             gyroMotionTracker.start()
 
-            // 4. Build Real-Time Intelligence Analyzer (Histogram, Metrics, Motion, Faces, Scene, Strategy)
+            // 4. Build Real-Time Intelligence Analyzer (Histogram, Metrics, Motion, Faces, Scene, Strategy, Assistance)
             val analyzer = RealtimeIntelligenceAnalyzer(
                 faceDetector = faceDetector,
                 gyroVelocityProvider = { gyroMotionTracker.angularVelocity.value },
@@ -357,7 +420,11 @@ class CameraXController @Inject constructor(
                     recomputePortraitPlan()
                 },
                 onStrategyDecided = { _captureStrategy.value = it },
+                onFocusPeakingComputed = { _focusPeakingData.value = it },
+                onExposureZebraComputed = { _exposureZebraData.value = it },
             )
+            analyzer.isFocusPeakingActive = _proState.value.focusPeakingEnabled
+            analyzer.isExposureZebraActive = _proState.value.exposureZebraEnabled
             realtimeAnalyzer = analyzer
 
             val analysis = ImageAnalysis.Builder()
@@ -453,18 +520,21 @@ class CameraXController @Inject constructor(
 
     override suspend fun setIso(iso: Int?): OptiResult<Unit> = withContext(dispatchers.main) {
         _proState.value = _proState.value.copy(iso = iso)
+        _lensMetadata.value = _lensMetadata.value.copy(currentIso = iso)
         applyCamera2CaptureOptions()
         OptiResult.Success(Unit)
     }
 
     override suspend fun setShutterSpeed(nanos: Long?): OptiResult<Unit> = withContext(dispatchers.main) {
         _proState.value = _proState.value.copy(shutterSpeedNanos = nanos)
+        _lensMetadata.value = _lensMetadata.value.copy(currentShutterSpeedNanos = nanos)
         applyCamera2CaptureOptions()
         OptiResult.Success(Unit)
     }
 
     override suspend fun setFocusDistance(distanceDiopters: Float?): OptiResult<Unit> = withContext(dispatchers.main) {
         _proState.value = _proState.value.copy(focusDistanceDiopters = distanceDiopters)
+        _lensMetadata.value = _lensMetadata.value.copy(currentFocusDistanceDiopters = distanceDiopters)
         applyCamera2CaptureOptions()
         OptiResult.Success(Unit)
     }
@@ -483,6 +553,11 @@ class CameraXController @Inject constructor(
             whiteBalanceMode = WhiteBalanceMode.AUTO,
             evIndex = 0,
         )
+        _lensMetadata.value = _lensMetadata.value.copy(
+            currentIso = null,
+            currentShutterSpeedNanos = null,
+            currentFocusDistanceDiopters = null,
+        )
         setExposureCompensation(0)
         val cam = camera
         if (cam != null) {
@@ -497,6 +572,50 @@ class CameraXController @Inject constructor(
 
     override fun setHistogramEnabled(enabled: Boolean) {
         realtimeAnalyzer?.isEnabled = enabled
+    }
+
+    override suspend fun setHistogramMode(mode: HistogramMode): OptiResult<Unit> = withContext(dispatchers.main) {
+        _proState.value = _proState.value.copy(histogramMode = mode)
+        OptiResult.Success(Unit)
+    }
+
+    override suspend fun setRawCaptureEnabled(enabled: Boolean): OptiResult<Unit> = withContext(dispatchers.main) {
+        _proState.value = _proState.value.copy(isRawEnabled = enabled)
+        reconfigureImageCaptureIfNeeded()
+        OptiResult.Success(Unit)
+    }
+
+    override suspend fun setRawCaptureFormat(format: RawCaptureFormat): OptiResult<Unit> = withContext(dispatchers.main) {
+        _proState.value = _proState.value.copy(rawFormat = format)
+        OptiResult.Success(Unit)
+    }
+
+    override suspend fun setSaveCompanionJpeg(saveCompanion: Boolean): OptiResult<Unit> = withContext(dispatchers.main) {
+        _proState.value = _proState.value.copy(saveCompanionJpeg = saveCompanion)
+        reconfigureImageCaptureIfNeeded()
+        OptiResult.Success(Unit)
+    }
+
+    override suspend fun setFocusPeakingEnabled(enabled: Boolean): OptiResult<Unit> = withContext(dispatchers.main) {
+        _proState.value = _proState.value.copy(focusPeakingEnabled = enabled)
+        realtimeAnalyzer?.isFocusPeakingActive = enabled
+        if (!enabled) _focusPeakingData.value = FocusPeakingData.EMPTY
+        OptiResult.Success(Unit)
+    }
+
+    override suspend fun setExposureZebraEnabled(enabled: Boolean): OptiResult<Unit> = withContext(dispatchers.main) {
+        _proState.value = _proState.value.copy(exposureZebraEnabled = enabled)
+        realtimeAnalyzer?.isExposureZebraActive = enabled
+        if (!enabled) _exposureZebraData.value = ExposureZebraData.EMPTY
+        OptiResult.Success(Unit)
+    }
+
+    private suspend fun reconfigureImageCaptureIfNeeded() {
+        val owner = currentLifecycleOwner ?: return
+        val provider = currentSurfaceProvider ?: return
+        if (_sessionState.value == CameraSessionState.PREVIEW_ACTIVE) {
+            bindPreview(owner, provider)
+        }
     }
 
     private fun applyCamera2CaptureOptions() {
@@ -580,41 +699,119 @@ class CameraXController @Inject constructor(
         return try {
             capture.targetRotation = targetRotation
 
-            val rawBytesResult = suspendCancellableCoroutine<Pair<ByteArray, Int>> { continuation ->
-                capture.takePicture(
-                    captureExecutor,
-                    object : ImageCapture.OnImageCapturedCallback() {
-                        override fun onCaptureSuccess(image: ImageProxy) {
-                            try {
-                                val rotation = image.imageInfo.rotationDegrees
-                                val buffer = image.planes[0].buffer
-                                val bytes = ByteArray(buffer.remaining())
-                                buffer.get(bytes)
-                                continuation.resume(bytes to rotation)
-                            } catch (e: Exception) {
-                                continuation.resumeWith(Result.failure(e))
-                            } finally {
-                                // Task 15: Strict deterministic ImageProxy closure
-                                image.close()
+            val isRawCapture = _proState.value.isRawEnabled && _proState.value.isRawSupported
+            val rawFormat = _proState.value.rawFormat
+
+            val saveResult = if (isRawCapture && capture.outputFormat == ImageCapture.OUTPUT_FORMAT_RAW_JPEG) {
+                val timestamp = System.currentTimeMillis()
+                val timeString = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(Date(timestamp))
+                val rawFile = File(context.cacheDir, "OptiLens_$timeString.${rawFormat.extension}")
+                val jpegFile = File(context.cacheDir, "OptiLens_$timeString.jpg")
+
+                val rawOptions = ImageCapture.OutputFileOptions.Builder(rawFile).build()
+                val jpegOptions = ImageCapture.OutputFileOptions.Builder(jpegFile).build()
+
+                suspendCancellableCoroutine<OptiResult<CapturedPhoto>> { continuation ->
+                    capture.takePicture(
+                        rawOptions,
+                        jpegOptions,
+                        captureExecutor,
+                        object : ImageCapture.OnImageSavedCallback {
+                            override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
+                                scope.launch(dispatchers.io) {
+                                    val rBytes = if (rawFile.exists()) rawFile.readBytes() else ByteArray(0)
+                                    val jBytes = if (jpegFile.exists()) jpegFile.readBytes() else ByteArray(0)
+                                    rawFile.delete()
+                                    jpegFile.delete()
+
+                                    val saved = mediaStoreSaver.saveRawWithCompanionJpeg(
+                                        rawBytes = rBytes,
+                                        jpegBytes = jBytes,
+                                        orientationDegrees = targetRotation,
+                                        rawFormat = rawFormat,
+                                        mirrorHorizontal = mirrorHorizontal,
+                                    )
+                                    continuation.resume(saved)
+                                }
+                            }
+
+                            override fun onError(exception: ImageCaptureException) {
+                                rawFile.delete()
+                                jpegFile.delete()
+                                logger.e(TAG, "RAW+JPEG capture failed: ${exception.message}", exception)
+                                continuation.resume(OptiResult.Error(OptiError.ProcessingFailed("RAW+JPEG capture failed", exception)))
                             }
                         }
+                    )
+                }
+            } else if (isRawCapture && capture.outputFormat == ImageCapture.OUTPUT_FORMAT_RAW) {
+                val timestamp = System.currentTimeMillis()
+                val timeString = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(Date(timestamp))
+                val rawFile = File(context.cacheDir, "OptiLens_$timeString.${rawFormat.extension}")
+                val rawOptions = ImageCapture.OutputFileOptions.Builder(rawFile).build()
 
-                        override fun onError(exception: ImageCaptureException) {
-                            logger.e(TAG, "CameraX image capture failed: ${exception.message}", exception)
-                            continuation.resumeWith(Result.failure(exception))
+                suspendCancellableCoroutine<OptiResult<CapturedPhoto>> { continuation ->
+                    capture.takePicture(
+                        rawOptions,
+                        captureExecutor,
+                        object : ImageCapture.OnImageSavedCallback {
+                            override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
+                                scope.launch(dispatchers.io) {
+                                    val rBytes = if (rawFile.exists()) rawFile.readBytes() else ByteArray(0)
+                                    rawFile.delete()
+                                    val saved = mediaStoreSaver.saveDng(
+                                        dngBytes = rBytes,
+                                        orientationDegrees = targetRotation,
+                                        rawFormat = rawFormat,
+                                    )
+                                    continuation.resume(saved)
+                                }
+                            }
+
+                            override fun onError(exception: ImageCaptureException) {
+                                rawFile.delete()
+                                logger.e(TAG, "RAW capture failed: ${exception.message}", exception)
+                                continuation.resume(OptiResult.Error(OptiError.ProcessingFailed("RAW capture failed", exception)))
+                            }
                         }
-                    }
+                    )
+                }
+            } else {
+                // Standard in-memory JPEG capture
+                val rawBytesResult = suspendCancellableCoroutine<Pair<ByteArray, Int>> { continuation ->
+                    capture.takePicture(
+                        captureExecutor,
+                        object : ImageCapture.OnImageCapturedCallback() {
+                            override fun onCaptureSuccess(image: ImageProxy) {
+                                try {
+                                    val rotation = image.imageInfo.rotationDegrees
+                                    val buffer = image.planes[0].buffer
+                                    val bytes = ByteArray(buffer.remaining())
+                                    buffer.get(bytes)
+                                    continuation.resume(bytes to rotation)
+                                } catch (e: Exception) {
+                                    continuation.resumeWith(Result.failure(e))
+                                } finally {
+                                    image.close()
+                                }
+                            }
+
+                            override fun onError(exception: ImageCaptureException) {
+                                logger.e(TAG, "CameraX image capture failed: ${exception.message}", exception)
+                                continuation.resumeWith(Result.failure(exception))
+                            }
+                        }
+                    )
+                }
+
+                val (jpegBytes, rotationDegrees) = rawBytesResult
+
+                mediaStoreSaver.saveJpeg(
+                    jpegBytes = jpegBytes,
+                    orientationDegrees = rotationDegrees,
+                    mirrorHorizontal = mirrorHorizontal,
                 )
             }
-
-            val (jpegBytes, rotationDegrees) = rawBytesResult
-
-            // Save via scoped MediaStore on Dispatchers.IO
-            val saveResult = mediaStoreSaver.saveJpeg(
-                jpegBytes = jpegBytes,
-                orientationDegrees = rotationDegrees,
-                mirrorHorizontal = mirrorHorizontal,
-            )
 
             if (saveResult is OptiResult.Success) {
                 _lastCapturedPhoto.value = saveResult.data

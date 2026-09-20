@@ -204,6 +204,9 @@ class AndroidCameraCapabilityDetector @Inject constructor(
         val aeCompRange = chars.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE)
         val aeCompStep = chars.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP)
 
+        val minFocusDist = chars.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f
+        val apertures = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_APERTURES)?.toList() ?: emptyList()
+
         val controls = ControlCapabilities(
             afModes = afModes,
             aeModes = aeModes,
@@ -214,6 +217,8 @@ class AndroidCameraCapabilityDetector @Inject constructor(
             minZoom = minZoom,
             maxZoom = maxZoom,
             hasFlash = hasFlash,
+            minFocusDistanceDiopters = minFocusDist,
+            apertures = apertures,
         )
 
         // Stream Capabilities & Capabilities Array

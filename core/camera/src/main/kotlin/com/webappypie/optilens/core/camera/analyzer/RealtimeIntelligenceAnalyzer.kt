@@ -9,6 +9,8 @@ import com.webappypie.optilens.core.camera.analysis.YuvPreprocessor
 import com.webappypie.optilens.core.camera.analysis.face.FaceDetector
 import com.webappypie.optilens.core.camera.analysis.motion.SubjectMotionEstimator
 import com.webappypie.optilens.core.camera.model.DetectedFace
+import com.webappypie.optilens.core.camera.model.ExposureZebraData
+import com.webappypie.optilens.core.camera.model.FocusPeakingData
 import com.webappypie.optilens.core.camera.model.HistogramData
 import com.webappypie.optilens.core.camera.model.MotionState
 import com.webappypie.optilens.core.camera.model.QualityMetrics
@@ -24,9 +26,10 @@ import kotlinx.coroutines.launch
  * Unified high-performance [ImageAnalysis.Analyzer] running the full real-time intelligence loop:
  *
  * 1. Fast Sub-Sample Loop (~15 fps):
- *    - 64-bin Luminance Histogram
+ *    - 64-bin Luminance and RGB Histogram
  *    - Radiometric & Optical Quality Metrics (mean luminance, clipping, Laplacian focus score, backlight)
  *    - Inter-frame Subject Motion vs. Gyro Camera Shake
+ *    - Focus Peaking Edge Detection & Exposure Clipping Zebra Overlays
  *
  * 2. Throttled AI Inference Loop (~4 fps / 250ms):
  *    - On-device Face & Landmark Detection
@@ -52,10 +55,18 @@ class RealtimeIntelligenceAnalyzer(
     private val onSceneClassificationComputed: (SceneClassification) -> Unit = {},
     private val onFacesDetected: (List<DetectedFace>) -> Unit = {},
     private val onStrategyDecided: (CaptureStrategy) -> Unit = {},
+    private val onFocusPeakingComputed: (FocusPeakingData) -> Unit = {},
+    private val onExposureZebraComputed: (ExposureZebraData) -> Unit = {},
 ) : ImageAnalysis.Analyzer {
 
     @Volatile
     var isEnabled: Boolean = true
+
+    @Volatile
+    var isFocusPeakingActive: Boolean = false
+
+    @Volatile
+    var isExposureZebraActive: Boolean = false
 
     private var lastFastAnalysisTimestampMs = 0L
     private var lastAiInferenceTimestampMs = 0L
@@ -83,21 +94,49 @@ class RealtimeIntelligenceAnalyzer(
             val currentInstantFps = 1000.0f / elapsedMs.toFloat()
             smoothedFps = (0.2f * currentInstantFps) + (0.8f * smoothedFps)
 
-            // 1. Fast Preprocessing (YUV subsample, luminance grid, chrominance averages)
+            // 1. Fast Preprocessing (YUV subsample, luminance grid, chrominance averages, RGB histograms, edges)
             val frameData = yuvPreprocessor.process(image)
 
             // 2. Optical Quality Metrics (Focus sharpness, clipping, backlight)
             val qualityMetrics = metricsEvaluator.evaluate(frameData)
             onQualityMetricsComputed(qualityMetrics)
 
-            // 3. 64-bin Luminance Histogram
+            // 3. 64-bin Luminance and RGB Histogram
             val histogram = HistogramData(
-                bins = frameData.histogramBins,
+                lumaBins = frameData.histogramBins,
+                redBins = frameData.redHistogramBins,
+                greenBins = frameData.greenHistogramBins,
+                blueBins = frameData.blueHistogramBins,
                 maxCount = 1.0f,
             )
             onHistogramComputed(histogram)
 
-            // 4. Motion Estimation (Subject motion isolated from gyro camera shake)
+            // 4. Pro Visual Aids: Focus Peaking and Exposure Zebra Overlays
+            if (isFocusPeakingActive) {
+                onFocusPeakingComputed(
+                    FocusPeakingData(
+                        edgePoints = frameData.focusPeakingPoints,
+                        peakScore = qualityMetrics.sharpnessScore,
+                        isEnabled = true,
+                    )
+                )
+            } else {
+                onFocusPeakingComputed(FocusPeakingData.EMPTY)
+            }
+
+            if (isExposureZebraActive) {
+                onExposureZebraComputed(
+                    ExposureZebraData(
+                        clippedRegions = frameData.exposureZebraRegions,
+                        clippedPercent = frameData.highlightClippingPercent,
+                        isEnabled = true,
+                    )
+                )
+            } else {
+                onExposureZebraComputed(ExposureZebraData.EMPTY)
+            }
+
+            // 5. Motion Estimation (Subject motion isolated from gyro camera shake)
             val currentGyro = gyroVelocityProvider()
             val motionState = subjectMotionEstimator.estimateMotion(
                 currentGrid = frameData.yGrid,
@@ -106,12 +145,11 @@ class RealtimeIntelligenceAnalyzer(
             )
             onMotionStateComputed(motionState)
 
-            // 5. Throttled AI Inference (~4 fps)
+            // 6. Throttled AI Inference (~4 fps)
             val shouldRunAi = (now - lastAiInferenceTimestampMs) >= aiInferenceIntervalMs
             if (shouldRunAi) {
                 lastAiInferenceTimestampMs = now
 
-                // Execute Face Detection and Scene Classification
                 analysisScope.launch {
                     val aiStartTimeNs = System.nanoTime()
                     try {
@@ -151,7 +189,6 @@ class RealtimeIntelligenceAnalyzer(
                     }
                 }
             } else {
-                // Update strategy between AI inferences with latest fast quality and motion
                 val diagnostics = AnalysisDiagnostics(
                     analysisFps = smoothedFps,
                     inferenceLatencyMs = 0L,
@@ -171,7 +208,6 @@ class RealtimeIntelligenceAnalyzer(
         } catch (_: Exception) {
             // Drop gracefully on format / orientation / lifecycle transition
         } finally {
-            // Mandatory invariant: strictly guarantee image closure
             image.close()
         }
     }

@@ -92,9 +92,31 @@ class FakeCameraController @Inject constructor() : CameraController {
     override val proState: Flow<ProCameraState> = _proState.asStateFlow()
 
     private val _histogramData = MutableStateFlow(
-        HistogramData(bins = FloatArray(64) { (it / 64f) })
+        HistogramData(lumaBins = FloatArray(64) { (it / 64f) })
     )
     override val histogramData: Flow<HistogramData> = _histogramData.asStateFlow()
+
+    private val _focusPeakingData = MutableStateFlow(com.webappypie.optilens.core.camera.model.FocusPeakingData.EMPTY)
+    override val focusPeakingData: Flow<com.webappypie.optilens.core.camera.model.FocusPeakingData> = _focusPeakingData.asStateFlow()
+
+    private val _exposureZebraData = MutableStateFlow(com.webappypie.optilens.core.camera.model.ExposureZebraData.EMPTY)
+    override val exposureZebraData: Flow<com.webappypie.optilens.core.camera.model.ExposureZebraData> = _exposureZebraData.asStateFlow()
+
+    private val _lensMetadata = MutableStateFlow(
+        com.webappypie.optilens.core.camera.model.LensMetadata(
+            focalLengthMm = 4.5f,
+            focalLength35mmEquivalent = 24,
+            apertureFNumber = 1.9f,
+            minFocusDistanceDiopters = 10.0f,
+            currentFocusDistanceDiopters = 1.0f,
+            currentIso = 100,
+            currentShutterSpeedNanos = 16_666_666L,
+            sensorWidthMm = 6.4f,
+            sensorHeightMm = 4.8f,
+            isFixedFocus = false,
+        )
+    )
+    override val lensMetadata: Flow<com.webappypie.optilens.core.camera.model.LensMetadata> = _lensMetadata.asStateFlow()
 
     private val _sceneClassification = MutableStateFlow(com.webappypie.optilens.core.camera.model.SceneClassification.DEFAULT)
     override val sceneClassification: Flow<com.webappypie.optilens.core.camera.model.SceneClassification> = _sceneClassification.asStateFlow()
@@ -153,6 +175,9 @@ class FakeCameraController @Inject constructor() : CameraController {
     fun emitPortraitPlan(plan: com.webappypie.optilens.core.camera.portrait.PortraitExecutionPlan?) { _portraitExecutionPlan.value = plan }
     fun emitStability(assessment: com.webappypie.optilens.core.camera.night.StabilityAssessment) { _stabilityAssessment.value = assessment }
     fun emitThermalState(state: com.webappypie.optilens.core.camera.thermal.DeviceThermalState) { _thermalState.value = state }
+    fun emitFocusPeaking(data: com.webappypie.optilens.core.camera.model.FocusPeakingData) { _focusPeakingData.value = data }
+    fun emitExposureZebra(data: com.webappypie.optilens.core.camera.model.ExposureZebraData) { _exposureZebraData.value = data }
+    fun emitLensMetadata(metadata: com.webappypie.optilens.core.camera.model.LensMetadata) { _lensMetadata.value = metadata }
 
     private var _isFrontCamera = false
     override val isFrontCamera: Boolean get() = _isFrontCamera
@@ -232,6 +257,38 @@ class FakeCameraController @Inject constructor() : CameraController {
 
     override fun setHistogramEnabled(enabled: Boolean) {
         isHistogramEnabled = enabled
+    }
+
+    override suspend fun setHistogramMode(mode: com.webappypie.optilens.core.camera.model.HistogramMode): OptiResult<Unit> {
+        _proState.value = _proState.value.copy(histogramMode = mode)
+        return OptiResult.Success(Unit)
+    }
+
+    override suspend fun setRawCaptureEnabled(enabled: Boolean): OptiResult<Unit> {
+        _proState.value = _proState.value.copy(isRawEnabled = enabled)
+        return OptiResult.Success(Unit)
+    }
+
+    override suspend fun setRawCaptureFormat(format: com.webappypie.optilens.core.camera.model.RawCaptureFormat): OptiResult<Unit> {
+        _proState.value = _proState.value.copy(rawFormat = format)
+        return OptiResult.Success(Unit)
+    }
+
+    override suspend fun setSaveCompanionJpeg(saveCompanion: Boolean): OptiResult<Unit> {
+        _proState.value = _proState.value.copy(saveCompanionJpeg = saveCompanion)
+        return OptiResult.Success(Unit)
+    }
+
+    override suspend fun setFocusPeakingEnabled(enabled: Boolean): OptiResult<Unit> {
+        _proState.value = _proState.value.copy(focusPeakingEnabled = enabled)
+        _focusPeakingData.value = _focusPeakingData.value.copy(isEnabled = enabled)
+        return OptiResult.Success(Unit)
+    }
+
+    override suspend fun setExposureZebraEnabled(enabled: Boolean): OptiResult<Unit> {
+        _proState.value = _proState.value.copy(exposureZebraEnabled = enabled)
+        _exposureZebraData.value = _exposureZebraData.value.copy(isEnabled = enabled)
+        return OptiResult.Success(Unit)
     }
 
     override suspend fun setFlashMode(mode: FlashMode): OptiResult<Unit> {

@@ -101,6 +101,8 @@ data class ControlCapabilities(
     val minZoom: Float = 1.0f,
     val maxZoom: Float = 1.0f,
     val hasFlash: Boolean = false,
+    val minFocusDistanceDiopters: Float = 0f,
+    val apertures: List<Float> = emptyList(),
 )
 
 /**

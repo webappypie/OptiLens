@@ -12,11 +12,16 @@ import com.webappypie.optilens.core.camera.model.CameraSessionState
 import com.webappypie.optilens.core.camera.model.CapturedPhoto
 import com.webappypie.optilens.core.camera.model.DetectedFace
 import com.webappypie.optilens.core.camera.model.ExposureState
+import com.webappypie.optilens.core.camera.model.ExposureZebraData
 import com.webappypie.optilens.core.camera.model.FlashMode
+import com.webappypie.optilens.core.camera.model.FocusPeakingData
 import com.webappypie.optilens.core.camera.model.HistogramData
+import com.webappypie.optilens.core.camera.model.HistogramMode
+import com.webappypie.optilens.core.camera.model.LensMetadata
 import com.webappypie.optilens.core.camera.model.MotionState
 import com.webappypie.optilens.core.camera.model.ProCameraState
 import com.webappypie.optilens.core.camera.model.QualityMetrics
+import com.webappypie.optilens.core.camera.model.RawCaptureFormat
 import com.webappypie.optilens.core.camera.model.SceneClassification
 import com.webappypie.optilens.core.camera.model.WhiteBalanceMode
 import com.webappypie.optilens.core.camera.model.ZoomState
@@ -72,6 +77,9 @@ data class CameraUiState(
     val proState: ProCameraState = ProCameraState(),
     val histogramData: HistogramData = HistogramData.EMPTY,
     val isHistogramVisible: Boolean = false,
+    val focusPeakingData: FocusPeakingData = FocusPeakingData.EMPTY,
+    val exposureZebraData: ExposureZebraData = ExposureZebraData.EMPTY,
+    val lensMetadata: LensMetadata = LensMetadata.EMPTY,
     val sceneClassification: SceneClassification = SceneClassification.DEFAULT,
     val qualityMetrics: QualityMetrics = QualityMetrics.DEFAULT,
     val motionState: MotionState = MotionState.DEFAULT,
@@ -130,6 +138,36 @@ class CameraViewModel @Inject constructor(
                     _internalState.update { it.copy(mirrorFrontCameraSelfie = mirror) }
                 }
             }
+            viewModelScope.launch {
+                settings.rawCaptureEnabled.collect { enabled ->
+                    cameraController.setRawCaptureEnabled(enabled)
+                }
+            }
+            viewModelScope.launch {
+                settings.rawCaptureFormat.collect { format ->
+                    cameraController.setRawCaptureFormat(format.toModel())
+                }
+            }
+            viewModelScope.launch {
+                settings.rawCompanionJpegEnabled.collect { companion ->
+                    cameraController.setSaveCompanionJpeg(companion)
+                }
+            }
+            viewModelScope.launch {
+                settings.focusPeakingEnabled.collect { peaking ->
+                    cameraController.setFocusPeakingEnabled(peaking)
+                }
+            }
+            viewModelScope.launch {
+                settings.exposureZebraEnabled.collect { zebra ->
+                    cameraController.setExposureZebraEnabled(zebra)
+                }
+            }
+            viewModelScope.launch {
+                settings.histogramMode.collect { mode ->
+                    cameraController.setHistogramMode(mode.toModel())
+                }
+            }
         }
     }
 
@@ -160,6 +198,12 @@ class CameraViewModel @Inject constructor(
         val isPreviewBoost: Boolean,
         val stability: StabilityAssessment,
         val thermal: DeviceThermalState,
+    )
+
+    private data class ProAssistanceStreamState(
+        val peaking: FocusPeakingData,
+        val zebra: ExposureZebraData,
+        val lensMetadata: LensMetadata,
     )
 
     private val _stream1 = combine(
@@ -199,14 +243,22 @@ class CameraViewModel @Inject constructor(
         NightStreamState(plan, portPlan, boost, stab, therm)
     }
 
+    private val _streamProAssistance = combine(
+        cameraController.focusPeakingData,
+        cameraController.exposureZebraData,
+        cameraController.lensMetadata,
+    ) { peaking, zebra, lens ->
+        ProAssistanceStreamState(peaking, zebra, lens)
+    }
+
     val uiState: StateFlow<CameraUiState> = combine(
         _internalState,
         cameraController.sessionState,
         cameraController.zoomState,
-        combine(_stream1, _stream2, _streamIntelligence, _streamNight) { s1, s2, intel, night ->
-            Tuple4(s1, s2, intel, night)
+        combine(_stream1, _stream2, _streamIntelligence, _streamNight, _streamProAssistance) { s1, s2, intel, night, assist ->
+            Tuple5(s1, s2, intel, night, assist)
         }
-    ) { internal, session, zoom, (s1, s2, intel, night) ->
+    ) { internal, session, zoom, (s1, s2, intel, night, assist) ->
         CameraUiState(
             hasCameraPermission = internal.hasPermission,
             isFrontCamera = internal.isFrontCamera,
@@ -218,6 +270,9 @@ class CameraViewModel @Inject constructor(
             proState = s2.proState,
             histogramData = s2.histogram,
             isHistogramVisible = internal.isHistogramVisible,
+            focusPeakingData = assist.peaking,
+            exposureZebraData = assist.zebra,
+            lensMetadata = assist.lensMetadata,
             sceneClassification = intel.scene,
             qualityMetrics = intel.quality,
             motionState = intel.motion,
@@ -251,7 +306,7 @@ class CameraViewModel @Inject constructor(
         initialValue = CameraUiState(),
     )
 
-    private data class Tuple4<A, B, C, D>(val a: A, val b: B, val c: C, val d: D)
+    private data class Tuple5<A, B, C, D, E>(val a: A, val b: B, val c: C, val d: D, val e: E)
 
     fun onPermissionResult(isGranted: Boolean) {
         _internalState.update { it.copy(hasPermission = isGranted) }
@@ -331,6 +386,55 @@ class CameraViewModel @Inject constructor(
         viewModelScope.launch {
             cameraController.resetProToAuto()
         }
+    }
+
+    fun setRawCaptureEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            cameraController.setRawCaptureEnabled(enabled)
+            appSettings?.setRawCaptureEnabled(enabled)
+        }
+    }
+
+    fun setRawCaptureFormat(format: RawCaptureFormat) {
+        viewModelScope.launch {
+            cameraController.setRawCaptureFormat(format)
+            appSettings?.setRawCaptureFormat(format.toSetting())
+        }
+    }
+
+    fun setSaveCompanionJpeg(enabled: Boolean) {
+        viewModelScope.launch {
+            cameraController.setSaveCompanionJpeg(enabled)
+            appSettings?.setRawCompanionJpegEnabled(enabled)
+        }
+    }
+
+    fun toggleFocusPeaking() {
+        val next = !uiState.value.focusPeakingData.isEnabled
+        viewModelScope.launch {
+            cameraController.setFocusPeakingEnabled(next)
+            appSettings?.setFocusPeakingEnabled(next)
+        }
+    }
+
+    fun toggleExposureZebra() {
+        val next = !uiState.value.exposureZebraData.isEnabled
+        viewModelScope.launch {
+            cameraController.setExposureZebraEnabled(next)
+            appSettings?.setExposureZebraEnabled(next)
+        }
+    }
+
+    fun setHistogramMode(mode: HistogramMode) {
+        viewModelScope.launch {
+            cameraController.setHistogramMode(mode)
+            appSettings?.setHistogramMode(mode.toSetting())
+        }
+    }
+
+    fun cycleHistogramMode() {
+        val next = uiState.value.proState.histogramMode.next()
+        setHistogramMode(next)
     }
 
     fun toggleHistogram() {
@@ -639,3 +743,30 @@ class CameraViewModel @Inject constructor(
         val errorMessage: String? = null,
     )
 }
+
+private fun com.webappypie.optilens.core.settings.RawCaptureFormatSetting.toModel(): RawCaptureFormat = when (this) {
+    com.webappypie.optilens.core.settings.RawCaptureFormatSetting.RAW_SENSOR -> RawCaptureFormat.RAW_SENSOR
+    com.webappypie.optilens.core.settings.RawCaptureFormatSetting.RAW10 -> RawCaptureFormat.RAW10
+    com.webappypie.optilens.core.settings.RawCaptureFormatSetting.RAW12 -> RawCaptureFormat.RAW12
+    com.webappypie.optilens.core.settings.RawCaptureFormatSetting.RAW_PRIVATE -> RawCaptureFormat.RAW_PRIVATE
+}
+
+private fun RawCaptureFormat.toSetting(): com.webappypie.optilens.core.settings.RawCaptureFormatSetting = when (this) {
+    RawCaptureFormat.RAW_SENSOR -> com.webappypie.optilens.core.settings.RawCaptureFormatSetting.RAW_SENSOR
+    RawCaptureFormat.RAW10 -> com.webappypie.optilens.core.settings.RawCaptureFormatSetting.RAW10
+    RawCaptureFormat.RAW12 -> com.webappypie.optilens.core.settings.RawCaptureFormatSetting.RAW12
+    RawCaptureFormat.RAW_PRIVATE -> com.webappypie.optilens.core.settings.RawCaptureFormatSetting.RAW_PRIVATE
+}
+
+private fun com.webappypie.optilens.core.settings.HistogramModeSetting.toModel(): HistogramMode = when (this) {
+    com.webappypie.optilens.core.settings.HistogramModeSetting.LUMINANCE -> HistogramMode.LUMINANCE
+    com.webappypie.optilens.core.settings.HistogramModeSetting.RGB -> HistogramMode.RGB
+    com.webappypie.optilens.core.settings.HistogramModeSetting.BOTH -> HistogramMode.BOTH
+}
+
+private fun HistogramMode.toSetting(): com.webappypie.optilens.core.settings.HistogramModeSetting = when (this) {
+    HistogramMode.LUMINANCE -> com.webappypie.optilens.core.settings.HistogramModeSetting.LUMINANCE
+    HistogramMode.RGB -> com.webappypie.optilens.core.settings.HistogramModeSetting.RGB
+    HistogramMode.BOTH -> com.webappypie.optilens.core.settings.HistogramModeSetting.BOTH
+}
+

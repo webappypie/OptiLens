@@ -50,8 +50,17 @@ interface CameraController {
     /** Stream of Pro manual controls state and hardware support flags. */
     val proState: Flow<ProCameraState>
 
-    /** Live 64-bin luminance histogram from incoming viewfinder frames. */
+    /** Live 64-bin luminance and RGB histogram from incoming viewfinder frames. */
     val histogramData: Flow<HistogramData>
+
+    /** Live focus peaking edge detection stream for manual focus assistance. */
+    val focusPeakingData: Flow<com.webappypie.optilens.core.camera.model.FocusPeakingData>
+
+    /** Live exposure zebra clipping stream for highlight clipping warnings. */
+    val exposureZebraData: Flow<com.webappypie.optilens.core.camera.model.ExposureZebraData>
+
+    /** Live optical lens metadata stream for the active sensor and request. */
+    val lensMetadata: Flow<com.webappypie.optilens.core.camera.model.LensMetadata>
 
     /** Real-time scene classification stream. */
     val sceneClassification: Flow<SceneClassification>
@@ -167,6 +176,36 @@ interface CameraController {
      * Enable or disable the live histogram analysis stream to conserve resources.
      */
     fun setHistogramEnabled(enabled: Boolean)
+
+    /**
+     * Set live histogram display mode (LUMINANCE, RGB, BOTH).
+     */
+    suspend fun setHistogramMode(mode: com.webappypie.optilens.core.camera.model.HistogramMode): OptiResult<Unit>
+
+    /**
+     * Enable or disable RAW sensor capture mode.
+     */
+    suspend fun setRawCaptureEnabled(enabled: Boolean): OptiResult<Unit>
+
+    /**
+     * Set desired RAW output format (e.g. RAW_SENSOR / DNG, RAW10, RAW12, RAW_PRIVATE).
+     */
+    suspend fun setRawCaptureFormat(format: com.webappypie.optilens.core.camera.model.RawCaptureFormat): OptiResult<Unit>
+
+    /**
+     * Set whether companion JPEG is saved alongside RAW capture.
+     */
+    suspend fun setSaveCompanionJpeg(saveCompanion: Boolean): OptiResult<Unit>
+
+    /**
+     * Enable or disable focus peaking viewfinder overlay.
+     */
+    suspend fun setFocusPeakingEnabled(enabled: Boolean): OptiResult<Unit>
+
+    /**
+     * Enable or disable exposure zebra stripes viewfinder overlay.
+     */
+    suspend fun setExposureZebraEnabled(enabled: Boolean): OptiResult<Unit>
 
     /**
      * Set flash mode for still captures.

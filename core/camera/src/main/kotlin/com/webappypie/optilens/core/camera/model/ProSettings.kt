@@ -15,7 +15,7 @@ enum class WhiteBalanceMode(val label: String, val camera2AwbMode: Int) {
 }
 
 /**
- * Complete state and capabilities of manual Pro controls.
+ * Complete state, capabilities, and visual aids of manual Pro controls.
  */
 data class ProCameraState(
     val iso: Int? = null,
@@ -35,6 +35,20 @@ data class ProCameraState(
     val evIndex: Int = 0,
     val evRange: ClosedRange<Int> = 0..0,
     val evStep: Float = 0f,
+
+    val rawFormat: RawCaptureFormat = RawCaptureFormat.RAW_SENSOR,
+    val isRawEnabled: Boolean = false,
+    val isRawSupported: Boolean = false,
+    val supportsRaw10: Boolean = false,
+    val supportsRaw12: Boolean = false,
+    val supportsRawPrivate: Boolean = false,
+    val saveCompanionJpeg: Boolean = true,
+
+    val focusPeakingEnabled: Boolean = false,
+    val exposureZebraEnabled: Boolean = false,
+    val histogramMode: HistogramMode = HistogramMode.LUMINANCE,
+
+    val lensMetadata: LensMetadata = LensMetadata.EMPTY,
 ) {
     /** Whether any manual control is currently overriding the camera's AUTO 3A engine. */
     val isAnyManualActive: Boolean

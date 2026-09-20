@@ -402,4 +402,87 @@ class CameraViewModelTest {
             cancelAndIgnoreRemainingEvents()
         }
     }
+
+    @Test
+    fun `pro manual settings update uiState and auto reset restores default`() = runTest {
+        viewModel.uiState.test {
+            awaitItem()
+
+            viewModel.setIso(400)
+            viewModel.setShutterSpeed(2_000_000L)
+            viewModel.setFocusDistance(1.5f)
+            viewModel.setWhiteBalance(WhiteBalanceMode.CLOUDY)
+            viewModel.onExposureCompensationChanged(-1)
+            testScheduler.advanceUntilIdle()
+
+            var latest = expectMostRecentItem()
+            assertEquals(400, latest.proState.iso)
+            assertEquals(2_000_000L, latest.proState.shutterSpeedNanos)
+            assertEquals(1.5f, latest.proState.focusDistanceDiopters ?: 0f, 0.01f)
+            assertEquals(WhiteBalanceMode.CLOUDY, latest.proState.whiteBalanceMode)
+            assertEquals(-1, latest.proState.evIndex)
+            assertTrue(latest.proState.isAnyManualActive)
+
+            viewModel.resetProToAuto()
+            testScheduler.advanceUntilIdle()
+
+            latest = expectMostRecentItem()
+            assertNull(latest.proState.iso)
+            assertNull(latest.proState.shutterSpeedNanos)
+            assertNull(latest.proState.focusDistanceDiopters)
+            assertEquals(WhiteBalanceMode.AUTO, latest.proState.whiteBalanceMode)
+            assertEquals(0, latest.proState.evIndex)
+            assertFalse(latest.proState.isAnyManualActive)
+
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `raw format and companion toggles update uiState`() = runTest {
+        viewModel.uiState.test {
+            awaitItem()
+
+            viewModel.setRawCaptureEnabled(true)
+            viewModel.setRawCaptureFormat(com.webappypie.optilens.core.camera.model.RawCaptureFormat.RAW_SENSOR)
+            viewModel.setSaveCompanionJpeg(false)
+            testScheduler.advanceUntilIdle()
+
+            var latest = expectMostRecentItem()
+            assertTrue(latest.proState.isRawEnabled)
+            assertEquals(com.webappypie.optilens.core.camera.model.RawCaptureFormat.RAW_SENSOR, latest.proState.rawFormat)
+            assertFalse(latest.proState.saveCompanionJpeg)
+
+            viewModel.setSaveCompanionJpeg(true)
+            testScheduler.advanceUntilIdle()
+            latest = expectMostRecentItem()
+            assertTrue(latest.proState.saveCompanionJpeg)
+
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `visual aids peaking and zebra toggles and histogram mode cycling work properly`() = runTest {
+        viewModel.uiState.test {
+            awaitItem()
+
+            assertFalse(viewModel.uiState.value.focusPeakingData.isEnabled)
+            assertFalse(viewModel.uiState.value.exposureZebraData.isEnabled)
+
+            viewModel.toggleFocusPeaking()
+            testScheduler.advanceUntilIdle()
+            assertTrue(expectMostRecentItem().focusPeakingData.isEnabled)
+
+            viewModel.toggleExposureZebra()
+            testScheduler.advanceUntilIdle()
+            assertTrue(expectMostRecentItem().exposureZebraData.isEnabled)
+
+            viewModel.cycleHistogramMode()
+            testScheduler.advanceUntilIdle()
+            assertEquals(com.webappypie.optilens.core.camera.model.HistogramMode.RGB, expectMostRecentItem().proState.histogramMode)
+
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
 }
