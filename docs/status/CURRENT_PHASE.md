@@ -2,11 +2,11 @@
 
 | Field | Value |
 |---|---|
-| **Current Phase** | Phase 16 — Specialized Modes and Best Shot |
+| **Current Phase** | Phase 17 — Firebase Remote Config, Billing and Safe Ads |
 | **Status** | ✅ PASS |
-| **Completed** | 2026-09-20 |
-| **Prompt file** | `prompts/PHASE_16_SPECIALIZED_MODES_BEST_SHOT.md` |
-| **Next phase** | Phase 17 — Production Hardening and Performance Profiling (`prompts/PHASE_17_PRODUCTION_HARDENING_PERFORMANCE.md`) |
+| **Completed** | 2026-09-21 |
+| **Prompt file** | `prompts/PHASE_17_MONETIZATION_REMOTE_CONFIG.md` |
+| **Next phase** | Phase 18 — Advanced AI Tools (`prompts/PHASE_18_ADVANCED_AI_TOOLS.md`) |
 
 ## Completed Phases
 
@@ -29,3 +29,4 @@
 | 14 | Full Pro Mode and RAW/DNG | ✅ PASS | `phase-14: full pro mode, dng creator raw engine, and assistance visual aids` |
 | 15 | Gallery, Storage and Existing Photos | ✅ PASS | `phase-15: gallery media browser, scoped storage, photo picker, and detail inspection` |
 | 16 | Specialized Modes and Best Shot | ✅ PASS | `phase-16: specialized modes, best shot ranking, pet, food, document and lens intelligence` |
+| 17 | Firebase Remote Config, Billing and Safe Ads | ✅ PASS | `phase-17: remote config, play billing, safe ads and entitlement repository` |

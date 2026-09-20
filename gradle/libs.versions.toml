@@ -21,6 +21,9 @@ activity-compose        = "1.10.1"
 navigation              = "2.10.1"
 datastore               = "1.2.1"
 camerax                 = "1.6.2"
+play-billing            = "7.1.1"
+play-services-ads       = "23.6.0"
+firebase-bom            = "33.9.0"
 
 # ── Kotlin Serialization (for Navigation type-safe routes) ──
 kotlin-serialization    = "2.4.20"
@@ -76,6 +79,17 @@ androidx-camera-extensions = { group = "androidx.camera", name = "camera-extensi
 
 # ── ML Kit ─────────────────────────────────────────────────
 mlkit-face-detection       = { group = "com.google.mlkit", name = "face-detection",    version = "16.1.7" }
+
+# ── Google Play Billing ─────────────────────────────────────
+play-billing-ktx           = { group = "com.android.billingclient", name = "billing-ktx", version.ref = "play-billing" }
+
+# ── Google Mobile Ads ──────────────────────────────────────
+play-services-ads          = { group = "com.google.android.gms", name = "play-services-ads", version.ref = "play-services-ads" }
+
+# ── Firebase ───────────────────────────────────────────────
+firebase-bom               = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebase-bom" }
+firebase-config-ktx        = { group = "com.google.firebase", name = "firebase-config-ktx" }
+firebase-analytics-ktx     = { group = "com.google.firebase", name = "firebase-analytics-ktx" }
 
 # ── Kotlin Serialization ───────────────────────────────────
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version = "1.8.0" }

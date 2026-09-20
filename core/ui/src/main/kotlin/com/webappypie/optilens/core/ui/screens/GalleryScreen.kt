@@ -80,7 +80,9 @@ fun GalleryScreen(
     onNavigateToPhotoDetail: (String) -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: GalleryViewModel = hiltViewModel(),
-    thumbnailLoader: ThumbnailLoader = hiltViewModel<GalleryScreenViewModelHelper>().thumbnailLoader,
+    helper: GalleryScreenViewModelHelper = hiltViewModel(),
+    thumbnailLoader: ThumbnailLoader = helper.thumbnailLoader,
+    entitlementRepository: com.webappypie.optilens.core.common.monetization.EntitlementRepository = helper.entitlementRepository,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -193,6 +195,12 @@ fun GalleryScreen(
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                 )
             }
+        },
+        bottomBar = {
+            com.webappypie.optilens.core.ui.ads.SafeAdBanner(
+                placement = com.webappypie.optilens.core.ui.ads.AdPlacement.GALLERY_BOTTOM_BANNER,
+                entitlementRepository = entitlementRepository,
+            )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         modifier = modifier,
@@ -318,4 +326,5 @@ fun GalleryScreen(
 @dagger.hilt.android.lifecycle.HiltViewModel
 class GalleryScreenViewModelHelper @javax.inject.Inject constructor(
     val thumbnailLoader: ThumbnailLoader,
+    val entitlementRepository: com.webappypie.optilens.core.common.monetization.EntitlementRepository,
 ) : androidx.lifecycle.ViewModel()

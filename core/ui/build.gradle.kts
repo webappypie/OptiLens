@@ -63,6 +63,10 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.hilt.navigation.compose)
 
+    // ── Google Play Billing & Mobile Ads ───────────────────
+    implementation(libs.play.billing.ktx)
+    implementation(libs.play.services.ads)
+
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)

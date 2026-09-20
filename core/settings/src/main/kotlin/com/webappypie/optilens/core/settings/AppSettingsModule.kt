@@ -24,6 +24,12 @@ abstract class AppSettingsModule {
     @Singleton
     abstract fun bindAppSettings(impl: AppSettingsImpl): AppSettings
 
+    @Binds
+    @Singleton
+    abstract fun bindEntitlementRepository(
+        impl: EntitlementRepositoryImpl
+    ): com.webappypie.optilens.core.common.monetization.EntitlementRepository
+
     companion object {
         @Provides
         @Singleton

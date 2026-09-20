@@ -1,5 +1,6 @@
 package com.webappypie.optilens.core.ui.screens
 
+import android.app.Activity
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -19,26 +20,32 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Diamond
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.webappypie.optilens.core.ui.components.OptiButton
 import com.webappypie.optilens.core.ui.components.OptiTopBar
 import com.webappypie.optilens.core.ui.theme.OptiLensTheme
@@ -50,18 +57,36 @@ private val ProFeatures = listOf(
     "Full Manual Controls: Shutter Speed, ISO, Manual Focus & WB",
     "Handheld Astro & Night Vision burst synthesis",
     "100% on-device private processing — zero cloud uploads",
+    "Ad-free camera experience app-wide",
 )
 
 /**
  * Premium / Pro Upgrade screen for OptiLens.
+ *
+ * Fully integrated with Google Play Billing 7.x, central EntitlementRepository,
+ * dynamic pricing, and Remote Config promotional copy.
  */
 @Composable
 fun ProUpgradeScreen(
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier,
-    onSubscribeClick: (planIndex: Int) -> Unit = {},
+    viewModel: ProUpgradeViewModel = hiltViewModel(),
 ) {
-    var selectedPlanIndex by remember { mutableIntStateOf(0) }
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val activity = context as? Activity
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(uiState.errorMessage, uiState.successMessage) {
+        uiState.errorMessage?.let { error ->
+            snackbarHostState.showSnackbar(error)
+            viewModel.clearMessages()
+        }
+        uiState.successMessage?.let { success ->
+            snackbarHostState.showSnackbar(success)
+            viewModel.clearMessages()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -70,6 +95,7 @@ fun ProUpgradeScreen(
                 onBackClick = onNavigateBack,
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         modifier = modifier,
         containerColor = MaterialTheme.colorScheme.background,
     ) { innerPadding ->
@@ -91,7 +117,7 @@ fun ProUpgradeScreen(
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        imageVector = Icons.Outlined.Diamond,
+                        imageVector = if (uiState.isPro) Icons.Outlined.CheckCircle else Icons.Outlined.Diamond,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(OptiLensTheme.iconSizes.large),
@@ -102,14 +128,20 @@ fun ProUpgradeScreen(
             Spacer(modifier = Modifier.height(OptiLensTheme.spacing.m))
 
             Text(
-                text = "Unleash Full Sensor Power",
+                text = if (uiState.isPro) "You are an OptiLens Pro" else "Unleash Full Sensor Power",
                 style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.Center,
             )
 
             Text(
-                text = "Pro manual shooting, 16-bit RAW, and real-time AI tools.",
+                text = if (uiState.isLifetime) {
+                    "Lifetime Access Active • Zero Ads • All Pro Features Unlocked"
+                } else if (uiState.isPro) {
+                    "Active Pro Subscription • Zero Ads • Premium Tools Unlocked"
+                } else {
+                    uiState.promotionalCopy ?: "Pro manual shooting, 16-bit RAW, and real-time AI tools."
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -157,75 +189,133 @@ fun ProUpgradeScreen(
 
             Spacer(modifier = Modifier.height(OptiLensTheme.spacing.xxl))
 
-            // Subscription Cards
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(OptiLensTheme.spacing.m),
-            ) {
-                // Annual Plan Card
-                val isAnnualSelected = selectedPlanIndex == 0
-                Card(
-                    modifier = Modifier
-                        .weight(1f)
-                        .border(
-                            width = if (isAnnualSelected) 2.dp else 1.dp,
-                            color = if (isAnnualSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-                            shape = RoundedCornerShape(12.dp),
-                        )
-                        .clickable { selectedPlanIndex = 0 },
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (isAnnualSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surface,
-                    ),
-                    shape = RoundedCornerShape(12.dp),
+            if (!uiState.isPro) {
+                // Subscription Cards
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(OptiLensTheme.spacing.m),
                 ) {
-                    Column(
-                        modifier = Modifier.padding(OptiLensTheme.spacing.l),
-                        horizontalAlignment = Alignment.CenterHorizontally,
+                    // Annual Plan Card
+                    val isAnnualSelected = uiState.selectedPlanIndex == 0
+                    val annualPrice = uiState.annualProduct?.formattedPrice ?: "$29.99 / yr"
+                    Card(
+                        modifier = Modifier
+                            .weight(1f)
+                            .border(
+                                width = if (isAnnualSelected) 2.dp else 1.dp,
+                                color = if (isAnnualSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                                shape = RoundedCornerShape(12.dp),
+                            )
+                            .clickable { viewModel.selectPlan(0) },
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isAnnualSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surface,
+                        ),
+                        shape = RoundedCornerShape(12.dp),
                     ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.primary,
+                        Column(
+                            modifier = Modifier.padding(OptiLensTheme.spacing.l),
+                            horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primary,
+                            ) {
+                                Text(
+                                    text = "BEST VALUE",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(OptiLensTheme.spacing.s))
+
                             Text(
-                                text = "BEST VALUE",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onPrimary,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                text = "Annual",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            )
+                            Text(
+                                text = annualPrice,
+                                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Black),
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Text(
+                                text = "7-day free trial",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
+                    }
 
-                        Spacer(modifier = Modifier.height(OptiLensTheme.spacing.s))
+                    // Lifetime Card
+                    val isLifetimeSelected = uiState.selectedPlanIndex == 1
+                    val lifetimePrice = uiState.lifetimeProduct?.formattedPrice ?: "$69.99"
+                    Card(
+                        modifier = Modifier
+                            .weight(1f)
+                            .border(
+                                width = if (isLifetimeSelected) 2.dp else 1.dp,
+                                color = if (isLifetimeSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                                shape = RoundedCornerShape(12.dp),
+                            )
+                            .clickable { viewModel.selectPlan(1) },
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isLifetimeSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surface,
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(OptiLensTheme.spacing.l),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Spacer(modifier = Modifier.height(20.dp))
 
-                        Text(
-                            text = "Annual",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        )
-                        Text(
-                            text = "$29.99 / yr",
-                            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Black),
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                        Text(
-                            text = "7-day free trial",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                            Text(
+                                text = "Lifetime",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            )
+                            Text(
+                                text = lifetimePrice,
+                                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Black),
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Text(
+                                text = "Pay once, yours forever",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
 
-                // Lifetime Card
-                val isLifetimeSelected = selectedPlanIndex == 1
+                Spacer(modifier = Modifier.height(OptiLensTheme.spacing.xxl))
+
+                // Primary CTA
+                if (uiState.isPurchaseInProgress) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    }
+                } else {
+                    OptiButton(
+                        text = if (uiState.selectedPlanIndex == 0) "Start 7-Day Free Trial" else "Purchase Lifetime Access",
+                        onClick = {
+                            if (activity != null) {
+                                viewModel.startPurchase(activity)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            } else {
                 Card(
-                    modifier = Modifier
-                        .weight(1f)
-                        .border(
-                            width = if (isLifetimeSelected) 2.dp else 1.dp,
-                            color = if (isLifetimeSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-                            shape = RoundedCornerShape(12.dp),
-                        )
-                        .clickable { selectedPlanIndex = 1 },
+                    modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
-                        containerColor = if (isLifetimeSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surface,
+                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
                     ),
                     shape = RoundedCornerShape(12.dp),
                 ) {
@@ -233,34 +323,21 @@ fun ProUpgradeScreen(
                         modifier = Modifier.padding(OptiLensTheme.spacing.l),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        Spacer(modifier = Modifier.height(20.dp))
-
                         Text(
-                            text = "Lifetime",
+                            text = "PRO STATUS ACTIVE",
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        )
-                        Text(
-                            text = "$69.99",
-                            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Black),
                             color = MaterialTheme.colorScheme.primary,
                         )
                         Text(
-                            text = "Pay once, yours forever",
+                            text = "All pro camera tools, 16-bit RAW, AI zoom, and ad removal are enabled.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(top = 4.dp),
                         )
                     }
                 }
             }
-
-            Spacer(modifier = Modifier.height(OptiLensTheme.spacing.xxl))
-
-            // Primary CTA
-            OptiButton(
-                text = if (selectedPlanIndex == 0) "Start 7-Day Free Trial" else "Purchase Lifetime Access",
-                onClick = { onSubscribeClick(selectedPlanIndex) },
-                modifier = Modifier.fillMaxWidth(),
-            )
 
             Spacer(modifier = Modifier.height(OptiLensTheme.spacing.m))
 
@@ -269,12 +346,22 @@ fun ProUpgradeScreen(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextButton(onClick = { /* Phase 17 In-App Billing */ }) {
+                if (uiState.isRestoring) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Restore Purchases",
+                        text = "Restoring...",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                } else {
+                    TextButton(onClick = { viewModel.restorePurchases() }) {
+                        Text(
+                            text = "Restore Purchases",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
 
                 Text(
@@ -283,7 +370,7 @@ fun ProUpgradeScreen(
                     modifier = Modifier.padding(horizontal = OptiLensTheme.spacing.xs),
                 )
 
-                TextButton(onClick = { /* Terms */ }) {
+                TextButton(onClick = { /* Privacy Policy and Terms */ }) {
                     Text(
                         text = "Privacy & Terms",
                         style = MaterialTheme.typography.bodySmall,
