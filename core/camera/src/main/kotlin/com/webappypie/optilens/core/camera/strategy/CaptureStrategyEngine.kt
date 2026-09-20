@@ -121,7 +121,33 @@ class CaptureStrategyEngine {
             )
         }
 
-        // 8. Fast Subject Motion (Freeze Action)
+        // 8. Moon Assist Strategy (Controlled short exposures, dark sky, bright disc)
+        if (scene.primaryScene == SceneType.MOON) {
+            val count = if (motion.cameraShakeLevel == CameraShakeLevel.STABLE) 8 else 4
+            val hint = if (motion.isCameraShaking) CaptureUiHint.STABILIZE_CAMERA else CaptureUiHint.MOON_DETECTED
+            return CaptureStrategy(
+                mode = CaptureStrategyMode.MOON_ASSIST,
+                recommendedFrameCount = count,
+                exposureEvOffsets = listOf(-2, -3),
+                uiHint = hint,
+                shutterPriority = ShutterPriority.FAST_ACTION,
+                diagnostics = diagnostics,
+            )
+        }
+
+        // 9. Wildlife / Bird Strategy (High-speed shutter priority and burst)
+        if (scene.primaryScene == SceneType.WILDLIFE) {
+            return CaptureStrategy(
+                mode = CaptureStrategyMode.WILDLIFE_BURST,
+                recommendedFrameCount = 6,
+                exposureEvOffsets = listOf(0),
+                uiHint = CaptureUiHint.WILDLIFE_DETECTED,
+                shutterPriority = ShutterPriority.FAST_ACTION,
+                diagnostics = diagnostics,
+            )
+        }
+
+        // 10. Fast Subject Motion (Freeze Action)
         if (motion.subjectMotionLevel == SubjectMotionLevel.HIGH_MOTION) {
             return CaptureStrategy(
                 mode = CaptureStrategyMode.ACTION_FREEZE,
@@ -133,7 +159,7 @@ class CaptureStrategyEngine {
             )
         }
 
-        // 9. Digital Zoom Super Resolution Strategy
+        // 11. Digital Zoom Super Resolution Strategy
         if (zoomRatio >= 1.2f && !isOpticalZoom) {
             val count = if (motion.cameraShakeLevel == CameraShakeLevel.STABLE) 4 else 2
             return CaptureStrategy(
@@ -146,7 +172,7 @@ class CaptureStrategyEngine {
             )
         }
 
-        // 10. Standard Single Frame
+        // 12. Standard Single Frame
         return CaptureStrategy(
             mode = CaptureStrategyMode.SINGLE_FRAME,
             recommendedFrameCount = 1,
@@ -190,6 +216,20 @@ class CaptureStrategyEngine {
                 exposureEvOffsets = listOf(0),
                 uiHint = CaptureUiHint.DOCUMENT_DETECTED,
                 shutterPriority = ShutterPriority.AUTO,
+            )
+            com.webappypie.optilens.core.camera.model.CameraMode.MOON -> CaptureStrategy(
+                mode = CaptureStrategyMode.MOON_ASSIST,
+                recommendedFrameCount = if (motion.cameraShakeLevel == CameraShakeLevel.STABLE) 8 else 4,
+                exposureEvOffsets = listOf(-2, -3),
+                uiHint = if (motion.isCameraShaking) CaptureUiHint.STABILIZE_CAMERA else CaptureUiHint.MOON_DETECTED,
+                shutterPriority = ShutterPriority.FAST_ACTION,
+            )
+            com.webappypie.optilens.core.camera.model.CameraMode.WILDLIFE -> CaptureStrategy(
+                mode = CaptureStrategyMode.WILDLIFE_BURST,
+                recommendedFrameCount = 6,
+                exposureEvOffsets = listOf(0),
+                uiHint = CaptureUiHint.WILDLIFE_DETECTED,
+                shutterPriority = ShutterPriority.FAST_ACTION,
             )
             com.webappypie.optilens.core.camera.model.CameraMode.NIGHT -> CaptureStrategy(
                 mode = CaptureStrategyMode.NIGHT_STACK,

@@ -58,6 +58,7 @@ import androidx.compose.material.icons.filled.HdrOn
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Leaderboard
 import androidx.compose.material.icons.filled.PhotoLibrary
+import com.webappypie.optilens.core.ui.camera.overlay.ObjectTrackingOverlay
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Timer10
@@ -271,12 +272,26 @@ fun CameraScreen(
                     }
                 }
                 .pointerInput(Unit) {
-                    detectTapGestures { tapOffset ->
-                        val factory = previewViewRef?.meteringPointFactory
-                        val point = factory?.createPoint(tapOffset.x, tapOffset.y)
-                            ?: SurfaceOrientedMeteringPointFactory(1f, 1f).createPoint(0.5f, 0.5f)
-                        viewModel.onTapToFocus(tapOffset, point)
-                    }
+                    detectTapGestures(
+                        onDoubleTap = {
+                            viewModel.stopObjectTracking()
+                        },
+                        onTap = { tapOffset ->
+                            val factory = previewViewRef?.meteringPointFactory
+                            val point = factory?.createPoint(tapOffset.x, tapOffset.y)
+                                ?: SurfaceOrientedMeteringPointFactory(1f, 1f).createPoint(0.5f, 0.5f)
+                            viewModel.onTapToFocus(tapOffset, point)
+
+                            val pv = previewViewRef
+                            val viewW = pv?.width ?: 1
+                            val viewH = pv?.height ?: 1
+                            if (viewW > 0 && viewH > 0) {
+                                val normX = (tapOffset.x / viewW.toFloat()).coerceIn(0f, 1f)
+                                val normY = (tapOffset.y / viewH.toFloat()).coerceIn(0f, 1f)
+                                viewModel.startObjectTracking(normX, normY)
+                            }
+                        }
+                    )
                 },
             contentAlignment = Alignment.Center,
         ) {
@@ -325,6 +340,12 @@ fun CameraScreen(
                 // Real-time Face & Landmark Detection Overlay
                 FaceBoundingBoxOverlay(
                     faces = uiState.detectedFaces,
+                )
+
+                // Real-time Object Tracking Reticle Overlay
+                ObjectTrackingOverlay(
+                    trackedObjectState = uiState.trackedObjectState,
+                    onDismissTracking = { viewModel.stopObjectTracking() },
                 )
 
                 // High-Contrast Focus Peaking Neon Highlights Overlay
@@ -458,6 +479,36 @@ fun CameraScreen(
                     currentColorMode = uiState.documentColorMode,
                     onSelectColorMode = { viewModel.setDocumentColorMode(it) },
                     isProcessing = uiState.isProcessingDocument,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(top = topInset + 64.dp, start = 16.dp),
+                )
+            }
+
+            // Moon Mode Status Badge
+            if (currentMode == CameraMode.MOON) {
+                val moonText = when {
+                    uiState.isProcessingMoonShot -> "Stacking real photons..."
+                    uiState.moonDetectionState.isMoonDetected -> "Moon: ${uiState.moonDetectionState.stabilityCue.message}"
+                    else -> "Moon Assist: Spot Exposure"
+                }
+                SpecializedModeBadge(
+                    text = moonText,
+                    isProcessing = uiState.isProcessingMoonShot,
+                    icon = Icons.Default.DarkMode,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(top = topInset + 64.dp, start = 16.dp),
+                )
+            }
+
+            // Wildlife Mode Status Badge
+            if (currentMode == CameraMode.WILDLIFE) {
+                val wildlifeText = if (uiState.isProcessingWildlifeShot) "Freezing action..." else "Wildlife: 1/500s+ Shutter"
+                SpecializedModeBadge(
+                    text = wildlifeText,
+                    isProcessing = uiState.isProcessingWildlifeShot,
+                    icon = Icons.Default.Pets,
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .padding(top = topInset + 64.dp, start = 16.dp),
@@ -734,6 +785,8 @@ fun CameraScreen(
                             CameraMode.PET -> viewModel.takePetPhoto(targetRotation = Surface.ROTATION_0)
                             CameraMode.FOOD -> viewModel.takeFoodPhoto(targetRotation = Surface.ROTATION_0)
                             CameraMode.DOCUMENT -> viewModel.takeDocumentPhoto(targetRotation = Surface.ROTATION_0)
+                            CameraMode.MOON -> viewModel.takeMoonPhoto(targetRotation = Surface.ROTATION_0)
+                            CameraMode.WILDLIFE -> viewModel.takeWildlifePhoto(targetRotation = Surface.ROTATION_0)
                             else -> viewModel.takePhotoWithTimer(targetRotation = Surface.ROTATION_0)
                         }
                     },
@@ -742,6 +795,7 @@ fun CameraScreen(
                             !uiState.isProcessingNightShot && !uiState.isProcessingPortraitShot &&
                             !uiState.isProcessingPetShot && !uiState.isProcessingFoodShot &&
                             !uiState.isProcessingDocument && !uiState.isEvaluatingBestShot &&
+                            !uiState.isProcessingMoonShot && !uiState.isProcessingWildlifeShot &&
                             uiState.timerCountdown == null,
                 )
 

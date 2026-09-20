@@ -169,8 +169,36 @@ class FakeCameraController @Inject constructor() : CameraController {
     private val _activeCameraMode = MutableStateFlow(com.webappypie.optilens.core.camera.model.CameraMode.PHOTO)
     override val activeCameraMode: Flow<com.webappypie.optilens.core.camera.model.CameraMode> = _activeCameraMode.asStateFlow()
 
+    private val _moonDetectionState = MutableStateFlow(com.webappypie.optilens.core.camera.moon.MoonDetectionState.EMPTY)
+    override val moonDetectionState: Flow<com.webappypie.optilens.core.camera.moon.MoonDetectionState> = _moonDetectionState.asStateFlow()
+
+    private val _wildlifeDetectionState = MutableStateFlow(com.webappypie.optilens.core.camera.wildlife.WildlifeDetectionState.EMPTY)
+    override val wildlifeDetectionState: Flow<com.webappypie.optilens.core.camera.wildlife.WildlifeDetectionState> = _wildlifeDetectionState.asStateFlow()
+
+    private val _trackedObjectState = MutableStateFlow(com.webappypie.optilens.core.camera.tracking.TrackedObjectState.INACTIVE)
+    override val trackedObjectState: Flow<com.webappypie.optilens.core.camera.tracking.TrackedObjectState> = _trackedObjectState.asStateFlow()
+
     override fun dismissLensDirtyPrompt() {
         _lensDirtyState.value = _lensDirtyState.value.copy(isDismissed = true)
+    }
+
+    override fun startObjectTracking(normTapX: Float, normTapY: Float) {
+        val half = 0.09f
+        val bounds = com.webappypie.optilens.core.camera.tracking.TrackedObjectBounds(
+            left = (normTapX - half).coerceAtLeast(0f),
+            top = (normTapY - half).coerceAtLeast(0f),
+            right = (normTapX + half).coerceAtMost(1f),
+            bottom = (normTapY + half).coerceAtMost(1f),
+        )
+        _trackedObjectState.value = com.webappypie.optilens.core.camera.tracking.TrackedObjectState(
+            bounds = bounds,
+            status = com.webappypie.optilens.core.camera.tracking.TrackingStatus.TRACKING,
+            confidence = 0.95f,
+        )
+    }
+
+    override fun stopObjectTracking() {
+        _trackedObjectState.value = com.webappypie.optilens.core.camera.tracking.TrackedObjectState.INACTIVE
     }
 
     override suspend fun setCameraMode(mode: com.webappypie.optilens.core.camera.model.CameraMode): OptiResult<Unit> {
@@ -180,6 +208,18 @@ class FakeCameraController @Inject constructor() : CameraController {
 
     fun emitLensDirtyState(state: com.webappypie.optilens.core.camera.analysis.LensDirtyState) {
         _lensDirtyState.value = state
+    }
+
+    fun emitMoonState(state: com.webappypie.optilens.core.camera.moon.MoonDetectionState) {
+        _moonDetectionState.value = state
+    }
+
+    fun emitWildlifeState(state: com.webappypie.optilens.core.camera.wildlife.WildlifeDetectionState) {
+        _wildlifeDetectionState.value = state
+    }
+
+    fun emitTrackedObjectState(state: com.webappypie.optilens.core.camera.tracking.TrackedObjectState) {
+        _trackedObjectState.value = state
     }
 
     val fakeBurstEngine = com.webappypie.optilens.core.camera.burst.FakeBurstAcquisitionEngine()

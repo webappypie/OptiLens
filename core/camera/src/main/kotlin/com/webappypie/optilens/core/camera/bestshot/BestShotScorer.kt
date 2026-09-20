@@ -60,6 +60,23 @@ class BestShotScorer @Inject constructor() {
     ): Float {
         if (width < 3 || height < 3 || yPlane.isEmpty()) return 0.0f
 
+        val maxIndexNeeded = (height - 1) * stride + width
+        if (yPlane.size < maxIndexNeeded) {
+            // Buffer is smaller than full frame dimensions (e.g. downsampled, test dummy, or pooled buffer)
+            if (yPlane.size < 3) return 0.0f
+            var gradientEnergySum = 0.0
+            var count = 0
+            for (i in 1 until yPlane.size - 1) {
+                val g = (yPlane[i + 1].toInt() and 0xFF) - (yPlane[i - 1].toInt() and 0xFF)
+                gradientEnergySum += (g * g).toDouble()
+                count++
+            }
+            if (count == 0) return 0.0f
+            val meanEnergy = gradientEnergySum / count
+            val rmsGradient = sqrt(meanEnergy).toFloat()
+            return ((rmsGradient / 35.0f) * 100.0f).coerceIn(0.0f, 100.0f)
+        }
+
         var gradientEnergySum = 0.0
         var count = 0
 

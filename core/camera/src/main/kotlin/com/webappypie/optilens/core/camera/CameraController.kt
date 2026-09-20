@@ -104,11 +104,26 @@ interface CameraController {
     /** Currently active camera mode. */
     val activeCameraMode: Flow<com.webappypie.optilens.core.camera.model.CameraMode>
 
+    /** Real-time Moon disc detection and stability state stream. */
+    val moonDetectionState: Flow<com.webappypie.optilens.core.camera.moon.MoonDetectionState>
+
+    /** Real-time Wildlife and Bird detection state stream. */
+    val wildlifeDetectionState: Flow<com.webappypie.optilens.core.camera.wildlife.WildlifeDetectionState>
+
+    /** Real-time Object Tracking state stream. */
+    val trackedObjectState: Flow<com.webappypie.optilens.core.camera.tracking.TrackedObjectState>
+
     /** Whether the front camera is currently active. */
     val isFrontCamera: Boolean
 
     /** Dismiss the lens dirty prompt on the viewfinder. */
     fun dismissLensDirtyPrompt()
+
+    /** Start real-time object tracking centered at the normalized coordinates. */
+    fun startObjectTracking(normTapX: Float, normTapY: Float)
+
+    /** Stop active object tracking and clear tracked target. */
+    fun stopObjectTracking()
 
     /** Set active camera mode. */
     suspend fun setCameraMode(mode: com.webappypie.optilens.core.camera.model.CameraMode): OptiResult<Unit>

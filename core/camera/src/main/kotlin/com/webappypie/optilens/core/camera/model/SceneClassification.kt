@@ -15,7 +15,8 @@ enum class SceneType(val displayName: String) {
     OUTDOOR("Outdoor"),
     SKY("Sky"),
     PLANT("Plant"),
-    WILDLIFE("Wildlife");
+    WILDLIFE("Wildlife"),
+    MOON("Moon");
 }
 
 /**

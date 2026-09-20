@@ -45,6 +45,11 @@ import com.webappypie.optilens.core.camera.document.DocumentEngine
 import com.webappypie.optilens.core.camera.document.DocumentOcrEngine
 import com.webappypie.optilens.core.camera.document.DocumentQuad
 import com.webappypie.optilens.core.camera.document.DocumentScanResult
+import com.webappypie.optilens.core.camera.moon.MoonDetectionState
+import com.webappypie.optilens.core.camera.moon.MoonModeEngine
+import com.webappypie.optilens.core.camera.wildlife.WildlifeDetectionState
+import com.webappypie.optilens.core.camera.wildlife.WildlifeModeEngine
+import com.webappypie.optilens.core.camera.tracking.TrackedObjectState
 import com.webappypie.optilens.core.settings.AppSettings
 import com.webappypie.optilens.core.common.result.OptiResult
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -128,6 +133,11 @@ data class CameraUiState(
     val isProcessingDocument: Boolean = false,
     val isProcessingPetShot: Boolean = false,
     val isProcessingFoodShot: Boolean = false,
+    val isProcessingMoonShot: Boolean = false,
+    val isProcessingWildlifeShot: Boolean = false,
+    val moonDetectionState: MoonDetectionState = MoonDetectionState.EMPTY,
+    val wildlifeDetectionState: WildlifeDetectionState = WildlifeDetectionState.EMPTY,
+    val trackedObjectState: TrackedObjectState = TrackedObjectState.INACTIVE,
     val ocrExtractedText: String? = null,
     val isExtractingOcr: Boolean = false,
     val errorMessage: String? = null,
@@ -149,6 +159,8 @@ class CameraViewModel @Inject constructor(
     private val foodModeEngine: FoodModeEngine = FoodModeEngine(),
     private val documentEngine: DocumentEngine = DocumentEngine(),
     private val documentOcrEngine: DocumentOcrEngine = DocumentOcrEngine(),
+    private val moonModeEngine: MoonModeEngine = MoonModeEngine(),
+    private val wildlifeModeEngine: WildlifeModeEngine = WildlifeModeEngine(),
 ) : ViewModel() {
 
     private val _internalState = MutableStateFlow(
@@ -288,6 +300,20 @@ class CameraViewModel @Inject constructor(
         NightStreamState(plan, portPlan, boost, stab, therm)
     }
 
+    private data class SpecializedTrackingStreamState(
+        val moon: MoonDetectionState,
+        val wildlife: WildlifeDetectionState,
+        val tracking: TrackedObjectState,
+    )
+
+    private val _streamSpecializedTracking = combine(
+        cameraController.moonDetectionState,
+        cameraController.wildlifeDetectionState,
+        cameraController.trackedObjectState,
+    ) { moon, wildlife, tracking ->
+        SpecializedTrackingStreamState(moon, wildlife, tracking)
+    }
+
     private val _streamProAssistance = combine(
         cameraController.focusPeakingData,
         cameraController.exposureZebraData,
@@ -296,14 +322,21 @@ class CameraViewModel @Inject constructor(
         ProAssistanceStreamState(peaking, zebra, lens)
     }
 
+    private val _streamAssistanceAndTracking = combine(
+        _streamProAssistance,
+        _streamSpecializedTracking,
+    ) { assist, spec ->
+        assist to spec
+    }
+
     val uiState: StateFlow<CameraUiState> = combine(
         _internalState,
         cameraController.sessionState,
         cameraController.zoomState,
-        combine(_stream1, _stream2, _streamIntelligence, _streamNight, _streamProAssistance) { s1, s2, intel, night, assist ->
-            Tuple5(s1, s2, intel, night, assist)
+        combine(_stream1, _stream2, _streamIntelligence, _streamNight, _streamAssistanceAndTracking) { s1, s2, intel, night, (assist, spec) ->
+            Tuple6(s1, s2, intel, night, assist, spec)
         }
-    ) { internal, session, zoom, (s1, s2, intel, night, assist) ->
+    ) { internal, session, zoom, (s1, s2, intel, night, assist, spec) ->
         CameraUiState(
             hasCameraPermission = internal.hasPermission,
             isFrontCamera = internal.isFrontCamera,
@@ -354,6 +387,11 @@ class CameraViewModel @Inject constructor(
             isProcessingDocument = internal.isProcessingDocument,
             isProcessingPetShot = internal.isProcessingPetShot,
             isProcessingFoodShot = internal.isProcessingFoodShot,
+            isProcessingMoonShot = internal.isProcessingMoonShot,
+            isProcessingWildlifeShot = internal.isProcessingWildlifeShot,
+            moonDetectionState = spec.moon,
+            wildlifeDetectionState = spec.wildlife,
+            trackedObjectState = spec.tracking,
             ocrExtractedText = internal.ocrExtractedText,
             isExtractingOcr = internal.isExtractingOcr,
             errorMessage = internal.errorMessage,
@@ -365,6 +403,7 @@ class CameraViewModel @Inject constructor(
     )
 
     private data class Tuple5<A, B, C, D, E>(val a: A, val b: B, val c: C, val d: D, val e: E)
+    private data class Tuple6<A, B, C, D, E, F>(val a: A, val b: B, val c: C, val d: D, val e: E, val f: F)
 
     fun onPermissionResult(isGranted: Boolean) {
         _internalState.update { it.copy(hasPermission = isGranted) }
@@ -389,6 +428,14 @@ class CameraViewModel @Inject constructor(
             delay(2_000L)
             _internalState.update { it.copy(focusTarget = null) }
         }
+    }
+
+    fun startObjectTracking(normX: Float, normY: Float) {
+        cameraController.startObjectTracking(normX, normY)
+    }
+
+    fun stopObjectTracking() {
+        cameraController.stopObjectTracking()
     }
 
     fun onZoomRatioChanged(ratio: Float) {
@@ -971,6 +1018,144 @@ class CameraViewModel @Inject constructor(
         }
     }
 
+    fun takeMoonPhoto(targetRotation: Int = 0) {
+        if (_internalState.value.isCapturing || _internalState.value.isBurstCapturing) return
+
+        _internalState.update {
+            it.copy(
+                isCapturing = true,
+                isBurstCapturing = true,
+                isShutterBlinking = true,
+                isProcessingMoonShot = true,
+            )
+        }
+
+        viewModelScope.launch {
+            launch {
+                delay(80L)
+                _internalState.update { it.copy(isShutterBlinking = false) }
+            }
+
+            try {
+                val moonState = uiState.value.moonDetectionState
+                val config = moonModeEngine.computeCaptureConfig(
+                    moonState = moonState,
+                    thermalPolicy = com.webappypie.optilens.core.camera.thermal.ThermalDegradationPolicy.forThermalState(uiState.value.thermalState),
+                    availableZoomStops = uiState.value.zoomStops,
+                )
+                cameraController.setShutterSpeed(config.shutterSpeedNanos)
+                cameraController.setExposureCompensation(config.evOffset)
+
+                val burstResult = cameraController.acquireBurst(
+                    frameCount = config.burstFrameCount,
+                    evOffsets = listOf(config.evOffset),
+                    targetRotation = targetRotation,
+                )
+                when (burstResult) {
+                    is OptiResult.Success -> {
+                        val packets = burstResult.data.packets
+                        if (packets.isNotEmpty()) {
+                            val frames = packets.map { it.buffer.data }
+                            val centers = List(frames.size) {
+                                (moonState.roi?.centerX ?: 0.5f) to (moonState.roi?.centerY ?: 0.5f)
+                            }
+                            val stackedY = moonModeEngine.stackMoonFrames(
+                                frames = frames,
+                                width = packets[0].width,
+                                height = packets[0].height,
+                                discCenters = centers,
+                            )
+                            moonModeEngine.processLunarDetailRecovery(
+                                inputY = stackedY,
+                                width = packets[0].width,
+                                height = packets[0].height,
+                                discRoi = moonState.roi,
+                                strength = config.detailRecoveryStrength,
+                            )
+                        }
+                    }
+                    is OptiResult.Error -> {
+                        _internalState.update { it.copy(errorMessage = burstResult.error.displayMessage) }
+                    }
+                    else -> Unit
+                }
+            } catch (t: Throwable) {
+                _internalState.update { it.copy(errorMessage = t.message ?: "Moon capture failed") }
+            } finally {
+                _internalState.update {
+                    it.copy(
+                        isCapturing = false,
+                        isBurstCapturing = false,
+                        isProcessingMoonShot = false,
+                    )
+                }
+            }
+        }
+    }
+
+    fun takeWildlifePhoto(targetRotation: Int = 0) {
+        if (_internalState.value.isCapturing || _internalState.value.isBurstCapturing) return
+
+        _internalState.update {
+            it.copy(
+                isCapturing = true,
+                isBurstCapturing = true,
+                isShutterBlinking = true,
+                isProcessingWildlifeShot = true,
+                isEvaluatingBestShot = true,
+            )
+        }
+
+        viewModelScope.launch {
+            launch {
+                delay(80L)
+                _internalState.update { it.copy(isShutterBlinking = false) }
+            }
+
+            try {
+                val wildlifeState = uiState.value.wildlifeDetectionState
+                val config = wildlifeModeEngine.computeCaptureConfig(
+                    wildlifeState = wildlifeState,
+                    thermalPolicy = com.webappypie.optilens.core.camera.thermal.ThermalDegradationPolicy.forThermalState(uiState.value.thermalState),
+                    availableZoomStops = uiState.value.zoomStops,
+                )
+                cameraController.setShutterSpeed(config.targetShutterSpeedNanos)
+
+                val burstResult = cameraController.acquireBurst(
+                    frameCount = config.burstFrameCount,
+                    evOffsets = listOf(0),
+                    targetRotation = targetRotation,
+                )
+                when (burstResult) {
+                    is OptiResult.Success -> {
+                        val bestShot = wildlifeModeEngine.rankWildlifeBurst(burstResult.data)
+                        _internalState.update {
+                            it.copy(
+                                bestShotResult = bestShot,
+                                isBestShotSheetVisible = true,
+                            )
+                        }
+                    }
+                    is OptiResult.Error -> {
+                        _internalState.update { it.copy(errorMessage = burstResult.error.displayMessage) }
+                    }
+                    else -> Unit
+                }
+            } catch (t: Throwable) {
+                _internalState.update { it.copy(errorMessage = t.message ?: "Wildlife burst capture failed") }
+            } finally {
+                _internalState.update {
+                    it.copy(
+                        isCapturing = false,
+                        isBurstCapturing = false,
+                        isProcessingWildlifeShot = false,
+                        isEvaluatingBestShot = false,
+                    )
+                }
+            }
+        }
+    }
+
     /**
      * Decoupled OCR text extraction triggered ONLY as an on-demand separate action.
      */
@@ -1038,6 +1223,8 @@ class CameraViewModel @Inject constructor(
         val isProcessingDocument: Boolean = false,
         val isProcessingPetShot: Boolean = false,
         val isProcessingFoodShot: Boolean = false,
+        val isProcessingMoonShot: Boolean = false,
+        val isProcessingWildlifeShot: Boolean = false,
         val ocrExtractedText: String? = null,
         val isExtractingOcr: Boolean = false,
         val errorMessage: String? = null,

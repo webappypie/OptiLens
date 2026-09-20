@@ -48,7 +48,14 @@ class RealtimeIntelligenceAnalyzer(
     private val subjectMotionEstimator: SubjectMotionEstimator = SubjectMotionEstimator(),
     private val strategyEngine: CaptureStrategyEngine = CaptureStrategyEngine(),
     private val lensDirtyDetector: com.webappypie.optilens.core.camera.analysis.LensDirtyDetector = com.webappypie.optilens.core.camera.analysis.LensDirtyDetector(),
+    private val moonDetector: com.webappypie.optilens.core.camera.moon.MoonDetector = com.webappypie.optilens.core.camera.moon.MoonDetector(),
+    private val wildlifeDetector: com.webappypie.optilens.core.camera.wildlife.WildlifeDetector = com.webappypie.optilens.core.camera.wildlife.WildlifeDetector(),
+    private val objectTracker: com.webappypie.optilens.core.camera.tracking.RealtimeObjectTracker = com.webappypie.optilens.core.camera.tracking.RealtimeObjectTracker(),
     private val gyroVelocityProvider: () -> Float = { 0.0f },
+    private val thermalPolicyProvider: () -> com.webappypie.optilens.core.camera.thermal.ThermalDegradationPolicy = {
+        com.webappypie.optilens.core.camera.thermal.ThermalDegradationPolicy.forThermalState(com.webappypie.optilens.core.camera.thermal.DeviceThermalState.NORMAL)
+    },
+    private val currentZoomProvider: () -> Float = { 1.0f },
     private val analysisScope: CoroutineScope = CoroutineScope(Dispatchers.Default),
     private val onHistogramComputed: (HistogramData) -> Unit = {},
     private val onQualityMetricsComputed: (QualityMetrics) -> Unit = {},
@@ -59,6 +66,9 @@ class RealtimeIntelligenceAnalyzer(
     private val onFocusPeakingComputed: (FocusPeakingData) -> Unit = {},
     private val onExposureZebraComputed: (ExposureZebraData) -> Unit = {},
     private val onLensDirtyComputed: (com.webappypie.optilens.core.camera.analysis.LensDirtyState) -> Unit = {},
+    private val onMoonDetected: (com.webappypie.optilens.core.camera.moon.MoonDetectionState) -> Unit = {},
+    private val onWildlifeDetected: (com.webappypie.optilens.core.camera.wildlife.WildlifeDetectionState) -> Unit = {},
+    private val onTrackedObjectUpdated: (com.webappypie.optilens.core.camera.tracking.TrackedObjectState) -> Unit = {},
 ) : ImageAnalysis.Analyzer {
 
     @Volatile
@@ -151,7 +161,13 @@ class RealtimeIntelligenceAnalyzer(
             val lensDirtyState = lensDirtyDetector.evaluate(frameData, qualityMetrics, motionState)
             onLensDirtyComputed(lensDirtyState)
 
-            // 7. Throttled AI Inference (~4 fps)
+            // 7. Real-Time Object Tracking (Fast 15 fps loop, bounded < 3ms, non-blocking)
+            if (objectTracker.getCurrentState().status != com.webappypie.optilens.core.camera.tracking.TrackingStatus.INACTIVE) {
+                val trackedState = objectTracker.update(frameData, thermalPolicyProvider())
+                onTrackedObjectUpdated(trackedState)
+            }
+
+            // 8. Throttled AI Inference (~4 fps)
             val shouldRunAi = (now - lastAiInferenceTimestampMs) >= aiInferenceIntervalMs
             if (shouldRunAi) {
                 lastAiInferenceTimestampMs = now
@@ -163,12 +179,33 @@ class RealtimeIntelligenceAnalyzer(
                         cachedFaces = detectedFaces
                         onFacesDetected(detectedFaces)
 
-                        val rawScene = sceneClassifier.classify(
-                            frameData = frameData,
-                            metrics = qualityMetrics,
-                            motionState = motionState,
-                            faces = detectedFaces,
-                        )
+                        val zoom = currentZoomProvider()
+                        val moonState = moonDetector.detectMoon(frameData, qualityMetrics, motionState, zoom)
+                        onMoonDetected(moonState)
+
+                        val wildlifeState = wildlifeDetector.detectWildlife(frameData, qualityMetrics, motionState, detectedFaces, zoom)
+                        onWildlifeDetected(wildlifeState)
+
+                        val rawScene = if (moonState.isMoonDetected) {
+                            com.webappypie.optilens.core.camera.model.SceneClassification(
+                                primaryScene = com.webappypie.optilens.core.camera.model.SceneType.MOON,
+                                confidence = moonState.confidence,
+                                timestampMs = frameData.timestampMs,
+                            )
+                        } else if (wildlifeState.isDetected && detectedFaces.isEmpty()) {
+                            com.webappypie.optilens.core.camera.model.SceneClassification(
+                                primaryScene = com.webappypie.optilens.core.camera.model.SceneType.WILDLIFE,
+                                confidence = wildlifeState.confidence,
+                                timestampMs = frameData.timestampMs,
+                            )
+                        } else {
+                            sceneClassifier.classify(
+                                frameData = frameData,
+                                metrics = qualityMetrics,
+                                motionState = motionState,
+                                faces = detectedFaces,
+                            )
+                        }
 
                         val stabilizedScene = sceneStabilizer.stabilize(rawScene)
                         cachedScene = stabilizedScene
@@ -218,6 +255,15 @@ class RealtimeIntelligenceAnalyzer(
         }
     }
 
+    fun startObjectTracking(normTapX: Float, normTapY: Float, boxSizeFraction: Float = 0.18f) {
+        objectTracker.startTracking(normTapX, normTapY, boxSizeFraction)
+    }
+
+    fun stopObjectTracking() {
+        objectTracker.stopTracking()
+        onTrackedObjectUpdated(com.webappypie.optilens.core.camera.tracking.TrackedObjectState.INACTIVE)
+    }
+
     fun dismissLensDirtyPrompt() {
         lensDirtyDetector.dismissPrompt()
     }
@@ -226,6 +272,7 @@ class RealtimeIntelligenceAnalyzer(
         sceneStabilizer.reset()
         subjectMotionEstimator.reset()
         lensDirtyDetector.reset()
+        objectTracker.stopTracking()
         cachedFaces = emptyList()
         cachedScene = SceneClassification.DEFAULT
     }

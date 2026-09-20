@@ -37,6 +37,14 @@ enum class CameraMode(
         label = "Document",
         description = "Perspective warp, illumination normalization, and high-readability text enhancement",
     ),
+    MOON(
+        label = "Moon",
+        description = "Controlled short exposures, spot metering, and real photon stacking with zero synthetic replacement",
+    ),
+    WILDLIFE(
+        label = "Wildlife",
+        description = "High-speed telephoto burst with fast shutter bias and feather/fur protection",
+    ),
     PRO(
         label = "Pro",
         description = "Full manual control over ISO, shutter speed, focus diopters, WB, and RAW/DNG",

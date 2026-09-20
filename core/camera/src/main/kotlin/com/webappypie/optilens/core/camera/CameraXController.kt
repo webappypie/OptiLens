@@ -198,6 +198,15 @@ class CameraXController @Inject constructor(
     private val _activeCameraMode = MutableStateFlow(com.webappypie.optilens.core.camera.model.CameraMode.PHOTO)
     override val activeCameraMode: Flow<com.webappypie.optilens.core.camera.model.CameraMode> = _activeCameraMode.asStateFlow()
 
+    private val _moonDetectionState = MutableStateFlow(com.webappypie.optilens.core.camera.moon.MoonDetectionState.EMPTY)
+    override val moonDetectionState: Flow<com.webappypie.optilens.core.camera.moon.MoonDetectionState> = _moonDetectionState.asStateFlow()
+
+    private val _wildlifeDetectionState = MutableStateFlow(com.webappypie.optilens.core.camera.wildlife.WildlifeDetectionState.EMPTY)
+    override val wildlifeDetectionState: Flow<com.webappypie.optilens.core.camera.wildlife.WildlifeDetectionState> = _wildlifeDetectionState.asStateFlow()
+
+    private val _trackedObjectState = MutableStateFlow(com.webappypie.optilens.core.camera.tracking.TrackedObjectState.INACTIVE)
+    override val trackedObjectState: Flow<com.webappypie.optilens.core.camera.tracking.TrackedObjectState> = _trackedObjectState.asStateFlow()
+
     private var nightPolicyPreference: NightPolicyPreference = NightPolicyPreference.AUTO
     private var activeCameraProfile: CameraDeviceProfile? = null
 
@@ -429,6 +438,11 @@ class CameraXController @Inject constructor(
                 onFocusPeakingComputed = { _focusPeakingData.value = it },
                 onExposureZebraComputed = { _exposureZebraData.value = it },
                 onLensDirtyComputed = { _lensDirtyState.value = it },
+                onMoonDetected = { _moonDetectionState.value = it },
+                onWildlifeDetected = { _wildlifeDetectionState.value = it },
+                onTrackedObjectUpdated = { _trackedObjectState.value = it },
+                thermalPolicyProvider = { thermalMonitor.policy.value },
+                currentZoomProvider = { _zoomState.value.currentZoom },
             )
             analyzer.isFocusPeakingActive = _proState.value.focusPeakingEnabled
             analyzer.isExposureZebraActive = _proState.value.exposureZebraEnabled
@@ -1021,6 +1035,14 @@ class CameraXController @Inject constructor(
     override fun dismissLensDirtyPrompt() {
         realtimeAnalyzer?.dismissLensDirtyPrompt()
         _lensDirtyState.value = _lensDirtyState.value.copy(isDismissed = true)
+    }
+
+    override fun startObjectTracking(normTapX: Float, normTapY: Float) {
+        realtimeAnalyzer?.startObjectTracking(normTapX, normTapY)
+    }
+
+    override fun stopObjectTracking() {
+        realtimeAnalyzer?.stopObjectTracking()
     }
 
     override suspend fun setCameraMode(mode: com.webappypie.optilens.core.camera.model.CameraMode): OptiResult<Unit> = withContext(dispatchers.main) {

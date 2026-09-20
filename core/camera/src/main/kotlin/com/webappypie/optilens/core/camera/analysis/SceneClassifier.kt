@@ -37,6 +37,15 @@ class SceneClassifier {
             candidates.add(SceneCandidate(SceneType.LOW_LIGHT, nightConfidence))
         }
 
+        // 2b. Moon / Bright Disc in Dark Sky
+        val isMoonCandidate = (metrics.luminance < 50.0f || frameData.meanLuminance < 50.0f) &&
+                frameData.peripheryLuminance < 35.0f &&
+                frameData.centerLuminance > 120.0f &&
+                faces.isEmpty()
+        if (isMoonCandidate) {
+            candidates.add(SceneCandidate(SceneType.MOON, 0.89f))
+        }
+
         // 3. Document: High text/edge contrast on neutral background
         val isChrominanceNeutral = abs(frameData.averageU - 128f) < 8f && abs(frameData.averageV - 128f) < 8f
         val hasPaperLuminance = frameData.centerLuminance > 120f
