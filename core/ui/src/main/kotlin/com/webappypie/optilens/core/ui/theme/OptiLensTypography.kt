@@ -142,4 +142,11 @@ object OptiLensCameraTypography {
         fontSize = 72.sp,
         lineHeight = 80.sp,
     )
+
+    val readout = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Normal,
+        fontSize = 12.sp,
+        lineHeight = 16.sp,
+    )
 }

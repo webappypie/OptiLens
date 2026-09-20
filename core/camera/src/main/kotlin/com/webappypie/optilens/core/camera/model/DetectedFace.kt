@@ -75,6 +75,8 @@ data class FaceContour(
  * @param contours Detected anatomical boundary contour curves.
  * @param confidence Detection confidence score (0.0 to 1.0).
  * @param meanLuminance Estimated mean luminance across the face region (0.0 to 255.0).
+ * @param leftEyeOpenProbability Confidence that the left eye is open (0.0 to 1.0).
+ * @param rightEyeOpenProbability Confidence that the right eye is open (0.0 to 1.0).
  */
 data class DetectedFace(
     val id: Int? = null,
@@ -83,9 +85,23 @@ data class DetectedFace(
     val contours: List<FaceContour> = emptyList(),
     val confidence: Float = 1.0f,
     val meanLuminance: Float? = null,
+    val leftEyeOpenProbability: Float? = null,
+    val rightEyeOpenProbability: Float? = null,
 ) {
     fun getLeftEye(): FaceLandmarkPoint? = landmarks.firstOrNull { it.type == LandmarkType.LEFT_EYE }
     fun getRightEye(): FaceLandmarkPoint? = landmarks.firstOrNull { it.type == LandmarkType.RIGHT_EYE }
+
+    val eyeOpenScore: Float?
+        get() {
+            val left = leftEyeOpenProbability
+            val right = rightEyeOpenProbability
+            return when {
+                left != null && right != null -> (left + right) / 2f
+                left != null -> left
+                right != null -> right
+                else -> null
+            }
+        }
 
     fun getEyeDistance(): Float? {
         val left = getLeftEye() ?: return null

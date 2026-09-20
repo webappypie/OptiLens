@@ -47,6 +47,7 @@ class RealtimeIntelligenceAnalyzer(
     private val faceDetector: FaceDetector,
     private val subjectMotionEstimator: SubjectMotionEstimator = SubjectMotionEstimator(),
     private val strategyEngine: CaptureStrategyEngine = CaptureStrategyEngine(),
+    private val lensDirtyDetector: com.webappypie.optilens.core.camera.analysis.LensDirtyDetector = com.webappypie.optilens.core.camera.analysis.LensDirtyDetector(),
     private val gyroVelocityProvider: () -> Float = { 0.0f },
     private val analysisScope: CoroutineScope = CoroutineScope(Dispatchers.Default),
     private val onHistogramComputed: (HistogramData) -> Unit = {},
@@ -57,6 +58,7 @@ class RealtimeIntelligenceAnalyzer(
     private val onStrategyDecided: (CaptureStrategy) -> Unit = {},
     private val onFocusPeakingComputed: (FocusPeakingData) -> Unit = {},
     private val onExposureZebraComputed: (ExposureZebraData) -> Unit = {},
+    private val onLensDirtyComputed: (com.webappypie.optilens.core.camera.analysis.LensDirtyState) -> Unit = {},
 ) : ImageAnalysis.Analyzer {
 
     @Volatile
@@ -145,7 +147,11 @@ class RealtimeIntelligenceAnalyzer(
             )
             onMotionStateComputed(motionState)
 
-            // 6. Throttled AI Inference (~4 fps)
+            // 6. Conservative Optical Lens Dirty Detection
+            val lensDirtyState = lensDirtyDetector.evaluate(frameData, qualityMetrics, motionState)
+            onLensDirtyComputed(lensDirtyState)
+
+            // 7. Throttled AI Inference (~4 fps)
             val shouldRunAi = (now - lastAiInferenceTimestampMs) >= aiInferenceIntervalMs
             if (shouldRunAi) {
                 lastAiInferenceTimestampMs = now
@@ -212,9 +218,14 @@ class RealtimeIntelligenceAnalyzer(
         }
     }
 
+    fun dismissLensDirtyPrompt() {
+        lensDirtyDetector.dismissPrompt()
+    }
+
     fun reset() {
         sceneStabilizer.reset()
         subjectMotionEstimator.reset()
+        lensDirtyDetector.reset()
         cachedFaces = emptyList()
         cachedScene = SceneClassification.DEFAULT
     }

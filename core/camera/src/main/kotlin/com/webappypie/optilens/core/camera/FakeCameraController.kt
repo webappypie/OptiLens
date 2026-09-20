@@ -163,6 +163,25 @@ class FakeCameraController @Inject constructor() : CameraController {
     private val _thermalState = MutableStateFlow(com.webappypie.optilens.core.camera.thermal.DeviceThermalState.NORMAL)
     override val thermalState: Flow<com.webappypie.optilens.core.camera.thermal.DeviceThermalState> = _thermalState.asStateFlow()
 
+    private val _lensDirtyState = MutableStateFlow(com.webappypie.optilens.core.camera.analysis.LensDirtyState.CLEAN)
+    override val lensDirtyState: Flow<com.webappypie.optilens.core.camera.analysis.LensDirtyState> = _lensDirtyState.asStateFlow()
+
+    private val _activeCameraMode = MutableStateFlow(com.webappypie.optilens.core.camera.model.CameraMode.PHOTO)
+    override val activeCameraMode: Flow<com.webappypie.optilens.core.camera.model.CameraMode> = _activeCameraMode.asStateFlow()
+
+    override fun dismissLensDirtyPrompt() {
+        _lensDirtyState.value = _lensDirtyState.value.copy(isDismissed = true)
+    }
+
+    override suspend fun setCameraMode(mode: com.webappypie.optilens.core.camera.model.CameraMode): OptiResult<Unit> {
+        _activeCameraMode.value = mode
+        return OptiResult.Success(Unit)
+    }
+
+    fun emitLensDirtyState(state: com.webappypie.optilens.core.camera.analysis.LensDirtyState) {
+        _lensDirtyState.value = state
+    }
+
     val fakeBurstEngine = com.webappypie.optilens.core.camera.burst.FakeBurstAcquisitionEngine()
 
     fun emitScene(scene: com.webappypie.optilens.core.camera.model.SceneClassification) { _sceneClassification.value = scene }

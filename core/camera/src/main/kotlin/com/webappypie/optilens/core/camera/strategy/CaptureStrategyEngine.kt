@@ -97,7 +97,31 @@ class CaptureStrategyEngine {
             )
         }
 
-        // 6. Fast Subject Motion (Freeze Action)
+        // 6. Pet / Animal Strategy (Fast shutter bias to freeze sudden movement)
+        if (scene.primaryScene == SceneType.PET) {
+            return CaptureStrategy(
+                mode = CaptureStrategyMode.PET_FREEZE,
+                recommendedFrameCount = 1,
+                exposureEvOffsets = listOf(0),
+                uiHint = null,
+                shutterPriority = ShutterPriority.FAST_ACTION,
+                diagnostics = diagnostics,
+            )
+        }
+
+        // 7. Food Photography Strategy (Controlled local contrast & stable color)
+        if (scene.primaryScene == SceneType.FOOD) {
+            return CaptureStrategy(
+                mode = CaptureStrategyMode.FOOD_OPTIMIZED,
+                recommendedFrameCount = 1,
+                exposureEvOffsets = listOf(0),
+                uiHint = null,
+                shutterPriority = ShutterPriority.AUTO,
+                diagnostics = diagnostics,
+            )
+        }
+
+        // 8. Fast Subject Motion (Freeze Action)
         if (motion.subjectMotionLevel == SubjectMotionLevel.HIGH_MOTION) {
             return CaptureStrategy(
                 mode = CaptureStrategyMode.ACTION_FREEZE,
@@ -109,7 +133,7 @@ class CaptureStrategyEngine {
             )
         }
 
-        // 7. Digital Zoom Super Resolution Strategy
+        // 9. Digital Zoom Super Resolution Strategy
         if (zoomRatio >= 1.2f && !isOpticalZoom) {
             val count = if (motion.cameraShakeLevel == CameraShakeLevel.STABLE) 4 else 2
             return CaptureStrategy(
@@ -122,7 +146,7 @@ class CaptureStrategyEngine {
             )
         }
 
-        // 8. Standard Single Frame
+        // 10. Standard Single Frame
         return CaptureStrategy(
             mode = CaptureStrategyMode.SINGLE_FRAME,
             recommendedFrameCount = 1,
@@ -131,5 +155,68 @@ class CaptureStrategyEngine {
             shutterPriority = ShutterPriority.AUTO,
             diagnostics = diagnostics,
         )
+    }
+
+    /**
+     * Determines capture strategy when an explicit [com.webappypie.optilens.core.camera.model.CameraMode] is active.
+     */
+    fun decideStrategyForMode(
+        mode: com.webappypie.optilens.core.camera.model.CameraMode,
+        motion: MotionState = MotionState.DEFAULT,
+        quality: QualityMetrics = QualityMetrics.DEFAULT,
+    ): CaptureStrategy {
+        return when (mode) {
+            com.webappypie.optilens.core.camera.model.CameraMode.BEST_SHOT -> CaptureStrategy(
+                mode = CaptureStrategyMode.BEST_SHOT_BURST,
+                recommendedFrameCount = 6,
+                exposureEvOffsets = listOf(0),
+                shutterPriority = ShutterPriority.FAST_ACTION,
+            )
+            com.webappypie.optilens.core.camera.model.CameraMode.PET -> CaptureStrategy(
+                mode = CaptureStrategyMode.PET_FREEZE,
+                recommendedFrameCount = 1,
+                exposureEvOffsets = listOf(0),
+                shutterPriority = ShutterPriority.FAST_ACTION,
+            )
+            com.webappypie.optilens.core.camera.model.CameraMode.FOOD -> CaptureStrategy(
+                mode = CaptureStrategyMode.FOOD_OPTIMIZED,
+                recommendedFrameCount = 1,
+                exposureEvOffsets = listOf(0),
+                shutterPriority = ShutterPriority.AUTO,
+            )
+            com.webappypie.optilens.core.camera.model.CameraMode.DOCUMENT -> CaptureStrategy(
+                mode = CaptureStrategyMode.DOCUMENT_ENHANCE,
+                recommendedFrameCount = 1,
+                exposureEvOffsets = listOf(0),
+                uiHint = CaptureUiHint.DOCUMENT_DETECTED,
+                shutterPriority = ShutterPriority.AUTO,
+            )
+            com.webappypie.optilens.core.camera.model.CameraMode.NIGHT -> CaptureStrategy(
+                mode = CaptureStrategyMode.NIGHT_STACK,
+                recommendedFrameCount = if (motion.cameraShakeLevel == CameraShakeLevel.STABLE) 8 else 4,
+                exposureEvOffsets = listOf(0),
+                uiHint = CaptureUiHint.NIGHT_SUGGESTED,
+                shutterPriority = ShutterPriority.LONG_STABILIZED,
+            )
+            com.webappypie.optilens.core.camera.model.CameraMode.PORTRAIT -> CaptureStrategy(
+                mode = CaptureStrategyMode.PORTRAIT_DEPTH,
+                recommendedFrameCount = 1,
+                exposureEvOffsets = listOf(0),
+            )
+            com.webappypie.optilens.core.camera.model.CameraMode.PRO -> CaptureStrategy(
+                mode = CaptureStrategyMode.SINGLE_FRAME,
+                recommendedFrameCount = 1,
+                exposureEvOffsets = listOf(0),
+            )
+            com.webappypie.optilens.core.camera.model.CameraMode.PHOTO -> CaptureStrategy(
+                mode = CaptureStrategyMode.SINGLE_FRAME,
+                recommendedFrameCount = 1,
+                exposureEvOffsets = listOf(0),
+            )
+            com.webappypie.optilens.core.camera.model.CameraMode.VIDEO -> CaptureStrategy(
+                mode = CaptureStrategyMode.SINGLE_FRAME,
+                recommendedFrameCount = 0,
+            )
+        }
     }
 }

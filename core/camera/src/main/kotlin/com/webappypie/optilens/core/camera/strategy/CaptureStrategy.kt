@@ -10,7 +10,10 @@ enum class CaptureStrategyMode {
     PORTRAIT_DEPTH,
     DOCUMENT_ENHANCE,
     ACTION_FREEZE,
-    SUPER_RES_ZOOM;
+    SUPER_RES_ZOOM,
+    BEST_SHOT_BURST,
+    PET_FREEZE,
+    FOOD_OPTIMIZED;
 }
 
 /**
@@ -23,6 +26,7 @@ enum class CaptureUiHint(val message: String) {
     BACKLIGHT_DETECTED("Backlight detected"),
     DOCUMENT_DETECTED("Document detected"),
     AI_ZOOM_ACTIVE("AI Zoom Active"),
+    LENS_DIRTY_WARNING("Clean camera lens for clearer photos"),
     SCENE_CHIP("");
 }
 

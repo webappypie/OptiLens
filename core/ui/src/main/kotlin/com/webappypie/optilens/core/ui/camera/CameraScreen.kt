@@ -112,6 +112,10 @@ import com.webappypie.optilens.core.ui.camera.overlay.FocusPeakingOverlay
 import com.webappypie.optilens.core.ui.camera.overlay.SceneHintPill as IntelligentSceneHintPill
 import com.webappypie.optilens.core.ui.camera.pro.LensMetadataHud
 import com.webappypie.optilens.core.ui.camera.pro.ProControlsBar
+import com.webappypie.optilens.core.camera.model.CameraMode
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Pets
+import androidx.compose.material.icons.filled.Restaurant
 import com.webappypie.optilens.core.ui.camera.sensor.HorizonSensor
 import com.webappypie.optilens.core.ui.components.OptiCameraModeChip
 import com.webappypie.optilens.core.ui.components.OptiIconButton
@@ -122,14 +126,6 @@ import com.webappypie.optilens.core.ui.theme.OptiLensCameraTypography
 import com.webappypie.optilens.core.ui.theme.OptiLensTheme
 import kotlinx.coroutines.flow.Flow
 import kotlin.math.roundToInt
-
-enum class CameraMode(val label: String) {
-    PHOTO("Photo"),
-    NIGHT("Night"),
-    PORTRAIT("Portrait"),
-    PRO("Pro"),
-    VIDEO("Video"),
-}
 
 enum class HdrState { AUTO, ON, OFF }
 
@@ -193,12 +189,14 @@ fun CameraScreen(
         LaunchedEffect(trigger) {
             trigger.collect {
                 onShutterClick()
-                if (currentMode == CameraMode.NIGHT) {
-                    viewModel.takeNightPhoto(targetRotation = Surface.ROTATION_0)
-                } else if (currentMode == CameraMode.PORTRAIT) {
-                    viewModel.takePortraitPhoto(targetRotation = Surface.ROTATION_0)
-                } else {
-                    viewModel.takePhotoWithTimer(targetRotation = Surface.ROTATION_0)
+                when (currentMode) {
+                    CameraMode.NIGHT -> viewModel.takeNightPhoto(targetRotation = Surface.ROTATION_0)
+                    CameraMode.PORTRAIT -> viewModel.takePortraitPhoto(targetRotation = Surface.ROTATION_0)
+                    CameraMode.BEST_SHOT -> viewModel.takeBestShotPhoto(targetRotation = Surface.ROTATION_0)
+                    CameraMode.PET -> viewModel.takePetPhoto(targetRotation = Surface.ROTATION_0)
+                    CameraMode.FOOD -> viewModel.takeFoodPhoto(targetRotation = Surface.ROTATION_0)
+                    CameraMode.DOCUMENT -> viewModel.takeDocumentPhoto(targetRotation = Surface.ROTATION_0)
+                    else -> viewModel.takePhotoWithTimer(targetRotation = Surface.ROTATION_0)
                 }
             }
         }
@@ -418,6 +416,64 @@ fun CameraScreen(
                 )
             }
 
+            // Best Shot Status Badge
+            if (currentMode == CameraMode.BEST_SHOT) {
+                SpecializedModeBadge(
+                    text = if (uiState.isEvaluatingBestShot) "Evaluating burst..." else "Best Shot (6 frames)",
+                    isProcessing = uiState.isEvaluatingBestShot,
+                    icon = Icons.Default.AutoAwesome,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(top = topInset + 64.dp, start = 16.dp),
+                )
+            }
+
+            // Pet Mode Status Badge
+            if (currentMode == CameraMode.PET) {
+                SpecializedModeBadge(
+                    text = if (uiState.isProcessingPetShot) "Freezing action..." else "Pet: 1/250s+ Shutter",
+                    isProcessing = uiState.isProcessingPetShot,
+                    icon = Icons.Default.Pets,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(top = topInset + 64.dp, start = 16.dp),
+                )
+            }
+
+            // Food Mode Status Badge
+            if (currentMode == CameraMode.FOOD) {
+                SpecializedModeBadge(
+                    text = if (uiState.isProcessingFoodShot) "Optimizing..." else "Food: Warm-Neutral WB",
+                    isProcessing = uiState.isProcessingFoodShot,
+                    icon = Icons.Default.Restaurant,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(top = topInset + 64.dp, start = 16.dp),
+                )
+            }
+
+            // Document Mode Controls
+            if (currentMode == CameraMode.DOCUMENT) {
+                DocumentModeControls(
+                    currentColorMode = uiState.documentColorMode,
+                    onSelectColorMode = { viewModel.setDocumentColorMode(it) },
+                    isProcessing = uiState.isProcessingDocument,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(top = topInset + 64.dp, start = 16.dp),
+                )
+            }
+
+            // Lens Dirty Dismissible Banner
+            if (uiState.lensDirtyState.shouldShowPrompt) {
+                LensDirtyBanner(
+                    onDismiss = { viewModel.dismissLensDirtyPrompt() },
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = topInset + 8.dp, start = 16.dp, end = 16.dp),
+                )
+            }
+
             // Live 64-Bin Luminance & RGB Histogram Overlay (in Pro Mode or when toggled)
             if (uiState.isHistogramVisible || currentMode == CameraMode.PRO) {
                 HistogramOverlay(
@@ -598,7 +654,10 @@ fun CameraScreen(
                     OptiCameraModeChip(
                         title = mode.label,
                         isSelected = currentMode == mode,
-                        onClick = { currentMode = mode },
+                        onClick = {
+                            currentMode = mode
+                            viewModel.setCameraMode(mode)
+                        },
                     )
                 }
             }
@@ -654,20 +713,26 @@ fun CameraScreen(
                     }
                 }
 
-                // Tactile Shutter Button with timer countdown trigger, night mode, or portrait mode
+                // Tactile Shutter Button with mode-specific capture routing
                 CameraShutterButton(
                     onClick = {
                         onShutterClick()
-                        if (currentMode == CameraMode.NIGHT) {
-                            viewModel.takeNightPhoto(targetRotation = Surface.ROTATION_0)
-                        } else if (currentMode == CameraMode.PORTRAIT) {
-                            viewModel.takePortraitPhoto(targetRotation = Surface.ROTATION_0)
-                        } else {
-                            viewModel.takePhotoWithTimer(targetRotation = Surface.ROTATION_0)
+                        when (currentMode) {
+                            CameraMode.NIGHT -> viewModel.takeNightPhoto(targetRotation = Surface.ROTATION_0)
+                            CameraMode.PORTRAIT -> viewModel.takePortraitPhoto(targetRotation = Surface.ROTATION_0)
+                            CameraMode.BEST_SHOT -> viewModel.takeBestShotPhoto(targetRotation = Surface.ROTATION_0)
+                            CameraMode.PET -> viewModel.takePetPhoto(targetRotation = Surface.ROTATION_0)
+                            CameraMode.FOOD -> viewModel.takeFoodPhoto(targetRotation = Surface.ROTATION_0)
+                            CameraMode.DOCUMENT -> viewModel.takeDocumentPhoto(targetRotation = Surface.ROTATION_0)
+                            else -> viewModel.takePhotoWithTimer(targetRotation = Surface.ROTATION_0)
                         }
                     },
                     isVideo = currentMode == CameraMode.VIDEO,
-                    enabled = !uiState.isCapturing && !uiState.isBurstCapturing && !uiState.isProcessingNightShot && !uiState.isProcessingPortraitShot && uiState.timerCountdown == null,
+                    enabled = !uiState.isCapturing && !uiState.isBurstCapturing &&
+                            !uiState.isProcessingNightShot && !uiState.isProcessingPortraitShot &&
+                            !uiState.isProcessingPetShot && !uiState.isProcessingFoodShot &&
+                            !uiState.isProcessingDocument && !uiState.isEvaluatingBestShot &&
+                            uiState.timerCountdown == null,
                 )
 
                 // Camera Flip Button (48dp touch target)
@@ -691,6 +756,22 @@ fun CameraScreen(
                         modifier = Modifier.size(OptiLensTheme.iconSizes.standard),
                     )
                 }
+            }
+        }
+
+        // Best Shot Alternates Inspection and Override Sheet
+        if (uiState.isBestShotSheetVisible && uiState.bestShotResult != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.5f)),
+                contentAlignment = Alignment.BottomCenter,
+            ) {
+                BestShotAlternatesSheet(
+                    result = uiState.bestShotResult!!,
+                    onSelectCandidate = { viewModel.overrideBestShotSelection(it) },
+                    onDismiss = { viewModel.dismissBestShotSheet() },
+                )
             }
         }
     }

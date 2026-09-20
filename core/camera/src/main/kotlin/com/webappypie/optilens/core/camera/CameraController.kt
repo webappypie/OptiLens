@@ -98,8 +98,20 @@ interface CameraController {
     /** Current device hardware thermal state. */
     val thermalState: Flow<com.webappypie.optilens.core.camera.thermal.DeviceThermalState>
 
+    /** Real-time optical lens cleanliness state and prompt visibility. */
+    val lensDirtyState: Flow<com.webappypie.optilens.core.camera.analysis.LensDirtyState>
+
+    /** Currently active camera mode. */
+    val activeCameraMode: Flow<com.webappypie.optilens.core.camera.model.CameraMode>
+
     /** Whether the front camera is currently active. */
     val isFrontCamera: Boolean
+
+    /** Dismiss the lens dirty prompt on the viewfinder. */
+    fun dismissLensDirtyPrompt()
+
+    /** Set active camera mode. */
+    suspend fun setCameraMode(mode: com.webappypie.optilens.core.camera.model.CameraMode): OptiResult<Unit>
 
     /**
      * Enables or disables preview low-light boost framing aid.

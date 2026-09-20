@@ -192,6 +192,12 @@ class CameraXController @Inject constructor(
 
     override val thermalState: Flow<DeviceThermalState> = thermalMonitor.thermalState
 
+    private val _lensDirtyState = MutableStateFlow(com.webappypie.optilens.core.camera.analysis.LensDirtyState.CLEAN)
+    override val lensDirtyState: Flow<com.webappypie.optilens.core.camera.analysis.LensDirtyState> = _lensDirtyState.asStateFlow()
+
+    private val _activeCameraMode = MutableStateFlow(com.webappypie.optilens.core.camera.model.CameraMode.PHOTO)
+    override val activeCameraMode: Flow<com.webappypie.optilens.core.camera.model.CameraMode> = _activeCameraMode.asStateFlow()
+
     private var nightPolicyPreference: NightPolicyPreference = NightPolicyPreference.AUTO
     private var activeCameraProfile: CameraDeviceProfile? = null
 
@@ -422,6 +428,7 @@ class CameraXController @Inject constructor(
                 onStrategyDecided = { _captureStrategy.value = it },
                 onFocusPeakingComputed = { _focusPeakingData.value = it },
                 onExposureZebraComputed = { _exposureZebraData.value = it },
+                onLensDirtyComputed = { _lensDirtyState.value = it },
             )
             analyzer.isFocusPeakingActive = _proState.value.focusPeakingEnabled
             analyzer.isExposureZebraActive = _proState.value.exposureZebraEnabled
@@ -1009,6 +1016,16 @@ class CameraXController @Inject constructor(
         FlashMode.AUTO -> ImageCapture.FLASH_MODE_AUTO
         FlashMode.ON, FlashMode.TORCH -> ImageCapture.FLASH_MODE_ON
         FlashMode.OFF -> ImageCapture.FLASH_MODE_OFF
+    }
+
+    override fun dismissLensDirtyPrompt() {
+        realtimeAnalyzer?.dismissLensDirtyPrompt()
+        _lensDirtyState.value = _lensDirtyState.value.copy(isDismissed = true)
+    }
+
+    override suspend fun setCameraMode(mode: com.webappypie.optilens.core.camera.model.CameraMode): OptiResult<Unit> = withContext(dispatchers.main) {
+        _activeCameraMode.value = mode
+        OptiResult.Success(Unit)
     }
 
     companion object {

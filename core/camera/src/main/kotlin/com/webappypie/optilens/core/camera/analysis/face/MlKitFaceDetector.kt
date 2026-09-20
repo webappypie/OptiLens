@@ -28,7 +28,7 @@ class MlKitFaceDetector : FaceDetector {
         .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
         .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL)
         .setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL)
-        .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_NONE)
+        .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
         .setMinFaceSize(0.12f)
         .build()
 
@@ -138,6 +138,8 @@ class MlKitFaceDetector : FaceDetector {
                 landmarks = landmarkPoints,
                 contours = contourList,
                 confidence = 0.95f,
+                leftEyeOpenProbability = face.leftEyeOpenProbability,
+                rightEyeOpenProbability = face.rightEyeOpenProbability,
             )
         }
     }

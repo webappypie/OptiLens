@@ -2,11 +2,11 @@
 
 | Field | Value |
 |---|---|
-| **Current Phase** | Phase 15 — Gallery, Storage and Existing Photos |
+| **Current Phase** | Phase 16 — Specialized Modes and Best Shot |
 | **Status** | ✅ PASS |
 | **Completed** | 2026-09-20 |
-| **Prompt file** | `prompts/PHASE_15_GALLERY_STORAGE_EXISTING_PHOTOS.md` |
-| **Next phase** | Phase 16 — Specialized Modes and Best Shot (`prompts/PHASE_16_SPECIALIZED_MODES_BEST_SHOT.md`) |
+| **Prompt file** | `prompts/PHASE_16_SPECIALIZED_MODES_BEST_SHOT.md` |
+| **Next phase** | Phase 17 — Production Hardening and Performance Profiling (`prompts/PHASE_17_PRODUCTION_HARDENING_PERFORMANCE.md`) |
 
 ## Completed Phases
 
@@ -28,3 +28,4 @@
 | 13 | Super Resolution and AI Zoom | ✅ PASS | `phase-13: super resolution and ai zoom, optical-first routing, and honest comparative benchmarking` |
 | 14 | Full Pro Mode and RAW/DNG | ✅ PASS | `phase-14: full pro mode, dng creator raw engine, and assistance visual aids` |
 | 15 | Gallery, Storage and Existing Photos | ✅ PASS | `phase-15: gallery media browser, scoped storage, photo picker, and detail inspection` |
+| 16 | Specialized Modes and Best Shot | ✅ PASS | `phase-16: specialized modes, best shot ranking, pet, food, document and lens intelligence` |

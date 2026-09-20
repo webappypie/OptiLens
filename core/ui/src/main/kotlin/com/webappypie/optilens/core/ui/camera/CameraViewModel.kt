@@ -33,6 +33,18 @@ import com.webappypie.optilens.core.camera.strategy.CaptureStrategy
 import com.webappypie.optilens.core.camera.thermal.DeviceThermalState
 import com.webappypie.optilens.core.camera.portrait.PortraitAperture
 import com.webappypie.optilens.core.camera.portrait.PortraitExecutionPlan
+import com.webappypie.optilens.core.camera.model.CameraMode
+import com.webappypie.optilens.core.camera.analysis.LensDirtyState
+import com.webappypie.optilens.core.camera.bestshot.BestShotCandidate
+import com.webappypie.optilens.core.camera.bestshot.BestShotEngine
+import com.webappypie.optilens.core.camera.bestshot.BestShotResult
+import com.webappypie.optilens.core.camera.specialized.PetModeEngine
+import com.webappypie.optilens.core.camera.specialized.FoodModeEngine
+import com.webappypie.optilens.core.camera.document.DocumentColorMode
+import com.webappypie.optilens.core.camera.document.DocumentEngine
+import com.webappypie.optilens.core.camera.document.DocumentOcrEngine
+import com.webappypie.optilens.core.camera.document.DocumentQuad
+import com.webappypie.optilens.core.camera.document.DocumentScanResult
 import com.webappypie.optilens.core.settings.AppSettings
 import com.webappypie.optilens.core.common.result.OptiResult
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -105,6 +117,19 @@ data class CameraUiState(
     val lastBurstResult: BurstResult? = null,
     val focusTarget: Offset? = null,
     val isShutterBlinking: Boolean = false,
+    val currentMode: CameraMode = CameraMode.PHOTO,
+    val lensDirtyState: LensDirtyState = LensDirtyState.CLEAN,
+    val bestShotResult: BestShotResult? = null,
+    val isEvaluatingBestShot: Boolean = false,
+    val isBestShotSheetVisible: Boolean = false,
+    val documentColorMode: DocumentColorMode = DocumentColorMode.COLOR,
+    val detectedDocumentQuad: DocumentQuad? = null,
+    val documentScanResult: DocumentScanResult? = null,
+    val isProcessingDocument: Boolean = false,
+    val isProcessingPetShot: Boolean = false,
+    val isProcessingFoodShot: Boolean = false,
+    val ocrExtractedText: String? = null,
+    val isExtractingOcr: Boolean = false,
     val errorMessage: String? = null,
 )
 
@@ -112,6 +137,11 @@ data class CameraUiState(
 class CameraViewModel @Inject constructor(
     private val cameraController: CameraController,
     private val appSettings: AppSettings? = null,
+    private val bestShotEngine: BestShotEngine = BestShotEngine(),
+    private val petModeEngine: PetModeEngine = PetModeEngine(),
+    private val foodModeEngine: FoodModeEngine = FoodModeEngine(),
+    private val documentEngine: DocumentEngine = DocumentEngine(),
+    private val documentOcrEngine: DocumentOcrEngine = DocumentOcrEngine(),
 ) : ViewModel() {
 
     private val _internalState = MutableStateFlow(
@@ -190,6 +220,7 @@ class CameraViewModel @Inject constructor(
         val motion: MotionState,
         val strategy: CaptureStrategy,
         val faces: List<DetectedFace>,
+        val lensDirty: LensDirtyState,
     )
 
     private data class NightStreamState(
@@ -223,14 +254,21 @@ class CameraViewModel @Inject constructor(
         HardwareStreamState2(pro, hist, photo, burst)
     }
 
-    private val _streamIntelligence = combine(
+    private val _streamIntelligenceBase = combine(
         cameraController.sceneClassification,
         cameraController.qualityMetrics,
         cameraController.motionState,
         cameraController.captureStrategy,
         cameraController.detectedFaces,
     ) { scene, quality, motion, strategy, faces ->
-        IntelligenceStreamState(scene, quality, motion, strategy, faces)
+        Tuple5(scene, quality, motion, strategy, faces)
+    }
+
+    private val _streamIntelligence = combine(
+        _streamIntelligenceBase,
+        cameraController.lensDirtyState,
+    ) { base, lensDirty ->
+        IntelligenceStreamState(base.a, base.b, base.c, base.d, base.e, lensDirty)
     }
 
     private val _streamNight = combine(
@@ -298,6 +336,19 @@ class CameraViewModel @Inject constructor(
             lastBurstResult = s2.lastBurst,
             focusTarget = internal.focusTarget,
             isShutterBlinking = internal.isShutterBlinking,
+            currentMode = internal.currentMode,
+            lensDirtyState = intel.lensDirty,
+            bestShotResult = internal.bestShotResult,
+            isEvaluatingBestShot = internal.isEvaluatingBestShot,
+            isBestShotSheetVisible = internal.isBestShotSheetVisible,
+            documentColorMode = internal.documentColorMode,
+            detectedDocumentQuad = internal.detectedDocumentQuad,
+            documentScanResult = internal.documentScanResult,
+            isProcessingDocument = internal.isProcessingDocument,
+            isProcessingPetShot = internal.isProcessingPetShot,
+            isProcessingFoodShot = internal.isProcessingFoodShot,
+            ocrExtractedText = internal.ocrExtractedText,
+            isExtractingOcr = internal.isExtractingOcr,
             errorMessage = internal.errorMessage,
         )
     }.stateIn(
@@ -712,6 +763,236 @@ class CameraViewModel @Inject constructor(
         }
     }
 
+    fun setCameraMode(mode: CameraMode) {
+        _internalState.update { it.copy(currentMode = mode) }
+        viewModelScope.launch {
+            cameraController.setCameraMode(mode)
+        }
+    }
+
+    fun dismissLensDirtyPrompt() {
+        cameraController.dismissLensDirtyPrompt()
+    }
+
+    fun takeBestShotPhoto(targetRotation: Int = 0) {
+        if (_internalState.value.isCapturing || _internalState.value.isBurstCapturing) return
+
+        _internalState.update {
+            it.copy(
+                isCapturing = true,
+                isBurstCapturing = true,
+                isShutterBlinking = true,
+                isEvaluatingBestShot = true,
+            )
+        }
+
+        viewModelScope.launch {
+            launch {
+                delay(80L)
+                _internalState.update { it.copy(isShutterBlinking = false) }
+            }
+
+            try {
+                val burstResult = cameraController.acquireBurst(
+                    frameCount = 6,
+                    evOffsets = listOf(0),
+                    targetRotation = targetRotation,
+                )
+
+                when (burstResult) {
+                    is OptiResult.Success -> {
+                        val result = bestShotEngine.evaluateBurst(
+                            burst = burstResult.data,
+                            detectedFaces = uiState.value.detectedFaces,
+                        )
+                        _internalState.update {
+                            it.copy(
+                                bestShotResult = result,
+                                isBestShotSheetVisible = true,
+                            )
+                        }
+                    }
+                    is OptiResult.Error -> {
+                        _internalState.update { it.copy(errorMessage = burstResult.error.displayMessage) }
+                    }
+                    else -> Unit
+                }
+            } finally {
+                _internalState.update {
+                    it.copy(
+                        isCapturing = false,
+                        isBurstCapturing = false,
+                        isEvaluatingBestShot = false,
+                    )
+                }
+            }
+        }
+    }
+
+    fun overrideBestShotSelection(candidateIndex: Int) {
+        _internalState.update { state ->
+            val updatedResult = state.bestShotResult?.withManualOverride(candidateIndex)
+            state.copy(bestShotResult = updatedResult)
+        }
+    }
+
+    fun dismissBestShotSheet() {
+        _internalState.update { it.copy(isBestShotSheetVisible = false) }
+    }
+
+    fun takePetPhoto(targetRotation: Int = 0) {
+        if (_internalState.value.isCapturing) return
+
+        _internalState.update {
+            it.copy(
+                isCapturing = true,
+                isShutterBlinking = true,
+                isProcessingPetShot = true,
+            )
+        }
+
+        viewModelScope.launch {
+            launch {
+                delay(80L)
+                _internalState.update { it.copy(isShutterBlinking = false) }
+            }
+
+            try {
+                val petConfig = petModeEngine.computeCaptureConfig(
+                    quality = uiState.value.qualityMetrics,
+                    motion = uiState.value.motionState,
+                )
+                cameraController.setShutterSpeed(petConfig.targetShutterSpeedNanos)
+                when (val result = cameraController.capturePhoto(targetRotation)) {
+                    is OptiResult.Error -> _internalState.update { it.copy(errorMessage = result.error.displayMessage) }
+                    else -> Unit
+                }
+            } finally {
+                delay(150L)
+                _internalState.update {
+                    it.copy(
+                        isCapturing = false,
+                        isProcessingPetShot = false,
+                    )
+                }
+            }
+        }
+    }
+
+    fun takeFoodPhoto(targetRotation: Int = 0) {
+        if (_internalState.value.isCapturing) return
+
+        _internalState.update {
+            it.copy(
+                isCapturing = true,
+                isShutterBlinking = true,
+                isProcessingFoodShot = true,
+            )
+        }
+
+        viewModelScope.launch {
+            launch {
+                delay(80L)
+                _internalState.update { it.copy(isShutterBlinking = false) }
+            }
+
+            try {
+                foodModeEngine.getStabilizedWhiteBalance(5200)
+                when (val result = cameraController.capturePhoto(targetRotation)) {
+                    is OptiResult.Error -> _internalState.update { it.copy(errorMessage = result.error.displayMessage) }
+                    else -> Unit
+                }
+            } finally {
+                delay(150L)
+                _internalState.update {
+                    it.copy(
+                        isCapturing = false,
+                        isProcessingFoodShot = false,
+                    )
+                }
+            }
+        }
+    }
+
+    fun setDocumentColorMode(colorMode: DocumentColorMode) {
+        _internalState.update { it.copy(documentColorMode = colorMode) }
+    }
+
+    fun takeDocumentPhoto(targetRotation: Int = 0) {
+        if (_internalState.value.isCapturing) return
+
+        _internalState.update {
+            it.copy(
+                isCapturing = true,
+                isShutterBlinking = true,
+                isProcessingDocument = true,
+            )
+        }
+
+        viewModelScope.launch {
+            launch {
+                delay(80L)
+                _internalState.update { it.copy(isShutterBlinking = false) }
+            }
+
+            try {
+                when (val result = cameraController.capturePhoto(targetRotation)) {
+                    is OptiResult.Success -> {
+                        val scanResult = DocumentScanResult(
+                            uri = result.data.uri,
+                            quad = _internalState.value.detectedDocumentQuad ?: DocumentQuad.DEFAULT,
+                            colorMode = _internalState.value.documentColorMode,
+                            width = result.data.width,
+                            height = result.data.height,
+                        )
+                        _internalState.update { it.copy(documentScanResult = scanResult) }
+                    }
+                    is OptiResult.Error -> {
+                        _internalState.update { it.copy(errorMessage = result.error.displayMessage) }
+                    }
+                    else -> Unit
+                }
+            } finally {
+                delay(200L)
+                _internalState.update {
+                    it.copy(
+                        isCapturing = false,
+                        isProcessingDocument = false,
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Decoupled OCR text extraction triggered ONLY as an on-demand separate action.
+     */
+    fun extractDocumentOcr() {
+        val uri = _internalState.value.documentScanResult?.uri
+            ?: uiState.value.lastCapturedPhoto?.uri
+            ?: return
+
+        if (_internalState.value.isExtractingOcr) return
+
+        _internalState.update { it.copy(isExtractingOcr = true) }
+
+        viewModelScope.launch {
+            try {
+                when (val result = documentOcrEngine.extractTextFromUri(uri)) {
+                    is OptiResult.Success -> {
+                        _internalState.update { it.copy(ocrExtractedText = result.data) }
+                    }
+                    is OptiResult.Error -> {
+                        _internalState.update { it.copy(errorMessage = result.error.displayMessage) }
+                    }
+                    else -> Unit
+                }
+            } finally {
+                _internalState.update { it.copy(isExtractingOcr = false) }
+            }
+        }
+    }
+
     fun clearErrorMessage() {
         _internalState.update { it.copy(errorMessage = null) }
     }
@@ -740,6 +1021,18 @@ class CameraViewModel @Inject constructor(
         val timerCountdown: Int? = null,
         val aspectRatio: CameraAspectRatio = CameraAspectRatio.RATIO_4_3,
         val isHistogramVisible: Boolean = false,
+        val currentMode: CameraMode = CameraMode.PHOTO,
+        val bestShotResult: BestShotResult? = null,
+        val isEvaluatingBestShot: Boolean = false,
+        val isBestShotSheetVisible: Boolean = false,
+        val documentColorMode: DocumentColorMode = DocumentColorMode.COLOR,
+        val detectedDocumentQuad: DocumentQuad? = null,
+        val documentScanResult: DocumentScanResult? = null,
+        val isProcessingDocument: Boolean = false,
+        val isProcessingPetShot: Boolean = false,
+        val isProcessingFoodShot: Boolean = false,
+        val ocrExtractedText: String? = null,
+        val isExtractingOcr: Boolean = false,
         val errorMessage: String? = null,
     )
 }
