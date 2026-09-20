@@ -2,11 +2,11 @@
 
 | Field | Value |
 |---|---|
-| **Current Phase** | Phase 20 — Moon Assist, Wildlife/Bird Mode, and Object Tracking |
+| **Current Phase** | Phase 21 — Privacy, Analytics and Security Hardening |
 | **Status** | ✅ PASS |
 | **Completed** | 2026-09-21 |
-| **Prompt file** | `prompts/PHASE_20_MOON_WILDLIFE_OBJECT_TRACKING.md` |
-| **Next phase** | Phase 21 — Privacy, Security, and Anti-Abuse Hardening (`prompts/PHASE_21_PRIVACY_SECURITY_HARDENING.md`) |
+| **Prompt file** | `prompts/PHASE_21_PRIVACY_SECURITY_HARDENING.md` |
+| **Next phase** | Phase 22 — Device Matrix Compatibility (`prompts/PHASE_22_DEVICE_MATRIX_COMPATIBILITY.md`) |
 
 ## Completed Phases
 
@@ -33,3 +33,4 @@
 | 18 | Advanced AI Tools | ✅ PASS | `phase-18: advanced ai tools framework, deblur, inpainting, upscale and restoration` |
 | 19 | Performance, Thermal, and Baseline Profiles | ✅ PASS | `phase-19: performance, thermal, memory and baseline profiles` |
 | 20 | Moon Assist, Wildlife/Bird Mode, and Object Tracking | ✅ PASS | `phase-20: moon assist, wildlife bird mode and real-time object tracking` |
+| 21 | Privacy, Analytics and Security Hardening | ✅ PASS | `phase-21: privacy analytics and security hardening` |

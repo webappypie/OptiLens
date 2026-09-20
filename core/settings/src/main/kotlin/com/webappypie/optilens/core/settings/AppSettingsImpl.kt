@@ -35,6 +35,8 @@ class AppSettingsImpl @Inject constructor(
         val COLOR_PROFILE           = stringPreferencesKey("color_profile")
         val KEEP_ORIGINAL           = booleanPreferencesKey("keep_original")
         val LOCATION_TAGGING        = booleanPreferencesKey("location_tagging")
+        val ANALYTICS_ENABLED       = booleanPreferencesKey("analytics_enabled")
+        val CRASH_REPORTING_ENABLED = booleanPreferencesKey("crash_reporting_enabled")
         val MIRROR_FRONT_SELFIE     = booleanPreferencesKey("mirror_front_selfie")
         val PORTRAIT_BLUR_STRENGTH  = floatPreferencesKey("portrait_blur_strength")
         val PORTRAIT_SKIN_SMOOTHING = floatPreferencesKey("portrait_skin_smoothing")
@@ -107,6 +109,16 @@ class AppSettingsImpl @Inject constructor(
     override val locationTaggingEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.LOCATION_TAGGING] ?: false }
     override suspend fun setLocationTaggingEnabled(enabled: Boolean) {
         dataStore.edit { it[Keys.LOCATION_TAGGING] = enabled }
+    }
+
+    override val analyticsEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.ANALYTICS_ENABLED] ?: false }
+    override suspend fun setAnalyticsEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.ANALYTICS_ENABLED] = enabled }
+    }
+
+    override val crashReportingEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.CRASH_REPORTING_ENABLED] ?: false }
+    override suspend fun setCrashReportingEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.CRASH_REPORTING_ENABLED] = enabled }
     }
 
     // ── Portrait & Selfie ─────────────────────────────────────────────────

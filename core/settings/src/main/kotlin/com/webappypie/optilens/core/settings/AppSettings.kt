@@ -52,6 +52,14 @@ interface AppSettings {
     val locationTaggingEnabled: Flow<Boolean>
     suspend fun setLocationTaggingEnabled(enabled: Boolean)
 
+    /** Whether anonymous diagnostic analytics are enabled. Default: true. */
+    val analyticsEnabled: Flow<Boolean>
+    suspend fun setAnalyticsEnabled(enabled: Boolean)
+
+    /** Whether crash and non-fatal error reporting is enabled. Default: true. */
+    val crashReportingEnabled: Flow<Boolean>
+    suspend fun setCrashReportingEnabled(enabled: Boolean)
+
     // ── Portrait & Selfie ────────────────────────────────────
     /** Whether front-camera selfies are saved mirrored as previewed. Default: true. */
     val mirrorFrontCameraSelfie: Flow<Boolean>

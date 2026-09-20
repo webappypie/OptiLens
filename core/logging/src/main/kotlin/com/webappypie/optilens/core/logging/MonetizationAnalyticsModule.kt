@@ -15,4 +15,10 @@ abstract class MonetizationAnalyticsModule {
     abstract fun bindMonetizationAnalytics(
         impl: DefaultMonetizationAnalytics,
     ): MonetizationAnalytics
+
+    @Binds
+    @Singleton
+    abstract fun bindCrashReporter(
+        impl: DefaultCrashReporter,
+    ): CrashReporter
 }

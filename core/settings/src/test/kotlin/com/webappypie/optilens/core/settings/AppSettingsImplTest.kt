@@ -204,12 +204,22 @@ class AppSettingsImplTest {
         assertFalse(settings.superResEnabled.first())
     }
 
+    // ── Privacy & Telemetry ──────────────────────────────────────────────
+
     @Test
-    fun `default superRes4xProEnabled is false and toggles correctly`() = runTest {
+    fun `default analyticsEnabled is false and toggles correctly`() = runTest {
         val settings = createSettings(backgroundScope)
-        assertFalse(settings.superRes4xProEnabled.first())
-        settings.setSuperRes4xProEnabled(true)
-        assertTrue(settings.superRes4xProEnabled.first())
+        assertFalse(settings.analyticsEnabled.first())
+        settings.setAnalyticsEnabled(true)
+        assertTrue(settings.analyticsEnabled.first())
+    }
+
+    @Test
+    fun `default crashReportingEnabled is false and toggles correctly`() = runTest {
+        val settings = createSettings(backgroundScope)
+        assertFalse(settings.crashReportingEnabled.first())
+        settings.setCrashReportingEnabled(true)
+        assertTrue(settings.crashReportingEnabled.first())
     }
 
 }
