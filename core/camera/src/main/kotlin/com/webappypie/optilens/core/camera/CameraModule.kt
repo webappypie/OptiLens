@@ -24,6 +24,14 @@ abstract class CameraModule {
     @Singleton
     abstract fun bindCameraCapabilityDetector(impl: AndroidCameraCapabilityDetector): CameraCapabilityDetector
 
+    @Binds
+    @Singleton
+    abstract fun bindGalleryRepository(impl: com.webappypie.optilens.core.camera.storage.GalleryRepositoryImpl): com.webappypie.optilens.core.camera.storage.GalleryRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindStorageMonitor(impl: com.webappypie.optilens.core.camera.storage.StorageMonitorImpl): com.webappypie.optilens.core.camera.storage.StorageMonitor
+
     companion object {
         @Provides
         @Singleton

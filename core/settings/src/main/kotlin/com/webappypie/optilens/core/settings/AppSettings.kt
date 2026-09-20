@@ -116,6 +116,11 @@ interface AppSettings {
     /** Live histogram channel display mode. Default: [HistogramModeSetting.LUMINANCE]. */
     val histogramMode: Flow<HistogramModeSetting>
     suspend fun setHistogramMode(mode: HistogramModeSetting)
+
+    // ── Gallery & Favorites ──────────────────────────────────
+    /** Set of photo URIs marked as favorites by the user. */
+    val favoriteUris: Flow<Set<String>>
+    suspend fun setFavorite(uri: String, isFavorite: Boolean)
 }
 
 /** User-visible theme preference. */

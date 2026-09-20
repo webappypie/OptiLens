@@ -150,6 +150,7 @@ fun OptiLensNavigationShell(
             GalleryScreen(
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToCamera = { navController.popBackStack() },
+                onNavigateToPhotoDetail = { uri -> navController.navigate(AppDestination.PhotoDetail(uri)) },
             )
         },
         settingsScreen = {

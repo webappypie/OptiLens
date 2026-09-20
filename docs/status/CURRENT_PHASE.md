@@ -2,11 +2,11 @@
 
 | Field | Value |
 |---|---|
-| **Current Phase** | Phase 14 — Full Pro Mode and RAW/DNG |
+| **Current Phase** | Phase 15 — Gallery, Storage and Existing Photos |
 | **Status** | ✅ PASS |
 | **Completed** | 2026-09-20 |
-| **Prompt file** | `prompts/PHASE_14_PRO_RAW_DNG.md` |
-| **Next phase** | Phase 15 — Gallery, Storage and Existing Photos (`prompts/PHASE_15_GALLERY_STORAGE_EXISTING_PHOTOS.md`) |
+| **Prompt file** | `prompts/PHASE_15_GALLERY_STORAGE_EXISTING_PHOTOS.md` |
+| **Next phase** | Phase 16 — Specialized Modes and Best Shot (`prompts/PHASE_16_SPECIALIZED_MODES_BEST_SHOT.md`) |
 
 ## Completed Phases
 
@@ -27,3 +27,4 @@
 | 12 | One-Tap AI Enhance and Before/After Review | ✅ PASS | `phase-12: one-tap ai enhance, before-after split slider, and reversible non-destructive workflow` |
 | 13 | Super Resolution and AI Zoom | ✅ PASS | `phase-13: super resolution and ai zoom, optical-first routing, and honest comparative benchmarking` |
 | 14 | Full Pro Mode and RAW/DNG | ✅ PASS | `phase-14: full pro mode, dng creator raw engine, and assistance visual aids` |
+| 15 | Gallery, Storage and Existing Photos | ✅ PASS | `phase-15: gallery media browser, scoped storage, photo picker, and detail inspection` |

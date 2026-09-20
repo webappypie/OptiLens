@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
@@ -48,6 +49,7 @@ class AppSettingsImpl @Inject constructor(
         val FOCUS_PEAKING_ENABLED   = booleanPreferencesKey("focus_peaking_enabled")
         val EXPOSURE_ZEBRA_ENABLED  = booleanPreferencesKey("exposure_zebra_enabled")
         val HISTOGRAM_MODE          = stringPreferencesKey("histogram_mode")
+        val FAVORITE_URIS           = stringSetPreferencesKey("favorite_photo_uris")
     }
 
     // ── Theme ─────────────────────────────────────────────────────────────
@@ -197,5 +199,21 @@ class AppSettingsImpl @Inject constructor(
     }
     override suspend fun setHistogramMode(mode: HistogramModeSetting) {
         dataStore.edit { it[Keys.HISTOGRAM_MODE] = mode.name }
+    }
+
+    override val favoriteUris: Flow<Set<String>> = dataStore.data.map { prefs ->
+        prefs[Keys.FAVORITE_URIS] ?: emptySet()
+    }
+
+    override suspend fun setFavorite(uri: String, isFavorite: Boolean) {
+        dataStore.edit { prefs ->
+            val current = prefs[Keys.FAVORITE_URIS]?.toMutableSet() ?: mutableSetOf()
+            if (isFavorite) {
+                current.add(uri)
+            } else {
+                current.remove(uri)
+            }
+            prefs[Keys.FAVORITE_URIS] = current
+        }
     }
 }

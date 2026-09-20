@@ -228,5 +228,8 @@ class PhotoReviewViewModelTest {
 
         override val histogramMode: Flow<HistogramModeSetting> = MutableStateFlow(HistogramModeSetting.LUMINANCE)
         override suspend fun setHistogramMode(mode: HistogramModeSetting) {}
+
+        override val favoriteUris: Flow<Set<String>> = MutableStateFlow(emptySet())
+        override suspend fun setFavorite(uri: String, isFavorite: Boolean) {}
     }
 }
