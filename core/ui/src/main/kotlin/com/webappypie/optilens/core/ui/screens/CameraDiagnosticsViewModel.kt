@@ -7,6 +7,12 @@ import com.webappypie.optilens.core.camera.model.CameraCapabilityProfile
 import com.webappypie.optilens.core.camera.model.CameraDeviceProfile
 import com.webappypie.optilens.core.common.coroutines.AppDispatchers
 import com.webappypie.optilens.core.logging.AppLogger
+import com.webappypie.optilens.core.camera.thermal.DeviceThermalMonitor
+import com.webappypie.optilens.core.common.performance.FrameMetricsCollector
+import com.webappypie.optilens.core.common.performance.MemoryProfileManager
+import com.webappypie.optilens.core.common.performance.StartupMetricsTracker
+import com.webappypie.optilens.core.imaging.performance.BitmapPool
+import com.webappypie.optilens.core.ui.performance.PerformanceDashboardData
 import com.webappypie.optilens.core.ui.viewmodel.BaseViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
@@ -17,6 +23,7 @@ data class CameraDiagnosticsUiState(
     val selectedCameraIndex: Int = 0,
     val jsonExport: String = "",
     val markdownExport: String = "",
+    val performanceData: PerformanceDashboardData = PerformanceDashboardData(),
 ) {
     val selectedCamera: CameraDeviceProfile?
         get() = profile.cameras.getOrNull(selectedCameraIndex)
@@ -27,6 +34,11 @@ data class CameraDiagnosticsUiState(
 class CameraDiagnosticsViewModel @Inject constructor(
     private val repository: CameraCapabilityRepository,
     private val exporter: CameraDiagnosticsExporter,
+    private val startupTracker: StartupMetricsTracker,
+    private val memoryManager: MemoryProfileManager,
+    private val frameCollector: FrameMetricsCollector,
+    private val thermalMonitor: DeviceThermalMonitor,
+    private val bitmapPool: BitmapPool,
     dispatchers: AppDispatchers,
     private val logger: AppLogger,
 ) : BaseViewModel<CameraDiagnosticsUiState>(dispatchers) {
@@ -57,6 +69,7 @@ class CameraDiagnosticsViewModel @Inject constructor(
                 }
                 val json = exporter.exportToJson(profile)
                 val markdown = exporter.exportToMarkdown(profile)
+                val perfData = collectPerformanceData()
 
                 setSuccess(
                     CameraDiagnosticsUiState(
@@ -64,10 +77,29 @@ class CameraDiagnosticsViewModel @Inject constructor(
                         selectedCameraIndex = 0,
                         jsonExport = json,
                         markdownExport = markdown,
+                        performanceData = perfData,
                     )
                 )
             }
         }
+    }
+
+    private fun collectPerformanceData(): PerformanceDashboardData {
+        val poolMetrics = bitmapPool.getMetrics()
+        val totalPoolRequests = poolMetrics.hitCount + poolMetrics.missCount
+        val hitRate = if (totalPoolRequests > 0L) poolMetrics.hitRatePercent / 100f else 0f
+
+        return PerformanceDashboardData(
+            startupMetrics = startupTracker.metrics.value,
+            frameMetrics = frameCollector.getSnapshot(),
+            memorySnapshot = memoryManager.sampleMemorySnapshot(),
+            thermalState = thermalMonitor.thermalState.value,
+            poolHitRate = hitRate,
+            poolAcquisitions = totalPoolRequests,
+            poolEvictions = poolMetrics.evictionCount,
+            maxBurstFrames = thermalMonitor.policy.value.maxBurstFrames,
+            userThermalWarning = thermalMonitor.policy.value.userWarningMessage,
+        )
     }
 
     companion object {

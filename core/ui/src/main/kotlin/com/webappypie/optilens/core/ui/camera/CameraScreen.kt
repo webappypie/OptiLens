@@ -474,6 +474,16 @@ fun CameraScreen(
                 )
             }
 
+            // Thermal Throttling Warning Banner
+            uiState.thermalWarningMessage?.let { warningMessage ->
+                ThermalWarningBanner(
+                    message = warningMessage,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = topInset + 48.dp, start = 16.dp, end = 16.dp),
+                )
+            }
+
             // Live 64-Bin Luminance & RGB Histogram Overlay (in Pro Mode or when toggled)
             if (uiState.isHistogramVisible || currentMode == CameraMode.PRO) {
                 HistogramOverlay(

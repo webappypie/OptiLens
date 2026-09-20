@@ -1,6 +1,8 @@
 package com.webappypie.optilens.core.camera.bestshot
 
 import com.webappypie.optilens.core.camera.model.DetectedFace
+import javax.inject.Inject
+import javax.inject.Singleton
 import kotlin.math.abs
 import kotlin.math.sqrt
 
@@ -12,7 +14,8 @@ import kotlin.math.sqrt
  *
  * Guarantees zero synthetic manipulation: all evaluations rank strictly real captured frames.
  */
-class BestShotScorer {
+@Singleton
+class BestShotScorer @Inject constructor() {
 
     /**
      * Scores a raw downsampled luminance buffer, gyro velocity, and optional detected faces.

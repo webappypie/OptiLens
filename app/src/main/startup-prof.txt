@@ -1,0 +1,16 @@
+# Startup Profile for OptiLens
+# Classes and methods executed between Process start and first frame rendered.
+
+HSPLcom/webappypie/optilens/app/OptiLensApplication;-><init>()V
+HSPLcom/webappypie/optilens/app/OptiLensApplication;->onCreate()V
+HSPLcom/webappypie/optilens/app/MainActivity;-><init>()V
+HSPLcom/webappypie/optilens/app/MainActivity;->onCreate(Landroid/os/Bundle;)V
+HSPLcom/webappypie/optilens/app/MainActivity;->onStart()V
+HSPLcom/webappypie/optilens/app/MainActivity;->onResume()V
+HSPLcom/webappypie/optilens/core/common/performance/StartupMetricsTracker;-><init>()V
+HSPLcom/webappypie/optilens/core/common/performance/StartupMetricsTracker;->recordProcessStart(J)V
+HSPLcom/webappypie/optilens/core/common/performance/StartupMetricsTracker;->recordAppCreate(J)V
+HSPLcom/webappypie/optilens/core/common/performance/StartupMetricsTracker;->recordActivityCreate(J)V
+HSPLcom/webappypie/optilens/core/common/performance/StartupMetricsTracker;->recordFirstDraw(J)V
+HSPLcom/webappypie/optilens/feature/camera/CameraViewModel;-><init>()V
+HSPLcom/webappypie/optilens/feature/camera/CameraScreenKt;->CameraScreen(Lcom/webappypie/optilens/feature/camera/CameraViewModel;)V

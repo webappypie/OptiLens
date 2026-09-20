@@ -16,8 +16,9 @@ import javax.inject.Singleton
  */
 @Singleton
 class BestShotEngine @Inject constructor(
-    private val scorer: BestShotScorer = BestShotScorer(),
+    private val scorer: BestShotScorer,
 ) {
+    constructor() : this(BestShotScorer())
 
     /**
      * Evaluates a multi-frame [BurstResult] with optional scene detected faces.

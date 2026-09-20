@@ -210,6 +210,12 @@ private fun DiagnosticsContent(
             }
         }
 
+        // ── Performance & Health Dashboard ───────────────────────────
+        com.webappypie.optilens.core.ui.performance.PerformanceDashboardCard(
+            data = state.performanceData,
+            modifier = Modifier.fillMaxWidth(),
+        )
+
         // ── Camera Selector Tabs ──────────────────────────────────────
         if (profile.cameras.isNotEmpty()) {
             ScrollableTabRow(

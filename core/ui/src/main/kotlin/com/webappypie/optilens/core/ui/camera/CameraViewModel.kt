@@ -131,7 +131,14 @@ data class CameraUiState(
     val ocrExtractedText: String? = null,
     val isExtractingOcr: Boolean = false,
     val errorMessage: String? = null,
-)
+) {
+    val thermalWarningMessage: String?
+        get() = when (thermalState) {
+            DeviceThermalState.CRITICAL -> "Device is hot. Camera features reduced to prevent overheating."
+            DeviceThermalState.SEVERE -> "Device warm. Camera features limited to cool down."
+            else -> null
+        }
+}
 
 @HiltViewModel
 class CameraViewModel @Inject constructor(

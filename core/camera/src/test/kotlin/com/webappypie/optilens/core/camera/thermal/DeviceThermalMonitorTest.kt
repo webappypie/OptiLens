@@ -40,29 +40,37 @@ class DeviceThermalMonitorTest {
     }
 
     @Test
-    fun forThermalState_moderate_disablesDeepTripodAndCapsTo4() {
+    fun forThermalState_moderate_disablesDeepTripodAndCapsTo6() {
         val policy = ThermalDegradationPolicy.forThermalState(DeviceThermalState.MODERATE)
-        assertEquals(4, policy.maxBurstFrames)
+        assertEquals(6, policy.maxBurstFrames)
+        assertEquals(15, policy.targetAnalysisFps)
         assertFalse(policy.enableHeavyFilters)
         assertFalse(policy.allowDeepTripodStack)
     }
 
     @Test
-    fun forThermalState_severe_capsTo2FramesAndDisablesHeavyFilters() {
+    fun forThermalState_severe_capsTo3FramesAndPausesContinuousHistogram() {
         val policy = ThermalDegradationPolicy.forThermalState(DeviceThermalState.SEVERE)
-        assertEquals(2, policy.maxBurstFrames)
+        assertEquals(3, policy.maxBurstFrames)
+        assertEquals(5, policy.targetAnalysisFps)
         assertFalse(policy.enableHeavyFilters)
         assertFalse(policy.allowDeepTripodStack)
         assertTrue(policy.skipSecondaryAnalysis)
+        assertFalse(policy.allowMultiFrameNight)
+        assertTrue(policy.pauseContinuousHistogram)
     }
 
     @Test
-    fun forThermalState_critical_capsToSingleFrame() {
+    fun forThermalState_critical_capsToSingleFrameAndProvidesWarning() {
         val policy = ThermalDegradationPolicy.forThermalState(DeviceThermalState.CRITICAL)
         assertEquals(1, policy.maxBurstFrames)
+        assertEquals(0, policy.targetAnalysisFps)
         assertFalse(policy.enableHeavyFilters)
         assertFalse(policy.allowDeepTripodStack)
         assertTrue(policy.skipSecondaryAnalysis)
+        assertFalse(policy.allowMultiFrameNight)
+        assertTrue(policy.pauseContinuousHistogram)
+        assertEquals("Device is hot. Camera features reduced to prevent overheating.", policy.userWarningMessage)
     }
 
     private class FakeContext : android.content.ContextWrapper(null) {

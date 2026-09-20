@@ -45,6 +45,10 @@ data class ThermalDegradationPolicy(
     val enableHeavyFilters: Boolean = true,
     val allowDeepTripodStack: Boolean = true,
     val skipSecondaryAnalysis: Boolean = false,
+    val targetAnalysisFps: Int = 30,
+    val allowMultiFrameNight: Boolean = true,
+    val pauseContinuousHistogram: Boolean = false,
+    val userWarningMessage: String? = null,
 ) {
     companion object {
         fun forThermalState(state: DeviceThermalState): ThermalDegradationPolicy = when (state) {
@@ -54,6 +58,10 @@ data class ThermalDegradationPolicy(
                 enableHeavyFilters = true,
                 allowDeepTripodStack = true,
                 skipSecondaryAnalysis = false,
+                targetAnalysisFps = 30,
+                allowMultiFrameNight = true,
+                pauseContinuousHistogram = false,
+                userWarningMessage = null,
             )
             DeviceThermalState.LIGHT -> ThermalDegradationPolicy(
                 thermalState = state,
@@ -61,20 +69,32 @@ data class ThermalDegradationPolicy(
                 enableHeavyFilters = true,
                 allowDeepTripodStack = true,
                 skipSecondaryAnalysis = false,
+                targetAnalysisFps = 30,
+                allowMultiFrameNight = true,
+                pauseContinuousHistogram = false,
+                userWarningMessage = null,
             )
             DeviceThermalState.MODERATE -> ThermalDegradationPolicy(
                 thermalState = state,
-                maxBurstFrames = 4,
+                maxBurstFrames = 6,
                 enableHeavyFilters = false,
                 allowDeepTripodStack = false,
                 skipSecondaryAnalysis = true,
+                targetAnalysisFps = 15,
+                allowMultiFrameNight = true,
+                pauseContinuousHistogram = false,
+                userWarningMessage = null,
             )
             DeviceThermalState.SEVERE -> ThermalDegradationPolicy(
                 thermalState = state,
-                maxBurstFrames = 2,
+                maxBurstFrames = 3,
                 enableHeavyFilters = false,
                 allowDeepTripodStack = false,
                 skipSecondaryAnalysis = true,
+                targetAnalysisFps = 5,
+                allowMultiFrameNight = false,
+                pauseContinuousHistogram = true,
+                userWarningMessage = "Device warm. Camera features limited to cool down.",
             )
             DeviceThermalState.CRITICAL -> ThermalDegradationPolicy(
                 thermalState = state,
@@ -82,6 +102,10 @@ data class ThermalDegradationPolicy(
                 enableHeavyFilters = false,
                 allowDeepTripodStack = false,
                 skipSecondaryAnalysis = true,
+                targetAnalysisFps = 0,
+                allowMultiFrameNight = false,
+                pauseContinuousHistogram = true,
+                userWarningMessage = "Device is hot. Camera features reduced to prevent overheating.",
             )
         }
     }

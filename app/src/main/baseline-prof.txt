@@ -1,0 +1,38 @@
+# Baseline Profile for OptiLens
+# Critical User Journeys:
+# 1. App Startup to Viewfinder
+# 2. Viewfinder Frame Render Loop
+# 3. Capture Button Tap to Shutter
+# 4. Photo Review Sheet Display
+# 5. Settings Sheet Open/Close
+# 6. Gallery Grid Scroll
+
+# Application & Activity Startup
+HSPLcom/webappypie/optilens/app/OptiLensApplication;->onCreate()V
+HSPLcom/webappypie/optilens/app/MainActivity;->onCreate(Landroid/os/Bundle;)V
+HSPLcom/webappypie/optilens/app/MainActivity;->onStart()V
+HSPLcom/webappypie/optilens/app/MainActivity;->onResume()V
+HSPLcom/webappypie/optilens/core/common/performance/StartupMetricsTracker;->recordProcessStart(J)V
+HSPLcom/webappypie/optilens/core/common/performance/StartupMetricsTracker;->recordAppCreate(J)V
+HSPLcom/webappypie/optilens/core/common/performance/StartupMetricsTracker;->recordActivityCreate(J)V
+HSPLcom/webappypie/optilens/core/common/performance/StartupMetricsTracker;->recordFirstDraw(J)V
+HSPLcom/webappypie/optilens/core/common/performance/StartupMetricsTracker;->recordCameraFirstFrame(J)V
+
+# Camera Pipeline & Viewfinder
+HSPLcom/webappypie/optilens/core/camera/CameraXController;->bindPreview(Landroidx/lifecycle/LifecycleOwner;Landroidx/camera/view/PreviewView;)Lkotlinx/coroutines/flow/Flow;
+HSPLcom/webappypie/optilens/core/camera/CameraXController;->capturePhoto(Lcom/webappypie/optilens/core/camera/model/CaptureMode;)Lkotlinx/coroutines/flow/Flow;
+HSPLcom/webappypie/optilens/core/camera/analyzer/RealtimeIntelligenceAnalyzer;->analyze(Landroidx/camera/core/ImageProxy;)V
+HSPLcom/webappypie/optilens/core/camera/performance/CameraUseCaseConfigCache;->requiresRebind(Lcom/webappypie/optilens/core/camera/performance/CameraUseCaseConfigCache$UseCaseConfig;)Z
+HSPLcom/webappypie/optilens/core/camera/performance/ThermalThrottlingGovernor;->shouldProcessAnalysisFrame(J)Z
+
+# Compose UI & Navigation
+HSPLcom/webappypie/optilens/feature/camera/CameraScreenKt;->CameraScreen(Lcom/webappypie/optilens/feature/camera/CameraViewModel;)V
+HSPLcom/webappypie/optilens/feature/camera/ui/CaptureControlsKt;->CaptureControls(Lcom/webappypie/optilens/feature/camera/CameraUiState;Lkotlin/jvm/functions/Function0;)V
+HSPLcom/webappypie/optilens/feature/gallery/GalleryScreenKt;->GalleryScreen(Lcom/webappypie/optilens/feature/gallery/GalleryViewModel;)V
+HSPLcom/webappypie/optilens/feature/settings/SettingsSheetKt;->SettingsSheet(Lcom/webappypie/optilens/feature/settings/SettingsViewModel;)V
+
+# Imaging & Memory Pool
+HSPLcom/webappypie/optilens/core/imaging/performance/BitmapPool;->acquire(IIILandroid/graphics/Bitmap$Config;)Landroid/graphics/Bitmap;
+HSPLcom/webappypie/optilens/core/imaging/performance/BitmapPool;->release(Landroid/graphics/Bitmap;II)V
+HSPLcom/webappypie/optilens/core/common/performance/MemoryProfileManager;->sampleMemorySnapshot(Ljava/lang/Float;Ljava/lang/Float;Ljava/lang/Float;Ljava/lang/Float;)Lcom/webappypie/optilens/core/common/performance/MemoryProfileManager$MemorySnapshot;
+HSPLcom/webappypie/optilens/core/common/performance/FrameMetricsCollector;->recordFrameDurationNs(J)V
