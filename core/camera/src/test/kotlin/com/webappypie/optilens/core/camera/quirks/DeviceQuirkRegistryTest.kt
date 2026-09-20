@@ -84,4 +84,120 @@ class DeviceQuirkRegistryTest {
         assertFalse(quirks.any { it is PixelAeConvergenceQuirk })
         assertFalse(quirks.any { it is LimitedHardwareStreamConstraintQuirk })
     }
+
+    @Test
+    fun `samsung galaxy ultra triggers lens switch lag and isocell raw black level quirk`() {
+        val fixture = CameraCapabilityFixtures.createFlagshipProfile()
+        val quirks = registry.getApplicableQuirks(
+            manufacturer = "Samsung",
+            model = "Galaxy S24 Ultra",
+            device = "e3q",
+            apiLevel = 34,
+            cameras = fixture.cameras,
+        )
+
+        assertTrue(quirks.any { it is SamsungPreviewAspectQuirk })
+        assertTrue(quirks.any { it is SamsungLensSwitchLagQuirk })
+        assertTrue(quirks.any { it is SamsungBlackLevelOffsetQuirk })
+    }
+
+    @Test
+    fun `google pixel 8 triggers ois settling and ae convergence quirks`() {
+        val fixture = CameraCapabilityFixtures.createFlagshipProfile()
+        val quirks = registry.getApplicableQuirks(
+            manufacturer = "Google",
+            model = "Pixel 8 Pro",
+            device = "husky",
+            apiLevel = 34,
+            cameras = fixture.cameras,
+        )
+
+        assertTrue(quirks.any { it is PixelAeConvergenceQuirk })
+        assertTrue(quirks.any { it is PixelOisSettlingQuirk })
+    }
+
+    @Test
+    fun `xiaomi ultra high-resolution camera triggers burst timestamp and remosaic quirks`() {
+        val fixture = CameraCapabilityFixtures.createFlagshipProfile()
+        val quirks = registry.getApplicableQuirks(
+            manufacturer = "Xiaomi",
+            model = "Xiaomi 14 Ultra",
+            device = "aurora",
+            apiLevel = 34,
+            cameras = fixture.cameras,
+        )
+
+        assertTrue(quirks.any { it is XiaomiBurstTimestampJitterQuirk })
+    }
+
+    @Test
+    fun `mediatek device triggers stride and low-light denoise balancer quirks`() {
+        val fixture = CameraCapabilityFixtures.createMidRangeProfile()
+        val quirks = registry.getApplicableQuirks(
+            manufacturer = "OnePlus",
+            model = "Nord 3",
+            hardware = "mt6983",
+            apiLevel = 33,
+            cameras = fixture.cameras,
+        )
+
+        assertTrue(quirks.any { it is MediaTekYuvStrideQuirk })
+        assertTrue(quirks.any { it is MediaTekLowLightDenoiseQuirk })
+    }
+
+    @Test
+    fun `low memory device triggers low-ram burst depth throttling quirk`() {
+        val fixture = CameraCapabilityFixtures.createEntryLevelProfile()
+        val quirks = registry.getApplicableQuirks(
+            manufacturer = "Generic",
+            model = "BudgetPhone",
+            totalRamGb = 3,
+            cameras = fixture.cameras,
+        )
+
+        assertTrue(quirks.any { it is LowMemoryBurstDepthQuirk })
+    }
+
+    @Test
+    fun `foldable device triggers foldable surface reattach quirk`() {
+        val fixture = CameraCapabilityFixtures.createFlagshipProfile()
+        val quirks = registry.getApplicableQuirks(
+            manufacturer = "Samsung",
+            model = "Galaxy Z Fold 5",
+            cameras = fixture.cameras,
+        )
+
+        assertTrue(quirks.any { it is FoldableSurfaceReattachQuirk })
+    }
+
+    @Test
+    fun `remote config dynamically suppresses fixed quirk and injects emergency quirk`() {
+        val fakeRepo = com.webappypie.optilens.core.common.config.LocalRemoteConfigRepository()
+        val overrideJson = """
+            {
+              "rules": [
+                {
+                  "deviceModelPattern": "Pixel 7 Pro",
+                  "disabledQuirkIds": ["pixel_ae_convergence_quirk"],
+                  "additionalQuirkIds": ["emergency_driver_patch_quirk"]
+                }
+              ]
+            }
+        """.trimIndent()
+        fakeRepo.updateFlags(com.webappypie.optilens.core.common.feature.CustomFeatureFlags(deviceSpecificOverridesJson = overrideJson))
+
+        val remoteAwareRegistry = DeviceQuirkRegistry(remoteConfigRepository = fakeRepo)
+        val quirks = remoteAwareRegistry.getApplicableQuirks(
+            manufacturer = "Google",
+            model = "Pixel 7 Pro",
+            device = "cheetah",
+            apiLevel = 34,
+            cameras = emptyList(),
+        )
+
+        // pixel_ae_convergence_quirk should have been suppressed by remote config
+        assertFalse(quirks.any { it is PixelAeConvergenceQuirk })
+        // emergency_driver_patch_quirk should have been dynamically injected
+        assertTrue(quirks.any { it.id == "emergency_driver_patch_quirk" })
+    }
 }

@@ -24,6 +24,9 @@ interface RemoteConfigRepository {
 
     /** Resolves device-specific processing overrides for a given Android hardware model name. */
     fun getDeviceProcessingOverride(deviceModel: String): DeviceProcessingOverride?
+
+    /** Resolves effective quirk IDs after applying Remote Config emergency additions and suppressions. */
+    fun getEffectiveQuirks(baseQuirkIds: List<String>, deviceModel: String): List<String>
 }
 
 /**
@@ -66,5 +69,19 @@ class LocalRemoteConfigRepository @Inject constructor() : RemoteConfigRepository
         } catch (e: Exception) {
             null
         }
+    }
+
+    override fun getEffectiveQuirks(baseQuirkIds: List<String>, deviceModel: String): List<String> {
+        val override = getDeviceProcessingOverride(deviceModel) ?: return baseQuirkIds
+        val result = baseQuirkIds.toMutableList()
+        if (override.disabledQuirkIds.isNotEmpty()) {
+            result.removeAll(override.disabledQuirkIds.toSet())
+        }
+        for (additional in override.additionalQuirkIds) {
+            if (additional !in result) {
+                result.add(additional)
+            }
+        }
+        return result
     }
 }

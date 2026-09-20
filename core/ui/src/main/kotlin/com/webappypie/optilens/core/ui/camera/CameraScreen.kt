@@ -711,7 +711,7 @@ fun CameraScreen(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                items(CameraMode.entries) { mode ->
+                items(uiState.availableModes) { mode ->
                     OptiCameraModeChip(
                         title = mode.label,
                         isSelected = currentMode == mode,

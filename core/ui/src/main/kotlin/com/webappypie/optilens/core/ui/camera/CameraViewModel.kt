@@ -51,6 +51,8 @@ import com.webappypie.optilens.core.camera.wildlife.WildlifeDetectionState
 import com.webappypie.optilens.core.camera.wildlife.WildlifeModeEngine
 import com.webappypie.optilens.core.camera.tracking.TrackedObjectState
 import com.webappypie.optilens.core.settings.AppSettings
+import android.os.Build
+import com.webappypie.optilens.core.common.config.RemoteConfigRepository
 import com.webappypie.optilens.core.common.result.OptiResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -84,6 +86,7 @@ enum class TimerState(val seconds: Int) {
  * UI State representing camera viewfinder, session status, Pro controls, and capture status.
  */
 data class CameraUiState(
+    val availableModes: List<CameraMode> = CameraMode.entries,
     val hasCameraPermission: Boolean = false,
     val isFrontCamera: Boolean = false,
     val flashMode: FlashMode = FlashMode.AUTO,
@@ -154,6 +157,7 @@ data class CameraUiState(
 class CameraViewModel @Inject constructor(
     private val cameraController: CameraController,
     private val appSettings: AppSettings? = null,
+    private val remoteConfigRepository: RemoteConfigRepository? = null,
     private val bestShotEngine: BestShotEngine = BestShotEngine(),
     private val petModeEngine: PetModeEngine = PetModeEngine(),
     private val foodModeEngine: FoodModeEngine = FoodModeEngine(),
@@ -162,6 +166,16 @@ class CameraViewModel @Inject constructor(
     private val moonModeEngine: MoonModeEngine = MoonModeEngine(),
     private val wildlifeModeEngine: WildlifeModeEngine = WildlifeModeEngine(),
 ) : ViewModel() {
+
+    val availableCameraModes: List<CameraMode> by lazy {
+        val override = remoteConfigRepository?.getDeviceProcessingOverride(Build.MODEL)
+        if (override != null && override.disabledModes.isNotEmpty()) {
+            val disabledNames = override.disabledModes.map { it.uppercase() }.toSet()
+            CameraMode.entries.filter { it.name.uppercase() !in disabledNames }
+        } else {
+            CameraMode.entries
+        }
+    }
 
     private val _internalState = MutableStateFlow(
         CameraInternalState(isFrontCamera = cameraController.isFrontCamera)
@@ -338,6 +352,7 @@ class CameraViewModel @Inject constructor(
         }
     ) { internal, session, zoom, (s1, s2, intel, night, assist, spec) ->
         CameraUiState(
+            availableModes = availableCameraModes,
             hasCameraPermission = internal.hasPermission,
             isFrontCamera = internal.isFrontCamera,
             flashMode = s1.flash,

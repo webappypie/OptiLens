@@ -16,6 +16,9 @@ data class DeviceProcessingOverride(
     val maxSrZoomScale: Float? = null,
     val disableZeroShutterLag: Boolean = false,
     val disabledModes: List<String> = emptyList(),
+    val disabledQuirkIds: List<String> = emptyList(),
+    val additionalQuirkIds: List<String> = emptyList(),
+    val emergencyFallbackReason: String? = null,
 )
 
 /**

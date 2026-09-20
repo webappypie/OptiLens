@@ -100,4 +100,61 @@ class RemoteConfigRepositoryTest {
         val result = repository.getDeviceProcessingOverride("Pixel 6 Pro")
         assertNull(result)
     }
+
+    @Test
+    fun `getEffectiveQuirks applies emergency additions and suppressions`() {
+        val sampleJson = """
+            {
+              "rules": [
+                {
+                  "deviceModelPattern": "SM-S928.*",
+                  "disabledQuirkIds": ["samsung_preview_aspect_quirk"],
+                  "additionalQuirkIds": ["samsung_lens_switch_lag_quirk", "emergency_vendor_tag_quirk"],
+                  "disabledModes": ["NIGHT"]
+                }
+              ]
+            }
+        """.trimIndent()
+
+        repository.updateFlags(CustomFeatureFlags(deviceSpecificOverridesJson = sampleJson))
+
+        val baseQuirks = listOf("samsung_preview_aspect_quirk", "limited_stream_constraint_quirk")
+        val effective = repository.getEffectiveQuirks(baseQuirks, "SM-S928B")
+
+        // samsung_preview_aspect_quirk should be suppressed
+        assertTrue("Suppressed quirk must not be present", "samsung_preview_aspect_quirk" !in effective)
+        // limited_stream_constraint_quirk should remain
+        assertTrue("Unrelated base quirk must remain", "limited_stream_constraint_quirk" in effective)
+        // emergency quirks should be added
+        assertTrue("Added quirk must be present", "samsung_lens_switch_lag_quirk" in effective)
+        assertTrue("Emergency quirk must be present", "emergency_vendor_tag_quirk" in effective)
+    }
+
+    @Test
+    fun `device override for one model never disables features globally on other devices`() {
+        val sampleJson = """
+            {
+              "rules": [
+                {
+                  "deviceModelPattern": "BrokenPhone.*",
+                  "disabledModes": ["RAW", "NIGHT"],
+                  "emergencyFallbackReason": "HAL crash on rapid RAW stream allocation"
+                }
+              ]
+            }
+        """.trimIndent()
+
+        repository.updateFlags(CustomFeatureFlags(deviceSpecificOverridesJson = sampleJson))
+
+        val brokenDeviceOverride = repository.getDeviceProcessingOverride("BrokenPhone X1")
+        assertNotNull(brokenDeviceOverride)
+        assertEquals(listOf("RAW", "NIGHT"), brokenDeviceOverride?.disabledModes)
+
+        // Pixel 8 Pro or Galaxy S24 Ultra must NOT have any disabled modes!
+        val pixelOverride = repository.getDeviceProcessingOverride("Pixel 8 Pro")
+        assertNull(pixelOverride)
+
+        val galaxyOverride = repository.getDeviceProcessingOverride("SM-S928B")
+        assertNull(galaxyOverride)
+    }
 }
