@@ -1,0 +1,50 @@
+<resources>
+    <string name="app_name">OptiLens</string>
+    <string name="app_tagline">Computerfotografie der nächsten Generation</string>
+
+    <!-- Camera Modes -->
+    <string name="mode_photo">Foto</string>
+    <string name="mode_video">Video</string>
+    <string name="mode_portrait">Porträt</string>
+    <string name="mode_night">Nacht</string>
+    <string name="mode_pro">Pro</string>
+    <string name="mode_astro">Astrophotographie</string>
+
+    <!-- Core Actions -->
+    <string name="action_capture">Auslösen</string>
+    <string name="action_enhance">KI-Optimierung</string>
+    <string name="action_save">Speichern</string>
+    <string name="action_share">Teilen</string>
+    <string name="action_delete">Löschen</string>
+    <string name="action_settings">Einstellungen</string>
+    <string name="action_gallery">Galerie</string>
+    <string name="action_upgrade">Auf Pro upgraden</string>
+
+    <!-- AI Tools -->
+    <string name="tool_super_res">Super-Resolution-Zoom</string>
+    <string name="tool_deblur">Bewegungsunschärfe entfernen</string>
+    <string name="tool_inpaint">Objekt-Radierer</string>
+    <string name="tool_reflection">Reflexionsreduzierung</string>
+    <string name="tool_restoration">Fotorestaurierung</string>
+
+    <!-- Review Prompt -->
+    <string name="review_dialog_title">Gefällt Ihnen OptiLens?</string>
+    <string name="review_dialog_message">Wenn OptiLens Ihnen zu großartigen Fotos verholfen hat, würden Sie uns kurz im Google Play Store bewerten?</string>
+    <string name="review_dialog_positive">OptiLens bewerten</string>
+    <string name="review_dialog_neutral">Später</string>
+    <string name="review_dialog_negative">Feedback senden</string>
+
+    <!-- Pro Upgrade -->
+    <string name="pro_upgrade_title">OptiLens Pro freischalten</string>
+    <string name="pro_upgrade_subtitle">Volles Sensorpotenzial mit modernster Computerfotografie</string>
+    <string name="pro_feature_unlimited">Unbegrenzte KI-Fotooptimierungen</string>
+    <string name="pro_feature_raw">Unkomprimiertes 14-Bit RAW DNG</string>
+    <string name="pro_feature_4k">4x Pro KI Super-Resolution</string>
+    <string name="pro_cta_subscribe">Pro-Zugang starten</string>
+    <string name="pro_cta_restore">Käufe wiederherstellen</string>
+
+    <!-- Diagnostics & Privacy -->
+    <string name="diagnostics_title">Kamera-Diagnose</string>
+    <string name="diagnostics_export">Hardware-Bericht exportieren</string>
+    <string name="privacy_notice_text">OptiLens verarbeitet alle Fotos zu 100 % lokal auf dem Gerät. Es werden keine Bilder übertragen.</string>
+</resources>

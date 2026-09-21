@@ -1,0 +1,50 @@
+<resources>
+    <string name="app_name">OptiLens</string>
+    <string name="app_tagline">次世代コンピュテーショナル・フォトグラフィ</string>
+
+    <!-- Camera Modes -->
+    <string name="mode_photo">写真</string>
+    <string name="mode_video">動画</string>
+    <string name="mode_portrait">ポートレート</string>
+    <string name="mode_night">夜景</string>
+    <string name="mode_pro">プロ</string>
+    <string name="mode_astro">天体撮影</string>
+
+    <!-- Core Actions -->
+    <string name="action_capture">撮影</string>
+    <string name="action_enhance">AI補正</string>
+    <string name="action_save">保存</string>
+    <string name="action_share">共有</string>
+    <string name="action_delete">削除</string>
+    <string name="action_settings">設定</string>
+    <string name="action_gallery">ギャラリー</string>
+    <string name="action_upgrade">Pro版にアップグレード</string>
+
+    <!-- AI Tools -->
+    <string name="tool_super_res">超解像ズーム</string>
+    <string name="tool_deblur">手ブレ・被写体ブレ補正</string>
+    <string name="tool_inpaint">消しゴムマジック</string>
+    <string name="tool_reflection">反射除去</string>
+    <string name="tool_restoration">古い写真の修復</string>
+
+    <!-- Review Prompt -->
+    <string name="review_dialog_title">OptiLens を気に入っていただけましたか？</string>
+    <string name="review_dialog_message">OptiLens で綺麗な写真が撮れましたら、Google Play で評価をお願いできますか？</string>
+    <string name="review_dialog_positive">評価する</string>
+    <string name="review_dialog_neutral">後で</string>
+    <string name="review_dialog_negative">フィードバックを送る</string>
+
+    <!-- Pro Upgrade -->
+    <string name="pro_upgrade_title">OptiLens Pro を解放</string>
+    <string name="pro_upgrade_subtitle">先進のコンピュテーショナル処理でセンサー性能を限界まで引き出す</string>
+    <string name="pro_feature_unlimited">無制限のAI写真補正</string>
+    <string name="pro_feature_raw">14-bit非圧縮RAW DNG出力</string>
+    <string name="pro_feature_4k">4倍 Pro AI超解像ズーム</string>
+    <string name="pro_cta_subscribe">Pro版を利用する</string>
+    <string name="pro_cta_restore">購入を復元</string>
+
+    <!-- Diagnostics & Privacy -->
+    <string name="diagnostics_title">カメラ診断</string>
+    <string name="diagnostics_export">ハードウェア診断を出力</string>
+    <string name="privacy_notice_text">OptiLens はすべての写真処理を端末内で完結します。画像データがサーバーへ送信されることはありません。</string>
+</resources>

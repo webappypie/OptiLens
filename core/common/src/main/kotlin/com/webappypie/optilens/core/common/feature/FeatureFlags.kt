@@ -57,6 +57,23 @@ interface FeatureFlags {
 
     /** Dynamic promotional banner copy for Pro upgrade screen. */
     val promotionalCopy: String?
+
+    // ── Phase 24 Growth & Experimentation Hooks ──────────────────
+
+    /** Onboarding variant experiment ("control", "feature_focus", "speed_focus"). */
+    val onboardingVariant: String
+
+    /** Default before/after split slider position in AI Enhance view (0.0 to 1.0). */
+    val aiEnhanceDefaultSplit: Float
+
+    /** Capture count required to trigger in-app review eligibility gate. */
+    val reviewTriggerThreshold: Int
+
+    /** Whether watermark branding is suggested/enabled by default on export (referral loop). */
+    val enableWatermarkByDefault: Boolean
+
+    /** Experiment assignment cohort identifier ("control", "variant_a", "variant_b"). */
+    val experimentCohort: String
 }
 
 /**
@@ -81,6 +98,12 @@ object LocalFeatureFlags : FeatureFlags {
     override val superResolutionMaxScaleOverride: Float?    = null
     override val deviceSpecificOverridesJson: String?       = null
     override val promotionalCopy: String?                   = null
+
+    override val onboardingVariant: String                  = "control"
+    override val aiEnhanceDefaultSplit: Float               = 0.5f
+    override val reviewTriggerThreshold: Int                = 5
+    override val enableWatermarkByDefault: Boolean          = false
+    override val experimentCohort: String                   = "control"
 }
 
 /**
@@ -103,4 +126,9 @@ data class CustomFeatureFlags(
     override val superResolutionMaxScaleOverride: Float? = null,
     override val deviceSpecificOverridesJson: String? = null,
     override val promotionalCopy: String? = null,
+    override val onboardingVariant: String = "control",
+    override val aiEnhanceDefaultSplit: Float = 0.5f,
+    override val reviewTriggerThreshold: Int = 5,
+    override val enableWatermarkByDefault: Boolean = false,
+    override val experimentCohort: String = "control",
 ) : FeatureFlags

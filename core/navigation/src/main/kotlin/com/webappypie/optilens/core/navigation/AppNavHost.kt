@@ -6,12 +6,14 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navDeepLink
 import androidx.navigation.toRoute
 
 /**
  * Root navigation host for OptiLens.
  *
  * All routes use type-safe [AppDestination] with Navigation 2.10+.
+ * Includes campaign deep links (optilens://) and universal App Links (https://optilens.app/).
  */
 @Composable
 fun AppNavHost(
@@ -32,15 +34,56 @@ fun AppNavHost(
         startDestination = startDestination,
         modifier = modifier,
     ) {
-        composable<AppDestination.Camera>            { cameraScreen() }
-        composable<AppDestination.Gallery>           { galleryScreen() }
-        composable<AppDestination.Settings>          { settingsScreen() }
-        composable<AppDestination.AiTools>           { aiToolsScreen() }
-        composable<AppDestination.PhotoDetail>       { backStackEntry ->
+        composable<AppDestination.Camera>(
+            deepLinks = listOf(
+                navDeepLink { uriPattern = "optilens://camera" },
+                navDeepLink { uriPattern = "https://optilens.app/camera" },
+            ),
+        ) { cameraScreen() }
+
+        composable<AppDestination.Gallery>(
+            deepLinks = listOf(
+                navDeepLink { uriPattern = "optilens://gallery" },
+                navDeepLink { uriPattern = "https://optilens.app/gallery" },
+            ),
+        ) { galleryScreen() }
+
+        composable<AppDestination.Settings>(
+            deepLinks = listOf(
+                navDeepLink { uriPattern = "optilens://settings" },
+                navDeepLink { uriPattern = "https://optilens.app/settings" },
+            ),
+        ) { settingsScreen() }
+
+        composable<AppDestination.AiTools>(
+            deepLinks = listOf(
+                navDeepLink { uriPattern = "optilens://enhance" },
+                navDeepLink { uriPattern = "optilens://aitools" },
+                navDeepLink { uriPattern = "https://optilens.app/enhance" },
+                navDeepLink { uriPattern = "https://optilens.app/aitools" },
+            ),
+        ) { aiToolsScreen() }
+
+        composable<AppDestination.PhotoDetail> { backStackEntry ->
             photoDetailScreen(backStackEntry.toRoute())
         }
-        composable<AppDestination.ProUpgrade>        { proUpgradeScreen() }
-        composable<AppDestination.Onboarding>        { onboardingScreen() }
-        composable<AppDestination.CameraDiagnostics> { cameraDiagnosticsScreen() }
+
+        composable<AppDestination.ProUpgrade>(
+            deepLinks = listOf(
+                navDeepLink { uriPattern = "optilens://upgrade" },
+                navDeepLink { uriPattern = "optilens://pro" },
+                navDeepLink { uriPattern = "https://optilens.app/upgrade" },
+                navDeepLink { uriPattern = "https://optilens.app/pro" },
+            ),
+        ) { proUpgradeScreen() }
+
+        composable<AppDestination.Onboarding> { onboardingScreen() }
+
+        composable<AppDestination.CameraDiagnostics>(
+            deepLinks = listOf(
+                navDeepLink { uriPattern = "optilens://diagnostics" },
+                navDeepLink { uriPattern = "https://optilens.app/diagnostics" },
+            ),
+        ) { cameraDiagnosticsScreen() }
     }
 }

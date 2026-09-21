@@ -1,0 +1,50 @@
+<resources>
+    <string name="app_name">OptiLens</string>
+    <string name="app_tagline">अगली पीढ़ी की कम्प्यूटेशनल फोटोग्राफी</string>
+
+    <!-- Camera Modes -->
+    <string name="mode_photo">फ़ोटो</string>
+    <string name="mode_video">वीडियो</string>
+    <string name="mode_portrait">पोर्ट्रेट</string>
+    <string name="mode_night">नाइट</string>
+    <string name="mode_pro">प्रो</string>
+    <string name="mode_astro">एस्ट्रोफोटोग्राफी</string>
+
+    <!-- Core Actions -->
+    <string name="action_capture">कैप्चर</string>
+    <string name="action_enhance">AI सुधार</string>
+    <string name="action_save">सेव करें</string>
+    <string name="action_share">शेयर करें</string>
+    <string name="action_delete">हटाएं</string>
+    <string name="action_settings">सेटिंग्स</string>
+    <string name="action_gallery">गैलरी</string>
+    <string name="action_upgrade">प्रो में अपग्रेड करें</string>
+
+    <!-- AI Tools -->
+    <string name="tool_super_res">सुपर रेजोल्यूशन ज़ूम</string>
+    <string name="tool_deblur">मोशन ब्लर सुधार</string>
+    <string name="tool_inpaint">ऑब्जेक्ट इरेज़र</string>
+    <string name="tool_reflection">रिफ्लेक्शन हटाएँ</string>
+    <string name="tool_restoration">पुरानी फ़ोटो रिस्टोर करें</string>
+
+    <!-- Review Prompt -->
+    <string name="review_dialog_title">क्या आपको OptiLens पसंद आया?</string>
+    <string name="review_dialog_message">अगर OptiLens ने आपको बेहतरीन तस्वीरें लेने में मदद की है, तो कृपया Google Play पर समीक्षा दें।</string>
+    <string name="review_dialog_positive">रेट करें</string>
+    <string name="review_dialog_neutral">बाद में</string>
+    <string name="review_dialog_negative">फीडबैक भेजें</string>
+
+    <!-- Pro Upgrade -->
+    <string name="pro_upgrade_title">OptiLens Pro अनलॉक करें</string>
+    <string name="pro_upgrade_subtitle">उन्नत कम्प्यूटेशनल प्रोसेसिंग के साथ कैमरा सेंसर की पूरी क्षमता का उपयोग करें</string>
+    <string name="pro_feature_unlimited">असीमित AI फ़ोटो सुधार</string>
+    <string name="pro_feature_raw">14-बिट असंपीड़ित RAW DNG आउटपुट</string>
+    <string name="pro_feature_4k">4x Pro AI सुपर रेजोल्यूशन ज़ूम</string>
+    <string name="pro_cta_subscribe">प्रो एक्सेस शुरू करें</string>
+    <string name="pro_cta_restore">खरीदारी पुनर्स्थापित करें</string>
+
+    <!-- Diagnostics & Privacy -->
+    <string name="diagnostics_title">कैमरा डायग्नोस्टिक्स</string>
+    <string name="diagnostics_export">हार्डवेयर रिपोर्ट एक्सपोर्ट करें</string>
+    <string name="privacy_notice_text">OptiLens सभी फ़ोटो केवल आपके डिवाइस पर प्रोसेस करता है। कोई भी तस्वीर सर्वर पर अपलोड नहीं की जाती।</string>
+</resources>

@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import kotlinx.coroutines.flow.Flow
@@ -52,6 +53,11 @@ class AppSettingsImpl @Inject constructor(
         val EXPOSURE_ZEBRA_ENABLED  = booleanPreferencesKey("exposure_zebra_enabled")
         val HISTOGRAM_MODE          = stringPreferencesKey("histogram_mode")
         val FAVORITE_URIS           = stringSetPreferencesKey("favorite_photo_uris")
+        val SUCCESSFUL_CAPTURES_COUNT = intPreferencesKey("successful_captures_count")
+        val LAST_REVIEW_PROMPT_TIMESTAMP = longPreferencesKey("last_review_prompt_timestamp")
+        val HAS_USER_REVIEWED       = booleanPreferencesKey("has_user_reviewed")
+        val FIRST_INSTALL_TIMESTAMP = longPreferencesKey("first_install_timestamp")
+        val RECENT_FAILURE_TIMESTAMP = longPreferencesKey("recent_failure_timestamp")
     }
 
     // ── Theme ─────────────────────────────────────────────────────────────
@@ -227,5 +233,49 @@ class AppSettingsImpl @Inject constructor(
             }
             prefs[Keys.FAVORITE_URIS] = current
         }
+    }
+
+    // ── Growth & Review Eligibility ──────────────────────────
+    override val successfulCapturesCount: Flow<Int> = dataStore.data.map { prefs ->
+        prefs[Keys.SUCCESSFUL_CAPTURES_COUNT] ?: 0
+    }
+
+    override suspend fun incrementSuccessfulCaptures() {
+        dataStore.edit { prefs ->
+            val current = prefs[Keys.SUCCESSFUL_CAPTURES_COUNT] ?: 0
+            prefs[Keys.SUCCESSFUL_CAPTURES_COUNT] = current + 1
+        }
+    }
+
+    override val lastReviewPromptTimestamp: Flow<Long> = dataStore.data.map { prefs ->
+        prefs[Keys.LAST_REVIEW_PROMPT_TIMESTAMP] ?: 0L
+    }
+
+    override suspend fun setLastReviewPromptTimestamp(timestamp: Long) {
+        dataStore.edit { it[Keys.LAST_REVIEW_PROMPT_TIMESTAMP] = timestamp }
+    }
+
+    override val hasUserReviewed: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[Keys.HAS_USER_REVIEWED] ?: false
+    }
+
+    override suspend fun setHasUserReviewed(reviewed: Boolean) {
+        dataStore.edit { it[Keys.HAS_USER_REVIEWED] = reviewed }
+    }
+
+    override val firstInstallTimestamp: Flow<Long> = dataStore.data.map { prefs ->
+        prefs[Keys.FIRST_INSTALL_TIMESTAMP] ?: 0L
+    }
+
+    override suspend fun setFirstInstallTimestamp(timestamp: Long) {
+        dataStore.edit { it[Keys.FIRST_INSTALL_TIMESTAMP] = timestamp }
+    }
+
+    override val recentFailureTimestamp: Flow<Long> = dataStore.data.map { prefs ->
+        prefs[Keys.RECENT_FAILURE_TIMESTAMP] ?: 0L
+    }
+
+    override suspend fun setRecentFailureTimestamp(timestamp: Long) {
+        dataStore.edit { it[Keys.RECENT_FAILURE_TIMESTAMP] = timestamp }
     }
 }

@@ -129,6 +129,27 @@ interface AppSettings {
     /** Set of photo URIs marked as favorites by the user. */
     val favoriteUris: Flow<Set<String>>
     suspend fun setFavorite(uri: String, isFavorite: Boolean)
+
+    // ── Growth & Review Eligibility ──────────────────────────
+    /** Total count of successful photo captures. Default: 0. */
+    val successfulCapturesCount: Flow<Int>
+    suspend fun incrementSuccessfulCaptures()
+
+    /** Timestamp of the last in-app review prompt in milliseconds. Default: 0. */
+    val lastReviewPromptTimestamp: Flow<Long>
+    suspend fun setLastReviewPromptTimestamp(timestamp: Long)
+
+    /** Whether the user has completed or declined an in-app review. Default: false. */
+    val hasUserReviewed: Flow<Boolean>
+    suspend fun setHasUserReviewed(reviewed: Boolean)
+
+    /** Timestamp of initial app installation in milliseconds. Default: 0. */
+    val firstInstallTimestamp: Flow<Long>
+    suspend fun setFirstInstallTimestamp(timestamp: Long)
+
+    /** Timestamp of the most recent pipeline processing failure in milliseconds. Default: 0. */
+    val recentFailureTimestamp: Flow<Long>
+    suspend fun setRecentFailureTimestamp(timestamp: Long)
 }
 
 /** User-visible theme preference. */

@@ -21,4 +21,10 @@ abstract class MonetizationAnalyticsModule {
     abstract fun bindCrashReporter(
         impl: DefaultCrashReporter,
     ): CrashReporter
+
+    @Binds
+    @Singleton
+    abstract fun bindGrowthAnalytics(
+        impl: DefaultGrowthAnalytics,
+    ): GrowthAnalytics
 }

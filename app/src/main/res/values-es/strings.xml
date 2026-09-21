@@ -1,0 +1,50 @@
+<resources>
+    <string name="app_name">OptiLens</string>
+    <string name="app_tagline">Fotografía computacional de nueva generación</string>
+
+    <!-- Camera Modes -->
+    <string name="mode_photo">Foto</string>
+    <string name="mode_video">Vídeo</string>
+    <string name="mode_portrait">Retrato</string>
+    <string name="mode_night">Noche</string>
+    <string name="mode_pro">Pro</string>
+    <string name="mode_astro">Astrofotografía</string>
+
+    <!-- Core Actions -->
+    <string name="action_capture">Capturar</string>
+    <string name="action_enhance">Mejora IA</string>
+    <string name="action_save">Guardar</string>
+    <string name="action_share">Compartir</string>
+    <string name="action_delete">Eliminar</string>
+    <string name="action_settings">Ajustes</string>
+    <string name="action_gallery">Galería</string>
+    <string name="action_upgrade">Mejorar a Pro</string>
+
+    <!-- AI Tools -->
+    <string name="tool_super_res">Zoom Super Resolución</string>
+    <string name="tool_deblur">Eliminar Desenfoque</string>
+    <string name="tool_inpaint">Borrador de Objetos</string>
+    <string name="tool_reflection">Reducción de Reflejos</string>
+    <string name="tool_restoration">Restauración de Fotos</string>
+
+    <!-- Review Prompt -->
+    <string name="review_dialog_title">¿Te gusta OptiLens?</string>
+    <string name="review_dialog_message">Si OptiLens te ha ayudado a capturar excelentes fotos, ¿podrías valorarnos en Google Play?</string>
+    <string name="review_dialog_positive">Calificar OptiLens</string>
+    <string name="review_dialog_neutral">Ahora No</string>
+    <string name="review_dialog_negative">Enviar Comentarios</string>
+
+    <!-- Pro Upgrade -->
+    <string name="pro_upgrade_title">Desbloquea OptiLens Pro</string>
+    <string name="pro_upgrade_subtitle">Todo el potencial del sensor con fotografía computacional avanzada</string>
+    <string name="pro_feature_unlimited">Mejoras de fotos con IA ilimitadas</string>
+    <string name="pro_feature_raw">RAW DNG de 14 bits sin comprimir</string>
+    <string name="pro_feature_4k">Super Resolución IA 4x Pro</string>
+    <string name="pro_cta_subscribe">Iniciar Acceso Pro</string>
+    <string name="pro_cta_restore">Restaurar Compras</string>
+
+    <!-- Diagnostics & Privacy -->
+    <string name="diagnostics_title">Diagnóstico de Cámara</string>
+    <string name="diagnostics_export">Exportar Informe de Hardware</string>
+    <string name="privacy_notice_text">OptiLens procesa todas las fotos al 100% en el dispositivo. No se suben imágenes a ningún servidor.</string>
+</resources>
