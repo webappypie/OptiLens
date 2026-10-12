@@ -141,7 +141,10 @@ class PhotoReviewViewModelTest {
         viewModel.saveEnhanced()
         testDispatcher.scheduler.advanceUntilIdle()
         assertEquals(1, fakeLoader.saveCallCount)
-        assertEquals("Enhanced copy saved to Gallery", viewModel.uiState.value.message)
+        assertEquals(
+            com.webappypie.optilens.core.ui.text.UiText(com.webappypie.optilens.core.ui.R.string.review_saved_message),
+            viewModel.uiState.value.message,
+        )
     }
 
     @Test
@@ -201,11 +204,16 @@ class PhotoReviewViewModelTest {
         val notes = PhotoReviewViewModel.describe(report)
         assertEquals(
             listOf(
-                "Brightened by 0.8 EV", "Shadows lifted", "Colour cast reduced", "Noise reduced",
-                "5% of the photo was already pure white; that detail can't be recovered",
+                com.webappypie.optilens.core.ui.R.string.note_brightened,
+                com.webappypie.optilens.core.ui.R.string.note_shadows,
+                com.webappypie.optilens.core.ui.R.string.note_color,
+                com.webappypie.optilens.core.ui.R.string.note_noise,
+                com.webappypie.optilens.core.ui.R.string.note_clipped,
             ),
-            notes,
+            notes.map { it.id },
         )
+        assertEquals(listOf<Any>(0.8f), notes[0].args)
+        assertEquals(listOf<Any>(5), notes[4].args)
         val untouched = report.copy(
             exposureStops = 0f, shadowCompression = 1f, whiteBalanceGainR = 1f, whiteBalanceGainB = 1f,
             lumaDenoiseRadius = 0, clippedHighlightFraction = 0f,

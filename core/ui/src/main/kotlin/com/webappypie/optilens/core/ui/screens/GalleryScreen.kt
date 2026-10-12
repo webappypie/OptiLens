@@ -1,5 +1,7 @@
 package com.webappypie.optilens.core.ui.screens
 
+import androidx.compose.ui.res.stringResource
+import com.webappypie.optilens.core.ui.R
 import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
@@ -86,6 +88,7 @@ fun GalleryScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = androidx.compose.ui.platform.LocalContext.current
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
 
     // Android Photo Picker for picking ANY existing photo with zero runtime permissions
@@ -114,14 +117,14 @@ fun GalleryScreen(
 
     LaunchedEffect(uiState.freedCacheMessage) {
         uiState.freedCacheMessage?.let { msg ->
-            snackbarHostState.showSnackbar(msg)
+            snackbarHostState.showSnackbar(msg.resolve(context))
             viewModel.dismissFreedCacheMessage()
         }
     }
 
     LaunchedEffect(uiState.errorMessage) {
         uiState.errorMessage?.let { err ->
-            snackbarHostState.showSnackbar(err)
+            snackbarHostState.showSnackbar(err.resolve(context))
             viewModel.dismissErrorMessage()
         }
     }
@@ -130,19 +133,19 @@ fun GalleryScreen(
         topBar = {
             if (uiState.isSelectionMode) {
                 OptiTopBar(
-                    title = "${uiState.selectedItemUris.size} selected",
+                    title = stringResource(R.string.gallery_selected, uiState.selectedItemUris.size),
                     onBackClick = { viewModel.clearSelection() },
                     actions = {
                         IconButton(onClick = { viewModel.selectAll() }) {
                             Icon(
                                 imageVector = Icons.Default.SelectAll,
-                                contentDescription = "Select All",
+                                contentDescription = stringResource(R.string.gallery_select_all),
                             )
                         }
                         IconButton(onClick = { showDeleteConfirmDialog = true }) {
                             Icon(
                                 imageVector = Icons.Default.Delete,
-                                contentDescription = "Delete",
+                                contentDescription = stringResource(R.string.common_delete),
                                 tint = MaterialTheme.colorScheme.error,
                             )
                         }
@@ -150,13 +153,13 @@ fun GalleryScreen(
                 )
             } else {
                 OptiTopBar(
-                    title = "Gallery",
+                    title = stringResource(R.string.gallery_title),
                     onBackClick = onNavigateBack,
                     actions = {
                         IconButton(onClick = { viewModel.clearCache() }) {
                             Icon(
                                 imageVector = Icons.Outlined.CleaningServices,
-                                contentDescription = "Clear Cache",
+                                contentDescription = stringResource(R.string.gallery_clear_cache),
                             )
                         }
                         IconButton(
@@ -168,7 +171,7 @@ fun GalleryScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.AddPhotoAlternate,
-                                contentDescription = "Enhance Existing Photo",
+                                contentDescription = stringResource(R.string.gallery_enhance_existing),
                                 tint = MaterialTheme.colorScheme.primary,
                             )
                         }
@@ -187,10 +190,10 @@ fun GalleryScreen(
                     icon = {
                         Icon(
                             imageVector = Icons.Default.AddPhotoAlternate,
-                            contentDescription = "Enhance Photo",
+                            contentDescription = null,
                         )
                     },
-                    text = { Text("Enhance Photo", fontSize = 13.sp) },
+                    text = { Text(stringResource(R.string.review_enhance_photo), fontSize = 13.sp) },
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                 )
@@ -238,14 +241,16 @@ fun GalleryScreen(
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     OptiEmptyState(
-                        title = if (isFilterActive) "No ${uiState.filter.label} Found" else "No Captures Yet",
-                        description = if (isFilterActive) {
-                            "Try switching to All Photos or capturing new photos with OptiLens."
+                        title = if (isFilterActive) {
+                            stringResource(R.string.gallery_empty_filtered_title, stringResource(uiState.filter.labelRes))
                         } else {
-                            "Photos and portraits captured with OptiLens will appear here. You can also enhance any existing photo from your library."
+                            stringResource(R.string.gallery_empty_title)
                         },
+                        description = stringResource(
+                            if (isFilterActive) R.string.gallery_empty_filtered_message else R.string.gallery_empty_message,
+                        ),
                         icon = Icons.Outlined.PhotoLibrary,
-                        actionLabel = if (isFilterActive) "Show All Photos" else "Open Camera",
+                        actionLabel = stringResource(if (isFilterActive) R.string.gallery_show_all else R.string.gallery_open_camera),
                         onActionClick = if (isFilterActive) {
                             { viewModel.setFilter(GalleryFilter.ALL) }
                         } else onNavigateToCamera,
@@ -303,8 +308,8 @@ fun GalleryScreen(
         val count = uiState.selectedItemUris.size
         AlertDialog(
             onDismissRequest = { showDeleteConfirmDialog = false },
-            title = { Text("Delete $count ${if (count == 1) "Photo" else "Photos"}?") },
-            text = { Text("Selected photos will be removed from your device's OptiLens gallery.") },
+            title = { Text(androidx.compose.ui.res.pluralStringResource(R.plurals.gallery_delete_title, count, count)) },
+            text = { Text(stringResource(R.string.gallery_delete_message)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -312,12 +317,12 @@ fun GalleryScreen(
                         viewModel.deleteSelectedItems()
                     }
                 ) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirmDialog = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.common_cancel))
                 }
             },
         )

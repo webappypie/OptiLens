@@ -34,6 +34,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.stringResource
+import com.webappypie.optilens.core.ui.R
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -244,7 +246,7 @@ fun BeforeAfterSplitViewer(
                 ) {
                     androidx.compose.material3.Icon(
                         imageVector = androidx.compose.material.icons.Icons.Filled.SwapHoriz,
-                        contentDescription = "Drag to compare",
+                        contentDescription = stringResource(R.string.compare_drag),
                         tint = Color.Black,
                     )
                 }
@@ -269,7 +271,7 @@ fun BeforeAfterSplitViewer(
                     .padding(horizontal = 10.dp, vertical = 4.dp),
             ) {
                 Text(
-                    text = "BEFORE",
+                    text = stringResource(R.string.compare_before),
                     color = Color.White,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
@@ -294,7 +296,7 @@ fun BeforeAfterSplitViewer(
                     .padding(horizontal = 10.dp, vertical = 4.dp),
             ) {
                 Text(
-                    text = "AFTER",
+                    text = stringResource(R.string.compare_after),
                     color = Color.White,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
@@ -320,7 +322,7 @@ fun BeforeAfterSplitViewer(
                     .padding(horizontal = 12.dp, vertical = 6.dp),
             ) {
                 Text(
-                    text = "Showing Original (Hold to Compare)",
+                    text = stringResource(R.string.compare_showing_original),
                     color = Color.White,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium

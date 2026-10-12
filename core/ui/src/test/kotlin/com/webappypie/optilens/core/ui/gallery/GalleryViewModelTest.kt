@@ -201,7 +201,12 @@ class GalleryViewModelTest {
             assertTrue(fakeStorageMonitor.wasClearCacheCalled)
             val state = expectMostRecentItem()
             assertNotNull(state.freedCacheMessage)
-            assertTrue(state.freedCacheMessage!!.contains("freed") || state.freedCacheMessage!!.contains("Freed"))
+            assertTrue(
+                state.freedCacheMessage!!.id in setOf(
+                    com.webappypie.optilens.core.ui.R.string.gallery_cache_freed_mb,
+                    com.webappypie.optilens.core.ui.R.string.gallery_cache_freed_kb,
+                ),
+            )
         }
     }
 

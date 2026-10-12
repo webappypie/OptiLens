@@ -27,6 +27,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.stringResource
+import com.webappypie.optilens.core.ui.R
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -41,9 +43,9 @@ import com.webappypie.optilens.core.camera.strategy.CaptureStrategy
 import com.webappypie.optilens.core.camera.strategy.CaptureUiHint
 
 /** What tapping a hint pill does, when the camera screen offers it. */
-enum class SceneHintAction(val label: String) {
-    ENABLE_HDR("Tap for HDR"),
-    SWITCH_TO_NIGHT("Tap for Night"),
+enum class SceneHintAction(@androidx.annotation.StringRes val labelRes: Int) {
+    ENABLE_HDR(R.string.hint_tap_hdr),
+    SWITCH_TO_NIGHT(R.string.hint_tap_night),
 }
 
 /**
@@ -62,6 +64,8 @@ fun SceneHintPill(
 ) {
     val displayInfo = resolveHintDisplay(scene, strategy, motion)
     val action = displayInfo?.action?.takeIf { it in availableActions }
+    val text = displayInfo?.let { stringResource(it.textRes) }.orEmpty()
+    val actionLabel = action?.let { stringResource(it.labelRes) }
 
     AnimatedVisibility(
         visible = displayInfo != null,
@@ -79,7 +83,7 @@ fun SceneHintPill(
                     .border(0.5.dp, displayInfo.accentColor.copy(alpha = if (action != null) 0.8f else 0.35f), CircleShape)
                     .then(
                         if (action != null) {
-                            Modifier.clickable(role = androidx.compose.ui.semantics.Role.Button, onClickLabel = action.label) {
+                            Modifier.clickable(role = androidx.compose.ui.semantics.Role.Button, onClickLabel = actionLabel) {
                                 onAction(action)
                             }
                         } else {
@@ -90,12 +94,12 @@ fun SceneHintPill(
             ) {
                 Icon(
                     imageVector = displayInfo.icon,
-                    contentDescription = displayInfo.text,
+                    contentDescription = text,
                     tint = displayInfo.accentColor,
                     modifier = Modifier.size(14.dp),
                 )
                 Text(
-                    text = if (action != null) "${displayInfo.text} · ${action.label}" else displayInfo.text,
+                    text = if (actionLabel != null) stringResource(R.string.hint_with_action, text, actionLabel) else text,
                     color = Color.White.copy(alpha = 0.92f),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium,
@@ -108,7 +112,7 @@ fun SceneHintPill(
 
 private data class HintDisplay(
     val icon: ImageVector,
-    val text: String,
+    @androidx.annotation.StringRes val textRes: Int,
     val accentColor: Color = Color(0xFFE5C07B),
     val action: SceneHintAction? = null,
 )
@@ -122,7 +126,7 @@ private fun resolveHintDisplay(
     if (strategy.uiHint == CaptureUiHint.HOLD_STEADY) {
         return HintDisplay(
             icon = Icons.Default.PanTool,
-            text = "Hold steady",
+            textRes = R.string.hint_hold_steady,
             accentColor = Color(0xFFE06C75),
         )
     }
@@ -131,7 +135,7 @@ private fun resolveHintDisplay(
     if (strategy.uiHint == CaptureUiHint.NIGHT_SUGGESTED) {
         return HintDisplay(
             icon = Icons.Default.DarkMode,
-            text = "Night suggested",
+            textRes = R.string.hint_night,
             accentColor = Color(0xFF61AFEF),
             action = SceneHintAction.SWITCH_TO_NIGHT,
         )
@@ -141,7 +145,7 @@ private fun resolveHintDisplay(
         return HintDisplay(
             icon = Icons.Default.HdrOn,
             // Describes the scene only: there is no HDR capture mode to suggest yet.
-            text = if (strategy.uiHint == CaptureUiHint.BACKLIGHT_DETECTED) "Backlight" else "High contrast",
+            textRes = if (strategy.uiHint == CaptureUiHint.BACKLIGHT_DETECTED) R.string.hint_backlight else R.string.hint_high_contrast,
             accentColor = Color(0xFFE5C07B),
             action = SceneHintAction.ENABLE_HDR,
         )
@@ -150,7 +154,7 @@ private fun resolveHintDisplay(
     if (strategy.uiHint == CaptureUiHint.DOCUMENT_DETECTED || scene.primaryScene == SceneType.DOCUMENT) {
         return HintDisplay(
             icon = Icons.Default.Description,
-            text = "Document",
+            textRes = R.string.hint_document,
             accentColor = Color(0xFF98C379),
         )
     }
@@ -158,17 +162,11 @@ private fun resolveHintDisplay(
     // 3. Scene chips only for signals the app actually measures: detected faces (ML Kit) and
     // low light (luminance). Colour-only guesses (plant, sky, food, animals) are not shown.
     if (scene.primaryScene != SceneType.GENERAL && scene.confidence >= 0.60f && scene.stabilityScore >= 0.50f) {
-        val (icon, color) = when (scene.primaryScene) {
-            SceneType.PORTRAIT -> Icons.Default.AutoAwesome to Color(0xFFE5C07B)
-            SceneType.LOW_LIGHT -> Icons.Default.DarkMode to Color(0xFF61AFEF)
-            else -> return null
+        return when (scene.primaryScene) {
+            SceneType.PORTRAIT -> HintDisplay(Icons.Default.AutoAwesome, R.string.mode_portrait, Color(0xFFE5C07B))
+            SceneType.LOW_LIGHT -> HintDisplay(Icons.Default.DarkMode, R.string.hint_low_light, Color(0xFF61AFEF))
+            else -> null
         }
-
-        return HintDisplay(
-            icon = icon,
-            text = scene.primaryScene.displayName,
-            accentColor = color,
-        )
     }
 
     return null

@@ -82,6 +82,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.res.stringResource
+import com.webappypie.optilens.core.ui.R
+import com.webappypie.optilens.core.ui.text.UiText
 
 private val Accent = Color(0xFFFFB74D)
 private val OnAccent = Color(0xFF2B1C00)
@@ -114,7 +117,7 @@ fun PhotoReviewScreen(
     }
     LaunchedEffect(uiState.message) {
         uiState.message?.let {
-            snackbarHostState.showSnackbar(it)
+            snackbarHostState.showSnackbar(it.resolve(context))
             viewModel.clearMessage()
         }
     }
@@ -158,9 +161,9 @@ fun PhotoReviewScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Outlined.ErrorOutline, contentDescription = null, tint = MutedText, modifier = Modifier.size(40.dp))
                         Spacer(Modifier.height(12.dp))
-                        Text(uiState.errorMessage!!, color = Color.White, fontSize = 15.sp)
+                        Text(uiState.errorMessage!!.resolve(), color = Color.White, fontSize = 15.sp)
                         Spacer(Modifier.height(16.dp))
-                        OutlinedButton(onClick = onNavigateBack) { Text("Go back", color = Color.White) }
+                        OutlinedButton(onClick = onNavigateBack) { Text(stringResource(R.string.review_go_back), color = Color.White) }
                     }
                 } else {
                     CircularProgressIndicator(color = Accent, strokeWidth = 3.dp)
@@ -183,7 +186,7 @@ fun PhotoReviewScreen(
             ) {
                 RoundIconButton(
                     icon = if (fromCapture) Icons.Default.Close else Icons.AutoMirrored.Filled.ArrowBack,
-                    description = if (fromCapture) "Close preview" else "Back",
+                    description = stringResource(if (fromCapture) R.string.review_close_preview else R.string.common_back),
                     onClick = {
                         when {
                             uiState.isEnhancing -> viewModel.cancelEnhance()
@@ -193,12 +196,14 @@ fun PhotoReviewScreen(
                     },
                 )
                 Text(
-                    text = when {
-                        uiState.isEnhancing -> "Enhancing…"
-                        uiState.isEnhanced -> "Enhanced"
-                        fromCapture -> "Preview"
-                        else -> "Photo"
-                    },
+                    text = stringResource(
+                        when {
+                            uiState.isEnhancing -> R.string.review_title_enhancing
+                            uiState.isEnhanced -> R.string.review_title_enhanced
+                            fromCapture -> R.string.review_title_preview
+                            else -> R.string.review_title_photo
+                        },
+                    ),
                     color = Color.White,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 17.sp,
@@ -207,7 +212,7 @@ fun PhotoReviewScreen(
                 )
                 RoundIconButton(
                     icon = Icons.Default.Share,
-                    description = if (uiState.savedUri != null) "Share enhanced photo" else "Share photo",
+                    description = stringResource(if (uiState.savedUri != null) R.string.review_share_enhanced else R.string.common_share_photo),
                     enabled = uiState.photoUri.isNotBlank() && original != null,
                     onClick = {
                         val shareUri = uiState.savedUri ?: uiState.photoUri
@@ -216,7 +221,7 @@ fun PhotoReviewScreen(
                             putExtra(Intent.EXTRA_STREAM, Uri.parse(shareUri))
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }
-                        context.startActivity(Intent.createChooser(sendIntent, "Share photo"))
+                        context.startActivity(Intent.createChooser(sendIntent, context.getString(R.string.common_share_photo)))
                     },
                 )
             }
@@ -256,14 +261,14 @@ fun PhotoReviewScreen(
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
                             .background(Color(0x33F87171))
-                            .clickable(onClickLabel = "Dismiss") { viewModel.clearError() }
+                            .clickable(onClickLabel = stringResource(R.string.common_dismiss)) { viewModel.clearError() }
                             .padding(horizontal = 12.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Icon(Icons.Outlined.ErrorOutline, contentDescription = null, tint = Color(0xFFF87171), modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text(error, color = Color.White, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                        Icon(Icons.Default.Close, contentDescription = "Dismiss", tint = MutedText, modifier = Modifier.size(16.dp))
+                        Text(error.resolve(), color = Color.White, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_dismiss), tint = MutedText, modifier = Modifier.size(16.dp))
                     }
                     Spacer(Modifier.height(12.dp))
                 }
@@ -311,39 +316,57 @@ fun PhotoReviewScreen(
     if (confirmRetake) {
         AlertDialog(
             onDismissRequest = { confirmRetake = false },
-            title = { Text("Retake photo?") },
-            text = { Text("This photo will be deleted from your gallery.") },
+            title = { Text(stringResource(R.string.review_retake_title)) },
+            text = { Text(stringResource(R.string.review_retake_message)) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmRetake = false
                     viewModel.discardCapturedPhoto()
-                }) { Text("Delete & retake") }
+                }) { Text(stringResource(R.string.review_retake_confirm)) }
             },
-            dismissButton = { TextButton(onClick = { confirmRetake = false }) { Text("Keep") } },
+            dismissButton = { TextButton(onClick = { confirmRetake = false }) { Text(stringResource(R.string.review_keep)) } },
         )
     }
     if (confirmLeave) {
         AlertDialog(
             onDismissRequest = { confirmLeave = false },
-            title = { Text("Discard enhanced version?") },
-            text = { Text("Your original photo is kept. The enhanced version hasn't been saved.") },
+            title = { Text(stringResource(R.string.review_leave_title)) },
+            text = { Text(stringResource(R.string.review_leave_message)) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmLeave = false
                     viewModel.saveEnhanced()
-                }) { Text("Save") }
+                }) { Text(stringResource(R.string.common_save)) }
             },
             dismissButton = {
                 TextButton(onClick = {
                     confirmLeave = false
                     onNavigateBack()
-                }) { Text("Discard") }
+                }) { Text(stringResource(R.string.review_discard)) }
             },
         )
     }
 }
 
 private enum class PanelState { IDLE, PROCESSING, RESULT }
+
+private val CAPTURE_NOTE = Regex("^(Night|HDR|Moon) · (\\d+)-frame merge(, tone-mapped)?$")
+
+/** Rebuilds the EXIF capture note ("Night · 4-frame merge, tone-mapped") in the user's language. */
+@Composable
+private fun localizedCaptureProcessing(raw: String): String {
+    val match = CAPTURE_NOTE.matchEntire(raw) ?: return raw
+    val mode = stringResource(
+        when (match.groupValues[1]) {
+            "Night" -> R.string.mode_night
+            "HDR" -> R.string.mode_hdr
+            else -> R.string.mode_moon
+        },
+    )
+    val frames = match.groupValues[2].toInt()
+    val toned = match.groupValues[3].isNotEmpty()
+    return stringResource(if (toned) R.string.review_processing_merge_toned else R.string.review_processing_merge, mode, frames)
+}
 
 @Composable
 private fun IdlePanel(
@@ -360,7 +383,7 @@ private fun IdlePanel(
                 Icon(Icons.Default.Check, contentDescription = null, tint = SuccessGreen, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    text = "$captureProcessing on capture",
+                    text = stringResource(R.string.review_capture_processing, localizedCaptureProcessing(captureProcessing)),
                     color = Color.White,
                     fontSize = 13.sp,
                     modifier = Modifier.weight(1f),
@@ -378,18 +401,18 @@ private fun IdlePanel(
         ) {
             Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
-            Text("Enhance Photo", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.review_enhance_photo), fontSize = 16.sp, fontWeight = FontWeight.Bold)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             if (fromCapture) {
-                SecondaryAction(Icons.Default.CameraAlt, "Retake", enabled, onRetake, Modifier.weight(1f))
+                SecondaryAction(Icons.Default.CameraAlt, stringResource(R.string.review_retake), enabled, onRetake, Modifier.weight(1f))
             }
-            SecondaryAction(Icons.Default.Tune, "Edit Tools", enabled, onEditTools, Modifier.weight(1f))
+            SecondaryAction(Icons.Default.Tune, stringResource(R.string.review_edit_tools), enabled, onEditTools, Modifier.weight(1f))
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.PhoneAndroid, contentDescription = null, tint = MutedText, modifier = Modifier.size(14.dp))
             Spacer(Modifier.width(6.dp))
-            Text("Processed on this device · works offline", color = MutedText, fontSize = 12.sp, modifier = Modifier.weight(1f))
+            Text(stringResource(R.string.review_on_device), color = MutedText, fontSize = 12.sp, modifier = Modifier.weight(1f))
         }
         ComingSoonRow()
     }
@@ -398,20 +421,21 @@ private fun IdlePanel(
 /** The future cloud feature, shown as clearly unavailable — not a button. */
 @Composable
 private fun ComingSoonRow() {
+    val a11y = stringResource(R.string.review_ai_enhance_a11y)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .background(ChipColor)
-            .semantics { contentDescription = "Enhance Photo by AI, coming soon, not available yet" }
+            .semantics { contentDescription = a11y }
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(Icons.Default.CloudQueue, contentDescription = null, tint = MutedText, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(10.dp))
-        Text("Enhance Photo by AI", color = MutedText, fontSize = 13.sp, modifier = Modifier.weight(1f))
+        Text(stringResource(R.string.review_ai_enhance), color = MutedText, fontSize = 13.sp, modifier = Modifier.weight(1f))
         Text(
-            "COMING SOON",
+            stringResource(R.string.review_coming_soon),
             color = MutedText,
             fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
@@ -429,14 +453,18 @@ private fun ProcessingPanel(progress: Float, onCancel: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("Enhancing on your device", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.review_enhancing_title), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                 Text(
-                    text = if (progress < 0.15f) "Analysing exposure, colour and noise" else "Tone, colour, noise and detail · ${(progress * 100).toInt()}%",
+                    text = if (progress < 0.15f) {
+                        stringResource(R.string.review_enhancing_analysing)
+                    } else {
+                        stringResource(R.string.review_enhancing_progress, (progress * 100).toInt())
+                    },
                     color = MutedText,
                     fontSize = 12.sp,
                 )
             }
-            TextButton(onClick = onCancel) { Text("Cancel", color = Color.White) }
+            TextButton(onClick = onCancel) { Text(stringResource(R.string.common_cancel), color = Color.White) }
         }
         LinearProgressIndicator(
             progress = { animated },
@@ -454,7 +482,7 @@ private fun ProcessingPanel(progress: Float, onCancel: () -> Unit) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ResultPanel(
-    notes: List<String>,
+    notes: List<UiText>,
     isSaving: Boolean,
     isSaved: Boolean,
     fromCapture: Boolean,
@@ -464,7 +492,7 @@ private fun ResultPanel(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
-            text = "Drag the slider or hold the photo to compare",
+            text = stringResource(R.string.review_compare_hint),
             color = MutedText,
             fontSize = 12.sp,
         )
@@ -475,7 +503,7 @@ private fun ResultPanel(
             ) {
                 notes.forEach { note ->
                     Text(
-                        text = note,
+                        text = note.resolve(),
                         color = Color.White,
                         fontSize = 12.sp,
                         modifier = Modifier
@@ -490,13 +518,13 @@ private fun ResultPanel(
             if (isSaved) {
                 SecondaryAction(
                     icon = if (fromCapture) Icons.Default.CameraAlt else Icons.AutoMirrored.Filled.ArrowBack,
-                    label = if (fromCapture) "Camera" else "Done",
+                    label = stringResource(if (fromCapture) R.string.review_camera else R.string.review_done),
                     enabled = true,
                     onClick = onDone,
                     modifier = Modifier.weight(1f),
                 )
             } else {
-                SecondaryAction(Icons.Default.Close, "Revert", !isSaving, onRevert, Modifier.weight(0.75f))
+                SecondaryAction(Icons.Default.Close, stringResource(R.string.review_revert), !isSaving, onRevert, Modifier.weight(0.75f))
             }
             Button(
                 onClick = onSave,
@@ -517,13 +545,13 @@ private fun ResultPanel(
                     isSaved -> {
                         Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Saved", fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.review_saved), fontWeight = FontWeight.Bold)
                     }
                     else -> {
                         Icon(Icons.Outlined.Download, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
                         // A new file is always written; the original is never replaced.
-                        Text("Save Enhanced Photo", fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, softWrap = false)
+                        Text(stringResource(R.string.review_save_enhanced), fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, softWrap = false)
                     }
                 }
             }
@@ -544,9 +572,9 @@ private fun ViewModeSelector(
             .padding(4.dp),
     ) {
         listOf(
-            ReviewViewMode.ORIGINAL to "Original",
-            ReviewViewMode.ENHANCED to "Enhanced",
-            ReviewViewMode.COMPARE to "Compare",
+            ReviewViewMode.ORIGINAL to stringResource(R.string.review_view_original),
+            ReviewViewMode.ENHANCED to stringResource(R.string.review_view_enhanced),
+            ReviewViewMode.COMPARE to stringResource(R.string.review_view_compare),
         ).forEach { (mode, label) ->
             val isSelected = mode == selected
             Text(
@@ -557,7 +585,7 @@ private fun ViewModeSelector(
                 modifier = Modifier
                     .clip(CircleShape)
                     .background(if (isSelected) Accent else Color.Transparent)
-                    .clickable(role = Role.Tab, onClickLabel = "Show $label") { onSelect(mode) }
+                    .clickable(role = Role.Tab, onClickLabel = stringResource(R.string.review_show_view, label)) { onSelect(mode) }
                     .padding(horizontal = 16.dp, vertical = 9.dp),
             )
         }

@@ -1,5 +1,7 @@
 package com.webappypie.optilens.core.ui.gallery
 
+import com.webappypie.optilens.core.ui.R
+import com.webappypie.optilens.core.ui.text.UiText
 import android.app.PendingIntent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -23,11 +25,11 @@ import javax.inject.Inject
 /**
  * Filter categories for the media gallery.
  */
-enum class GalleryFilter(val label: String) {
-    ALL("All Photos"),
-    FAVORITES("Favorites"),
-    ENHANCED("Edited"),
-    RAW("RAW / DNG");
+enum class GalleryFilter(val label: String, @androidx.annotation.StringRes val labelRes: Int) {
+    ALL("All Photos", R.string.filter_all),
+    FAVORITES("Favorites", R.string.filter_favorites),
+    ENHANCED("Edited", R.string.filter_edited),
+    RAW("RAW / DNG", R.string.filter_raw);
 }
 
 /**
@@ -42,8 +44,8 @@ data class GalleryUiState(
     val storageState: StorageState = StorageState(),
     val isLoading: Boolean = true,
     val pendingDeleteIntent: PendingIntent? = null,
-    val freedCacheMessage: String? = null,
-    val errorMessage: String? = null,
+    val freedCacheMessage: UiText? = null,
+    val errorMessage: UiText? = null,
 ) {
     val isSelectionMode: Boolean get() = selectedItemUris.isNotEmpty()
     val totalCount: Int get() = allItems.size
@@ -60,8 +62,8 @@ class GalleryViewModel @Inject constructor(
     private val _filter = MutableStateFlow(GalleryFilter.ALL)
     private val _selectedUris = MutableStateFlow<Set<String>>(emptySet())
     private val _pendingDeleteIntent = MutableStateFlow<PendingIntent?>(null)
-    private val _freedCacheMessage = MutableStateFlow<String?>(null)
-    private val _errorMessage = MutableStateFlow<String?>(null)
+    private val _freedCacheMessage = MutableStateFlow<UiText?>(null)
+    private val _errorMessage = MutableStateFlow<UiText?>(null)
     private val _isLoading = MutableStateFlow(true)
 
     val uiState: StateFlow<GalleryUiState> = combine(
@@ -134,7 +136,7 @@ class GalleryViewModel @Inject constructor(
         viewModelScope.launch {
             val result = galleryRepository.toggleFavorite(mediaItem.contentUri)
             if (result is OptiResult.Error) {
-                _errorMessage.value = "Failed to toggle favorite: ${result.error.displayMessage}"
+                _errorMessage.value = UiText(R.string.gallery_error_favorite)
             }
         }
     }
@@ -153,7 +155,7 @@ class GalleryViewModel @Inject constructor(
                     }
                 }
                 is OptiResult.Error -> {
-                    _errorMessage.value = "Failed to delete: ${result.error.displayMessage}"
+                    _errorMessage.value = UiText(R.string.gallery_error_delete)
                 }
                 is OptiResult.Loading -> Unit
             }
@@ -188,9 +190,9 @@ class GalleryViewModel @Inject constructor(
             val freedBytes = storageMonitor.clearCache()
             val freedMb = freedBytes / (1024.0 * 1024.0)
             val msg = if (freedMb >= 1.0) {
-                String.format(java.util.Locale.US, "Freed %.1f MB of cache", freedMb)
+                UiText(R.string.gallery_cache_freed_mb, listOf(freedMb))
             } else {
-                "${freedBytes / 1024} KB freed"
+                UiText(R.string.gallery_cache_freed_kb, listOf((freedBytes / 1024).toInt()))
             }
             _freedCacheMessage.value = msg
         }

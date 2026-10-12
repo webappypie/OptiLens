@@ -10,6 +10,8 @@ import com.webappypie.optilens.core.imaging.enhance.EnhancementReport
 import com.webappypie.optilens.core.imaging.enhance.OnDeviceEnhancementEngine
 import com.webappypie.optilens.core.logging.AppLogger
 import com.webappypie.optilens.core.settings.AppSettings
+import com.webappypie.optilens.core.ui.R
+import com.webappypie.optilens.core.ui.text.UiText
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -42,16 +44,16 @@ data class PhotoReviewUiState(
     val isEnhanced: Boolean = false,
     val viewMode: ReviewViewMode = ReviewViewMode.ORIGINAL,
     /** Short, factual notes about what the enhancement measured and changed. */
-    val enhancementNotes: List<String> = emptyList(),
+    val enhancementNotes: List<UiText> = emptyList(),
     val isSaving: Boolean = false,
     val isSaved: Boolean = false,
     val savedUri: String? = null,
     val keepOriginal: Boolean = true,
     val splitFraction: Float = 0.50f,
     val isHoldingToCompare: Boolean = false,
-    val errorMessage: String? = null,
+    val errorMessage: UiText? = null,
     /** One-shot confirmation message (e.g. after saving). */
-    val message: String? = null,
+    val message: UiText? = null,
     val isDiscarding: Boolean = false,
     /** System consent needed to delete the photo (Android 11+ for items the app does not own). */
     val pendingDeleteIntent: PendingIntent? = null,
@@ -112,11 +114,11 @@ class PhotoReviewViewModel @Inject constructor(
                 if (bitmap != null) {
                     _uiState.update { it.copy(originalBitmap = bitmap, captureProcessing = processing) }
                 } else {
-                    _uiState.update { it.copy(errorMessage = "This photo couldn't be opened.") }
+                    _uiState.update { it.copy(errorMessage = UiText(R.string.review_error_open)) }
                 }
             } catch (e: Exception) {
                 logger.e("PhotoReviewViewModel", "Error loading photo", e)
-                _uiState.update { it.copy(errorMessage = "This photo couldn't be opened.") }
+                _uiState.update { it.copy(errorMessage = UiText(R.string.review_error_open)) }
             }
         }
     }
@@ -164,10 +166,10 @@ class PhotoReviewViewModel @Inject constructor(
                 throw e
             } catch (e: OutOfMemoryError) {
                 logger.e("PhotoReviewViewModel", "Out of memory during enhance", e)
-                _uiState.update { it.copy(isEnhancing = false, errorMessage = "Not enough memory to enhance this photo.") }
+                _uiState.update { it.copy(isEnhancing = false, errorMessage = UiText(R.string.review_error_memory)) }
             } catch (e: Exception) {
                 logger.e("PhotoReviewViewModel", "Error during enhance", e)
-                _uiState.update { it.copy(isEnhancing = false, errorMessage = "Enhancement failed. Please try again.") }
+                _uiState.update { it.copy(isEnhancing = false, errorMessage = UiText(R.string.review_error_enhance)) }
             } finally {
                 enhanceJob = null
             }
@@ -232,14 +234,14 @@ class PhotoReviewViewModel @Inject constructor(
                     appSettings.recordAiEnhanceOutcome(kept = true)
 
                     _uiState.update {
-                        it.copy(isSaving = false, isSaved = true, savedUri = savedUri, message = "Enhanced copy saved to Gallery")
+                        it.copy(isSaving = false, isSaved = true, savedUri = savedUri, message = UiText(R.string.review_saved_message))
                     }
                 } else {
-                    _uiState.update { it.copy(isSaving = false, errorMessage = "The enhanced copy couldn't be saved.") }
+                    _uiState.update { it.copy(isSaving = false, errorMessage = UiText(R.string.review_error_save)) }
                 }
             } catch (e: Exception) {
                 logger.e("PhotoReviewViewModel", "Error saving enhanced photo", e)
-                _uiState.update { it.copy(isSaving = false, errorMessage = "The enhanced copy couldn't be saved.") }
+                _uiState.update { it.copy(isSaving = false, errorMessage = UiText(R.string.review_error_save)) }
             }
         }
     }
@@ -262,7 +264,7 @@ class PhotoReviewViewModel @Inject constructor(
                     }
                 }
                 is OptiResult.Error -> _uiState.update {
-                    it.copy(isDiscarding = false, errorMessage = "This photo couldn't be deleted.")
+                    it.copy(isDiscarding = false, errorMessage = UiText(R.string.review_error_delete))
                 }
                 else -> _uiState.update { it.copy(isDiscarding = false) }
             }
@@ -298,20 +300,17 @@ class PhotoReviewViewModel @Inject constructor(
 
     internal companion object {
         /** Factual description of what the pipeline measured and did. */
-        fun describe(report: EnhancementReport): List<String> = buildList {
+        fun describe(report: EnhancementReport): List<UiText> = buildList {
             when {
-                report.exposureStops >= 0.15f -> add("Brightened by %.1f EV".format(report.exposureStops))
-                report.exposureStops <= -0.15f -> add("Darkened by %.1f EV".format(-report.exposureStops))
+                report.exposureStops >= 0.15f -> add(UiText(R.string.note_brightened, listOf(report.exposureStops)))
+                report.exposureStops <= -0.15f -> add(UiText(R.string.note_darkened, listOf(-report.exposureStops)))
             }
-            if (report.shadowCompression < 0.97f) add("Shadows lifted")
+            if (report.shadowCompression < 0.97f) add(UiText(R.string.note_shadows))
             val wbShift = maxOf(abs(report.whiteBalanceGainR - 1f), abs(report.whiteBalanceGainB - 1f))
-            if (wbShift >= 0.02f) add("Colour cast reduced")
-            if (report.lumaDenoiseRadius > 0) add("Noise reduced")
+            if (wbShift >= 0.02f) add(UiText(R.string.note_color))
+            if (report.lumaDenoiseRadius > 0) add(UiText(R.string.note_noise))
             if (report.clippedHighlightFraction >= 0.02f) {
-                add(
-                    "%d%% of the photo was already pure white; that detail can't be recovered"
-                        .format((report.clippedHighlightFraction * 100).toInt()),
-                )
+                add(UiText(R.string.note_clipped, listOf((report.clippedHighlightFraction * 100).toInt())))
             }
         }
     }

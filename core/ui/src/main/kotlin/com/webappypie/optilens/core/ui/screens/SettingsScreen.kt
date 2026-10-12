@@ -1,5 +1,7 @@
 package com.webappypie.optilens.core.ui.screens
 
+import androidx.compose.ui.res.stringResource
+import com.webappypie.optilens.core.ui.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -85,13 +87,18 @@ fun SettingsScreen(
     val isPro by appSettings.isPro.collectAsStateWithLifecycle(initialValue = false)
 
     val context = LocalContext.current
+    val themeLabels = mapOf(
+        ThemeMode.SYSTEM to stringResource(R.string.theme_system),
+        ThemeMode.LIGHT to stringResource(R.string.theme_light),
+        ThemeMode.DARK to stringResource(R.string.theme_dark),
+    )
     var showPrivacyPolicyDialog by remember { mutableStateOf(false) }
     var cacheNoticeMessage by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
         topBar = {
             OptiTopBar(
-                title = "Settings",
+                title = stringResource(R.string.settings_title),
                 onBackClick = onNavigateBack,
             )
         },
@@ -135,24 +142,24 @@ fun SettingsScreen(
                                 .padding(horizontal = OptiLensTheme.spacing.m),
                         ) {
                             Text(
-                                text = "Unlock OptiLens Pro",
+                                text = stringResource(R.string.settings_pro_title),
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                             )
                             Text(
-                                text = "Editing tools and an ad-free gallery",
+                                text = stringResource(R.string.settings_pro_subtitle),
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
                         Icon(
                             imageVector = Icons.Default.ChevronRight,
-                            contentDescription = "Upgrade to Pro",
+                            contentDescription = stringResource(R.string.settings_upgrade),
                         )
                     }
                 }
             }
 
             // ── Appearance Section ─────────────────────────────────────────
-            SettingsSectionHeader(title = "Appearance")
+            SettingsSectionHeader(title = stringResource(R.string.settings_appearance))
 
             Column(
                 modifier = Modifier
@@ -170,7 +177,7 @@ fun SettingsScreen(
                         modifier = Modifier.size(OptiLensTheme.iconSizes.standard),
                     )
                     Text(
-                        text = "App Theme",
+                        text = stringResource(R.string.settings_theme),
                         style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
                         modifier = Modifier.padding(start = OptiLensTheme.spacing.l),
                     )
@@ -191,13 +198,7 @@ fun SettingsScreen(
                         }
                         coroutineScope.launch { appSettings.setThemeMode(selected) }
                     },
-                    itemLabel = { mode ->
-                        when (mode) {
-                            ThemeMode.SYSTEM -> "System"
-                            ThemeMode.LIGHT  -> "Light"
-                            ThemeMode.DARK   -> "Dark"
-                        }
-                    },
+                    itemLabel = { mode -> themeLabels.getValue(mode) },
                 )
             }
 
@@ -207,11 +208,11 @@ fun SettingsScreen(
             )
 
             // ── Camera Controls Section ────────────────────────────────────
-            SettingsSectionHeader(title = "Camera & Viewfinder")
+            SettingsSectionHeader(title = stringResource(R.string.settings_camera_section))
 
             OptiSettingsToggleRow(
-                title = "Rule of Thirds Grid",
-                subtitle = "Display alignment grid on the viewfinder",
+                title = stringResource(R.string.settings_grid),
+                subtitle = stringResource(R.string.settings_grid_sub),
                 leadingIcon = Icons.Outlined.GridOn,
                 checked = gridEnabled,
                 onCheckedChange = { checked ->
@@ -220,8 +221,8 @@ fun SettingsScreen(
             )
 
             OptiSettingsToggleRow(
-                title = "Horizon Level Indicator",
-                subtitle = "Assists in leveling horizontal and vertical shots",
+                title = stringResource(R.string.settings_level),
+                subtitle = stringResource(R.string.settings_level_sub),
                 checked = levelEnabled,
                 onCheckedChange = { checked ->
                     coroutineScope.launch { appSettings.setLevelEnabled(checked) }
@@ -229,8 +230,8 @@ fun SettingsScreen(
             )
 
             OptiSettingsToggleRow(
-                title = "Shutter Sound",
-                subtitle = "Audio feedback when capturing photos",
+                title = stringResource(R.string.settings_shutter_sound),
+                subtitle = stringResource(R.string.settings_shutter_sound_sub),
                 leadingIcon = Icons.Default.VolumeUp,
                 checked = shutterSoundEnabled,
                 onCheckedChange = { checked ->
@@ -239,8 +240,8 @@ fun SettingsScreen(
             )
 
             OptiSettingsToggleRow(
-                title = "Haptic Shutter Feedback",
-                subtitle = "Tactile vibration when pressing shutter",
+                title = stringResource(R.string.settings_haptic),
+                subtitle = stringResource(R.string.settings_haptic_sub),
                 leadingIcon = Icons.Outlined.Vibration,
                 checked = hapticFeedbackEnabled,
                 onCheckedChange = { checked ->
@@ -249,8 +250,8 @@ fun SettingsScreen(
             )
 
             OptiSettingsToggleRow(
-                title = "Volume Key Shutter",
-                subtitle = "Press volume keys to trigger camera shutter",
+                title = stringResource(R.string.settings_volume_shutter),
+                subtitle = stringResource(R.string.settings_volume_shutter_sub),
                 checked = volumeKeyShutterEnabled,
                 onCheckedChange = { checked ->
                     coroutineScope.launch { appSettings.setVolumeKeyShutterEnabled(checked) }
@@ -258,8 +259,8 @@ fun SettingsScreen(
             )
 
             OptiSettingsToggleRow(
-                title = "Preview After Capture",
-                subtitle = "Open the photo with Enhance and compare right after each shot",
+                title = stringResource(R.string.settings_preview_after),
+                subtitle = stringResource(R.string.settings_preview_after_sub),
                 checked = reviewAfterCaptureEnabled,
                 onCheckedChange = { checked ->
                     coroutineScope.launch { appSettings.setReviewAfterCaptureEnabled(checked) }
@@ -275,7 +276,7 @@ fun SettingsScreen(
             // processing is wired (roadmap Phase 05): today neither setting changes any output.
 
             // ── Privacy & Data Safety Section ──────────────────────────────
-            SettingsSectionHeader(title = "Privacy & Data Safety")
+            SettingsSectionHeader(title = stringResource(R.string.settings_privacy_section))
 
             // 100% On-Device Processing Guarantee Card
             Card(
@@ -301,13 +302,13 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.size(OptiLensTheme.spacing.m))
                     Column {
                         Text(
-                            text = "100% On-Device Processing Guarantee",
+                            text = stringResource(R.string.settings_on_device_title),
                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Capture, processing and editing all run on your device. OptiLens never uploads your photos.",
+                            text = stringResource(R.string.settings_on_device_text),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f),
                         )
@@ -316,8 +317,8 @@ fun SettingsScreen(
             }
 
             OptiSettingsRow(
-                title = "Privacy Policy & Commitments",
-                subtitle = "How OptiLens handles your photos and data",
+                title = stringResource(R.string.settings_privacy_policy),
+                subtitle = stringResource(R.string.settings_privacy_policy_sub),
                 leadingIcon = Icons.Outlined.Security,
                 onClick = { showPrivacyPolicyDialog = true },
             )
@@ -326,8 +327,8 @@ fun SettingsScreen(
             // backend acts on them yet, so offering them would be a dead/misleading control.
 
             OptiSettingsRow(
-                title = "Clear Temporary Cache",
-                subtitle = cacheNoticeMessage ?: "Purge thumbnail caches and temporary processing buffers",
+                title = stringResource(R.string.settings_clear_cache),
+                subtitle = cacheNoticeMessage ?: stringResource(R.string.settings_clear_cache_sub),
                 leadingIcon = Icons.Outlined.Delete,
                 onClick = {
                     coroutineScope.launch {
@@ -344,9 +345,9 @@ fun SettingsScreen(
                                 context.cacheDir?.listFiles()?.forEach { deleteRecursively(it) }
                                 context.externalCacheDir?.listFiles()?.forEach { deleteRecursively(it) }
                                 val mb = String.format(java.util.Locale.US, "%.1f", deletedBytes / (1024f * 1024f))
-                                "Cache cleared ($mb MB freed)"
+                                context.getString(R.string.settings_cache_cleared_mb, mb)
                             } catch (e: Exception) {
-                                "Cache cleared"
+                                context.getString(R.string.settings_cache_cleared)
                             }
                         }
                     }
@@ -359,11 +360,11 @@ fun SettingsScreen(
             )
 
             // ── Hardware & Diagnostics ─────────────────────────────────────
-            SettingsSectionHeader(title = "Hardware & Advanced")
+            SettingsSectionHeader(title = stringResource(R.string.settings_hardware_section))
 
             OptiSettingsRow(
-                title = "Hardware Diagnostics",
-                subtitle = "View camera specs, sensor array, RAW modes & quirks",
+                title = stringResource(R.string.settings_diagnostics),
+                subtitle = stringResource(R.string.settings_diagnostics_sub),
                 leadingIcon = Icons.Outlined.Info,
                 onClick = onNavigateToDiagnostics,
             )
@@ -377,7 +378,7 @@ fun SettingsScreen(
             onDismissRequest = { showPrivacyPolicyDialog = false },
             title = {
                 Text(
-                    text = "OptiLens Privacy Policy",
+                    text = stringResource(R.string.privacy_dialog_title),
                     style = MaterialTheme.typography.headlineSmall,
                 )
             },
@@ -386,25 +387,14 @@ fun SettingsScreen(
                     modifier = Modifier.verticalScroll(rememberScrollState()),
                 ) {
                     Text(
-                        text = "Your photos stay on your device\n" +
-                            "Capture, processing, enhancement and editing all run locally on your phone. OptiLens does not upload your photos.\n\n" +
-                            "Permissions\n" +
-                            "• Camera: used only for the viewfinder and taking photos.\n" +
-                            "• Photos: saved to DCIM/OptiLens with scoped storage; the system Photo Picker is used to open other photos, so no broad storage permission is requested.\n" +
-                            "• Location: not used. OptiLens photos are saved without GPS coordinates; an enhanced copy of another photo keeps its location only if the original already had it.\n\n" +
-                            "Ads\n" +
-                            "The free version may show a banner in the gallery from Google Mobile Ads, which may collect device identifiers under Google's own policies. Whether ads run and which ad units are used comes from our configuration service (WAPCentral); fetching it sends only the app's identifier, never photos or personal data. Ads never appear in the camera viewfinder and never block capturing, enhancing or saving. Pro removes ads.\n\n" +
-                            "Diagnostics\n" +
-                            "OptiLens does not currently send analytics or crash reports anywhere.\n\n" +
-                            "Cache\n" +
-                            "Temporary files and thumbnails can be cleared at any time from this Settings screen.",
+                        text = stringResource(R.string.privacy_dialog_body),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
             },
             confirmButton = {
                 TextButton(onClick = { showPrivacyPolicyDialog = false }) {
-                    Text("Close")
+                    Text(stringResource(R.string.common_close))
                 }
             },
         )

@@ -1,5 +1,7 @@
 package com.webappypie.optilens.core.ui.gallery
 
+import androidx.compose.ui.res.stringResource
+import com.webappypie.optilens.core.ui.R
 import android.graphics.Bitmap
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -136,7 +138,7 @@ fun MediaThumbnailCard(
             }
             if (item.isEnhanced) {
                 TextBadge(
-                    text = "Edited",
+                    text = stringResource(R.string.grid_edited),
                     backgroundColor = Color(0xFF7C4DFF), // Purple
                     textColor = Color.White,
                 )
@@ -166,7 +168,7 @@ fun MediaThumbnailCard(
             ) {
                 Icon(
                     imageVector = if (isSelected) Icons.Default.CheckCircle else Icons.Outlined.CheckCircleOutline,
-                    contentDescription = if (isSelected) "Selected" else "Not selected",
+                    contentDescription = stringResource(if (isSelected) R.string.grid_selected else R.string.grid_not_selected),
                     tint = Color.White,
                     modifier = Modifier.size(16.dp),
                 )
@@ -182,7 +184,7 @@ fun MediaThumbnailCard(
             ) {
                 Icon(
                     imageVector = if (item.isFavorite) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
-                    contentDescription = if (item.isFavorite) "Favorited" else "Favorite",
+                    contentDescription = stringResource(if (item.isFavorite) R.string.grid_favorited else R.string.grid_favorite),
                     tint = if (item.isFavorite) Color(0xFFFF4081) else Color.White.copy(alpha = 0.75f),
                     modifier = Modifier.size(18.dp),
                 )
@@ -231,13 +233,13 @@ fun DateGroupHeader(
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
-            text = bucket.title,
+            text = stringResource(bucket.titleRes),
             fontSize = 16.sp,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground,
         )
         Text(
-            text = "$count ${if (count == 1) "photo" else "photos"}",
+            text = androidx.compose.ui.res.pluralStringResource(R.plurals.grid_photo_count, count, count),
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -273,24 +275,23 @@ fun StorageWarningBanner(
         ) {
             Icon(
                 imageVector = Icons.Default.Warning,
-                contentDescription = "Storage Warning",
+                contentDescription = stringResource(R.string.storage_warning),
                 tint = Color.White,
                 modifier = Modifier.size(24.dp),
             )
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = if (isCritical) "Storage Critically Low" else "Storage Running Low",
+                    text = stringResource(if (isCritical) R.string.storage_critical else R.string.storage_low),
                     fontWeight = FontWeight.Bold,
                     fontSize = 13.sp,
                     color = Color.White,
                 )
                 Text(
-                    text = if (isCritical) {
-                        "Only $formattedFree remaining. Captures are paused to prevent corruption."
-                    } else {
-                        "$formattedFree remaining. Cache will be cleaned automatically."
-                    },
+                    text = stringResource(
+                        if (isCritical) R.string.storage_critical_message else R.string.storage_low_message,
+                        formattedFree,
+                    ),
                     fontSize = 11.sp,
                     color = Color.White.copy(alpha = 0.9f),
                 )
@@ -305,7 +306,7 @@ fun StorageWarningBanner(
                 shape = RoundedCornerShape(8.dp),
                 modifier = Modifier.size(height = 32.dp, width = 80.dp),
             ) {
-                Text("Clean", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.storage_clean), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -334,7 +335,7 @@ fun GalleryFilterChips(
                 onClick = { onFilterSelected(filter) },
                 label = {
                     Text(
-                        text = filter.label,
+                        text = stringResource(filter.labelRes),
                         fontSize = 12.sp,
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                     )
@@ -347,3 +348,14 @@ fun GalleryFilterChips(
         }
     }
 }
+
+/** Localized title of a gallery date section. */
+@get:androidx.annotation.StringRes
+private val com.webappypie.optilens.core.camera.storage.DateBucket.titleRes: Int
+    get() = when (this) {
+        com.webappypie.optilens.core.camera.storage.DateBucket.TODAY -> R.string.bucket_today
+        com.webappypie.optilens.core.camera.storage.DateBucket.YESTERDAY -> R.string.bucket_yesterday
+        com.webappypie.optilens.core.camera.storage.DateBucket.THIS_WEEK -> R.string.bucket_this_week
+        com.webappypie.optilens.core.camera.storage.DateBucket.THIS_MONTH -> R.string.bucket_this_month
+        com.webappypie.optilens.core.camera.storage.DateBucket.OLDER -> R.string.bucket_older
+    }

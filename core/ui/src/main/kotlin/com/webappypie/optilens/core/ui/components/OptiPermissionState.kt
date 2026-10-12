@@ -19,6 +19,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import com.webappypie.optilens.core.ui.R
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -92,7 +94,7 @@ fun OptiPermissionState(
         Spacer(modifier = Modifier.height(OptiLensTheme.spacing.xxxl))
 
         OptiButton(
-            text = "Grant Permission",
+            text = stringResource(R.string.permission_grant),
             onClick = onRequestPermission,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -100,7 +102,7 @@ fun OptiPermissionState(
         if (onOpenSettings != null) {
             Spacer(modifier = Modifier.height(OptiLensTheme.spacing.m))
             OptiButton(
-                text = "Open App Settings",
+                text = stringResource(R.string.permission_open_settings),
                 onClick = onOpenSettings,
                 variant = OptiButtonVariant.OUTLINED,
                 modifier = Modifier.fillMaxWidth(),

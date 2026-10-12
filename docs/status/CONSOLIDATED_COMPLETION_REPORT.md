@@ -225,3 +225,29 @@ Owner instruction: proceed without testing. Only `:core:ui:compileDebugKotlin` w
 | Hint pills can carry an action. "High contrast"/"Backlight" → **Tap for HDR** (offered only in Photo mode while HDR is off); "Night suggested" → **Tap for Night** (offered when not already in Night). Actionable pills get a stronger outline, a larger touch area, the "· Tap for …" suffix and a Button role/click label for TalkBack. Other hints stay purely informational | The hints were suggestions the user had to act on elsewhere; now they lead straight to the real feature they describe |
 
 To verify: point at a backlit/high-contrast scene in Photo mode with HDR off → pill reads "High contrast · Tap for HDR" → tap turns the HDR button on and the pill returns to plain "High contrast"; in a dark scene "Night suggested · Tap for Night" switches the mode rail to Night; TalkBack announces the action.
+
+# Run 8 — UI localization, part 1 (2026-10-13) — NOT TESTED
+
+Owner choice: localize the UI. Compile checks only (`:core:ui` main + unit-test sources, `:app` resources/manifest/Kotlin); **no unit tests, lint or device run**.
+
+## Finding
+The app shipped `values-de/es/fr/hi/ja` but **no Kotlin code read any string resource**: every visible text was hardcoded English, so the translations were never shown. They were also stale and partly untrue ("Unlimited AI Photo Enhancements", "14-bit RAW", "4x Pro AI Super Resolution", "Astrophotography"). Only `app_name` was referenced (by the manifest).
+
+## Changes
+| Change | Detail |
+|---|---|
+| String resources in `core:ui` | `core/ui/src/main/res/values{,-de,-es,-fr,-hi,-ja}/strings.xml`: 196 strings + 3 plurals per locale |
+| Converted surfaces | Capture preview/Enhance screen (incl. dialogs, progress, notes, Coming-soon row), Before/After viewer, camera screen (permission, mode rail, mode badges, all control descriptions, night/merge/zoom/boost/portrait text), hint pills, permission component, gallery (titles, empty states, delete dialog with plurals, filters, date sections, storage banner, grid badges), Settings (all rows, theme labels, cache message, full privacy text) |
+| `UiText` (`core/ui/.../text/UiText.kt`) | ViewModels emit resource id + args; the review and gallery ViewModels no longer hold English strings (errors, "saved" confirmation, enhancement notes, cache-freed message). Gallery errors no longer append English core-layer details |
+| Capture note | The EXIF note stays a fixed English format; the preview parses it and rebuilds it from localized parts (falls back to the raw text) |
+| Stale `app` strings removed | All locales now contain only `app_name` (brand, unchanged) |
+| Per-app language | `app/src/main/res/xml/locales_config.xml` + `android:localeConfig` so Android 13+ users can choose the app language in system settings |
+| Tests updated (not run) | `PhotoReviewViewModelTest` (message/notes now compared by resource id and args), `GalleryViewModelTest` (cache message id) |
+
+## Not yet localized (next part)
+AI/Editing Tools screen and its ViewModel, Pro manual-control bar, Best Shot sheet, Photo detail screen, Upgrade screen, Diagnostics + performance card, thermal/lens-dirty/fidelity banners, splash tagline (brand, kept), Moon stability cue text from `core:camera`, `OptiError.displayMessage` texts from `core:common`.
+
+## Translation quality
+All five translations are machine-assisted (marked at the top of each file) and **need native-speaker review before release**, especially Hindi and Japanese.
+
+To verify: switch the device or app language (Settings → Apps → OptiLens → Language) to each locale and walk camera → capture → preview → enhance → save → gallery → settings; check for truncation on long German/French labels (e.g. "Save Enhanced Photo" button, the view-mode switch); run `testDebugUnitTest lintDebug` (lint will flag missing translations if a key is added only in English).

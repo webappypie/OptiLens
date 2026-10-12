@@ -115,6 +115,8 @@ import com.webappypie.optilens.core.ui.camera.overlay.FaceBoundingBoxOverlay
 import com.webappypie.optilens.core.ui.camera.overlay.FocusPeakingOverlay
 import com.webappypie.optilens.core.ui.camera.overlay.SceneHintPill as IntelligentSceneHintPill
 import com.webappypie.optilens.core.ui.camera.overlay.SceneHintAction
+import androidx.compose.ui.res.stringResource
+import com.webappypie.optilens.core.ui.R
 import com.webappypie.optilens.core.ui.camera.pro.LensMetadataHud
 import com.webappypie.optilens.core.ui.camera.pro.ProControlsBar
 import com.webappypie.optilens.core.camera.model.CameraMode
@@ -269,8 +271,8 @@ fun CameraScreen(
 
     if (!uiState.hasCameraPermission && !hasCameraPermissionInitial) {
         OptiPermissionState(
-            title = "Camera Access Required",
-            description = "OptiLens requires camera access to preview and capture photos. No gallery or media permissions are requested.",
+            title = stringResource(R.string.camera_permission_title),
+            description = stringResource(R.string.camera_permission_message),
             onRequestPermission = { permissionLauncher.launch(Manifest.permission.CAMERA) },
             onOpenSettings = {
                 val intent = Intent(
@@ -506,7 +508,7 @@ fun CameraScreen(
             // Best Shot Status Badge
             if (currentMode == CameraMode.BEST_SHOT) {
                 SpecializedModeBadge(
-                    text = if (uiState.isEvaluatingBestShot) "Evaluating burst..." else "Best Shot (6 frames)",
+                    text = stringResource(if (uiState.isEvaluatingBestShot) R.string.camera_best_shot_evaluating else R.string.camera_best_shot_label),
                     isProcessing = uiState.isEvaluatingBestShot,
                     icon = Icons.Default.AutoAwesome,
                     modifier = Modifier
@@ -518,7 +520,7 @@ fun CameraScreen(
             // Pet Mode Status Badge
             if (currentMode == CameraMode.PET) {
                 SpecializedModeBadge(
-                    text = if (uiState.isProcessingPetShot) "Freezing action..." else "Pet: fast shutter, light permitting",
+                    text = stringResource(if (uiState.isProcessingPetShot) R.string.camera_freezing_action else R.string.camera_pet_label),
                     isProcessing = uiState.isProcessingPetShot,
                     icon = Icons.Default.Pets,
                     modifier = Modifier
@@ -530,7 +532,7 @@ fun CameraScreen(
             // Food Mode Status Badge
             if (currentMode == CameraMode.FOOD) {
                 SpecializedModeBadge(
-                    text = if (uiState.isProcessingFoodShot) "Optimizing..." else "Food: Warm-Neutral WB",
+                    text = stringResource(if (uiState.isProcessingFoodShot) R.string.camera_food_processing else R.string.camera_food_label),
                     isProcessing = uiState.isProcessingFoodShot,
                     icon = Icons.Default.Restaurant,
                     modifier = Modifier
@@ -554,9 +556,10 @@ fun CameraScreen(
             // Moon Mode Status Badge
             if (currentMode == CameraMode.MOON) {
                 val moonText = when {
-                    uiState.isProcessingMoonShot -> "Capturing..."
-                    uiState.moonDetectionState.isMoonDetected -> "Moon: ${uiState.moonDetectionState.stabilityCue.message}"
-                    else -> "Moon Assist: Spot Exposure"
+                    uiState.isProcessingMoonShot -> stringResource(R.string.camera_moon_capturing)
+                    uiState.moonDetectionState.isMoonDetected ->
+                        stringResource(R.string.camera_moon_detected, uiState.moonDetectionState.stabilityCue.message)
+                    else -> stringResource(R.string.camera_moon_assist)
                 }
                 SpecializedModeBadge(
                     text = moonText,
@@ -570,7 +573,7 @@ fun CameraScreen(
 
             // Wildlife Mode Status Badge
             if (currentMode == CameraMode.WILDLIFE) {
-                val wildlifeText = if (uiState.isProcessingWildlifeShot) "Freezing action..." else "Wildlife: 1/500s+ Shutter"
+                val wildlifeText = stringResource(if (uiState.isProcessingWildlifeShot) R.string.camera_freezing_action else R.string.camera_wildlife_label)
                 SpecializedModeBadge(
                     text = wildlifeText,
                     isProcessing = uiState.isProcessingWildlifeShot,
@@ -650,7 +653,17 @@ fun CameraScreen(
                         FlashMode.OFF  -> Icons.Default.FlashOff
                         FlashMode.TORCH -> Icons.Default.FlashOn
                     },
-                    contentDescription = "Flash mode: ${uiState.flashMode.name}",
+                    contentDescription = stringResource(
+                        R.string.camera_flash_mode,
+                        stringResource(
+                            when (uiState.flashMode) {
+                                FlashMode.AUTO -> R.string.flash_auto
+                                FlashMode.ON -> R.string.flash_on
+                                FlashMode.OFF -> R.string.flash_off
+                                FlashMode.TORCH -> R.string.flash_torch
+                            },
+                        ),
+                    ),
                     variant = if (uiState.flashMode != FlashMode.OFF) OptiIconButtonVariant.OVERLAY_ACTIVE else OptiIconButtonVariant.OVERLAY,
                     onClick = { viewModel.toggleFlashMode() },
                 )
@@ -658,7 +671,7 @@ fun CameraScreen(
                 // Aspect Ratio Toggle (4:3, 16:9, 1:1)
                 OptiIconButton(
                     icon = Icons.Default.AspectRatio,
-                    contentDescription = "Aspect ratio: ${uiState.aspectRatio.label}",
+                    contentDescription = stringResource(R.string.camera_aspect_ratio, uiState.aspectRatio.label),
                     variant = OptiIconButtonVariant.OVERLAY,
                     onClick = { viewModel.toggleAspectRatio() },
                 )
@@ -670,7 +683,11 @@ fun CameraScreen(
                         TimerState.SEC_3  -> Icons.Default.Timer3
                         TimerState.SEC_10 -> Icons.Default.Timer10
                     },
-                    contentDescription = "Timer: ${uiState.timerState.seconds}s",
+                    contentDescription = if (uiState.timerState == TimerState.OFF) {
+                        stringResource(R.string.camera_timer_off)
+                    } else {
+                        stringResource(R.string.camera_timer_seconds, uiState.timerState.seconds)
+                    },
                     variant = if (uiState.timerState != TimerState.OFF) OptiIconButtonVariant.OVERLAY_ACTIVE else OptiIconButtonVariant.OVERLAY,
                     onClick = { viewModel.toggleTimer() },
                 )
@@ -679,7 +696,7 @@ fun CameraScreen(
                 if (currentMode == CameraMode.PHOTO) {
                     OptiIconButton(
                         icon = if (uiState.isHdrEnabled) Icons.Default.HdrOn else Icons.Default.HdrOff,
-                        contentDescription = if (uiState.isHdrEnabled) "HDR on" else "HDR off",
+                        contentDescription = stringResource(if (uiState.isHdrEnabled) R.string.camera_hdr_on else R.string.camera_hdr_off),
                         variant = if (uiState.isHdrEnabled) OptiIconButtonVariant.OVERLAY_ACTIVE else OptiIconButtonVariant.OVERLAY,
                         onClick = { viewModel.toggleHdr() },
                     )
@@ -688,7 +705,7 @@ fun CameraScreen(
                 // Live Histogram Toggle
                 OptiIconButton(
                     icon = Icons.Default.Leaderboard,
-                    contentDescription = "Toggle Histogram",
+                    contentDescription = stringResource(R.string.camera_toggle_histogram),
                     variant = if (uiState.isHistogramVisible) OptiIconButtonVariant.OVERLAY_ACTIVE else OptiIconButtonVariant.OVERLAY,
                     onClick = { viewModel.toggleHistogram() },
                 )
@@ -697,7 +714,7 @@ fun CameraScreen(
                 if (onNavigateToAiTools != null) {
                     OptiIconButton(
                         icon = Icons.Default.AutoAwesome,
-                        contentDescription = "Open editing tools",
+                        contentDescription = stringResource(R.string.camera_open_tools),
                         variant = OptiIconButtonVariant.OVERLAY,
                         onClick = onNavigateToAiTools,
                     )
@@ -706,7 +723,7 @@ fun CameraScreen(
                 // Settings Navigation Button
                 OptiIconButton(
                     icon = Icons.Default.Settings,
-                    contentDescription = "Open Settings",
+                    contentDescription = stringResource(R.string.camera_open_settings),
                     variant = OptiIconButtonVariant.OVERLAY,
                     onClick = onNavigateToSettings,
                 )
@@ -775,7 +792,7 @@ fun CameraScreen(
             ) {
                 items(uiState.availableModes) { mode ->
                     OptiCameraModeChip(
-                        title = mode.label,
+                        title = stringResource(mode.labelRes),
                         isSelected = currentMode == mode,
                         onClick = {
                             currentMode = mode
@@ -820,7 +837,7 @@ fun CameraScreen(
                     if (thumb != null) {
                         Image(
                             bitmap = thumb.asImageBitmap(),
-                            contentDescription = "Open Gallery with recent photo",
+                            contentDescription = stringResource(R.string.camera_open_gallery_recent),
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
                                 .fillMaxSize()
@@ -829,7 +846,7 @@ fun CameraScreen(
                     } else {
                         Icon(
                             imageVector = Icons.Default.PhotoLibrary,
-                            contentDescription = "Open Gallery",
+                            contentDescription = stringResource(R.string.camera_open_gallery),
                             tint = overlayColors.controlOnSurface,
                             modifier = Modifier.size(OptiLensTheme.iconSizes.standard),
                         )
@@ -864,7 +881,7 @@ fun CameraScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Cameraswitch,
-                        contentDescription = "Flip camera to ${if (uiState.isFrontCamera) "rear" else "front"}",
+                        contentDescription = stringResource(if (uiState.isFrontCamera) R.string.camera_flip_to_rear else R.string.camera_flip_to_front),
                         tint = overlayColors.controlOnSurface,
                         modifier = Modifier.size(OptiLensTheme.iconSizes.standard),
                     )
@@ -912,13 +929,14 @@ fun CameraShutterButton(
         label = "shutterScale",
     )
 
+    val shutterDescription = stringResource(if (isVideo) R.string.camera_record_video else R.string.camera_take_photo)
     Box(
         modifier = modifier
             .size(76.dp)
             .scale(scale)
             .semantics {
                 this.role = Role.Button
-                this.contentDescription = if (isVideo) "Record video" else "Take photo"
+                this.contentDescription = shutterDescription
             }
             .clickable(
                 interactionSource = interactionSource,
@@ -1020,7 +1038,7 @@ fun TruthfulZoomSelector(
                     .padding(horizontal = 8.dp, vertical = 2.dp),
             ) {
                 Text(
-                    text = "Digital zoom ${String.format(java.util.Locale.US, "%.1fx", currentZoom)}",
+                    text = stringResource(R.string.camera_digital_zoom, currentZoom),
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontSize = 10.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -1182,20 +1200,20 @@ fun HoldSteadyIndicator(
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = if (isTripod) "Tripod Night Exposure" else "Hold Still",
+                text = stringResource(if (isTripod) R.string.camera_night_tripod else R.string.camera_night_hold),
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                 color = Color.White,
             )
             remainingSec?.let { sec ->
                 Text(
-                    text = "${String.format(java.util.Locale.US, "%.1f", sec)}s remaining",
+                    text = stringResource(R.string.camera_night_remaining, sec),
                     style = MaterialTheme.typography.bodyMedium,
                     color = overlayColors.controlOnSurface,
                 )
             }
             if (isUnsteady) {
                 Text(
-                    text = "High movement detected",
+                    text = stringResource(R.string.camera_night_movement),
                     style = MaterialTheme.typography.labelSmall,
                     color = overlayColors.horizonWarning,
                 )
@@ -1232,7 +1250,7 @@ fun NightProcessingIndicator(
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Merging frames…",
+                text = stringResource(R.string.camera_merging),
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
                 color = Color.White,
             )
@@ -1278,7 +1296,7 @@ fun PreviewBoostBadge(
                 modifier = Modifier.size(14.dp),
             )
             Text(
-                text = if (isActive) "Boost: On (Framing)" else "Boost: Off",
+                text = stringResource(if (isActive) R.string.camera_boost_on else R.string.camera_boost_off),
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 11.sp,
@@ -1350,9 +1368,11 @@ private fun PortraitStatusBadge(
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = if (isProcessing) "Refining portrait..."
-                   else if (faceCount > 0) "Portrait (${faceCount} face${if (faceCount > 1) "s" else ""})"
-                   else "Portrait ${aperture.label}",
+            text = when {
+                isProcessing -> stringResource(R.string.camera_portrait_refining)
+                faceCount > 0 -> androidx.compose.ui.res.pluralStringResource(R.plurals.camera_portrait_faces, faceCount, faceCount)
+                else -> stringResource(R.string.camera_portrait_aperture, aperture.label)
+            },
             style = MaterialTheme.typography.labelSmall.copy(
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 11.sp,
