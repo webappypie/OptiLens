@@ -86,6 +86,12 @@ interface CameraController {
      */
     suspend fun revalidateLastCapturedPhoto() {}
 
+    /**
+     * Pauses the realtime viewfinder analysis (scene, faces, histogram) while heavy photo
+     * processing runs, so it doesn't compete for CPU. The preview itself keeps running.
+     */
+    fun setRealtimeAnalysisPaused(paused: Boolean) {}
+
     /** Most recently acquired multi-frame burst result. */
     val lastBurstResult: Flow<com.webappypie.optilens.core.camera.burst.model.BurstResult?>
 

@@ -150,3 +150,31 @@ Owner instruction: fix the stale thumbnail and the scene label, complete the rem
 
 ## 11. Final automated validation (run 2)
 `assembleDebug` (earlier in run 2, plus final rebuild) and `testDebugUnitTest lintDebug --continue` → **BUILD SUCCESSFUL**. Unit tests **543, 0 failures** (app 7, camera 206, common 33, imaging 124 incl. 1 opt-in harness skipped, logging 16, navigation 7, settings 36, ui 114). Lint **0 errors** in every module. No instrumentation tests were run.
+
+---
+
+# Run 3 — Night/HDR processing speed (2026-10-13)
+
+## 12. Changes
+| Change | Effect |
+|---|---|
+| Frame statistics (brightness, sharpness) from ¼-scale decodes; each frame decoded **once** at ½ scale for alignment (was twice); frames aligned **in parallel** (was sequential) | Align 1.5–1.7 s → 0.68–0.72 s |
+| Merge: one region decoder **per thread** sharing the JPEG bytes (was one shared, copying decoder per frame); a reusable decode target bitmap per thread; displacement field interpolated once per row; bilinear sampling on 8-bit values plus one sRGB→linear lookup per channel (3 lookups instead of 12) | Merge 2.8–3.0 s → 1.7–2.0 s |
+| Worker budgets fixed: the old estimate counted a decode bitmap per frame per thread and fell back to **1 worker**; merge and tone mapping are now budgeted separately (up to 6) | 5–6 workers on the 256 MB heap |
+| Tone-mapped output written straight into the native-memory output bitmap (no second 32 MB Java array, no copy) | Lower peak heap |
+| Luma denoise: 5×5 range-weighted window → local Wiener (Lee) filter on box sums (same edge/texture protection, cost independent of range weighting); visually checked at 1:1 on the noisiest real sample | Tone faster on noisy frames |
+| Realtime viewfinder analysis (scene, faces, histogram) paused while a burst is processed; always resumed in `finally` | Tone 2.6 s → 1.2–1.5 s during Night/HDR |
+
+Sharpness is now measured on the ¼-scale plane without extra smoothing; all merger tests (blurred-frame rejection, noisy reference, exposure drift, ghosting) still pass.
+
+## 13. Measured on device (non-debuggable `.debug` package, 2448×3264; the flag change was temporary and is not committed)
+| Shot | Before (run 2) | After |
+|---|---|---|
+| Night, 3 frames | — (debug build only) | **4.1 s** (align 0.68 + merge 1.72 + tone 1.52 + encode 0.16) |
+| Night, 4 frames | 7.0 s | **5.0 s** (intermediate step, before the merge-loop changes) |
+| HDR, 4 frames | 5.8 s | **4.06 s** (align 0.72 + merge 1.98 + tone 1.21 + encode 0.15) |
+
+Not included: the burst capture itself (frames are taken one after another with standard JPEG captures; its duration isn't in these numbers, and this device suppresses the app's capture-engine log lines). Results checked visually: no ghosting, clean shadows. A bright blob on a laptop screen in the HDR test also appears in a normal photo of the same scene (screen glare, not a processing artefact).
+
+## 14. Validation (run 3)
+`assembleDebug testDebugUnitTest lintDebug --continue` → **BUILD SUCCESSFUL**; **543 unit tests, 0 failures**; lint **0 errors**. The normal debuggable build was reinstalled on the device after benchmarking.

@@ -905,6 +905,8 @@ class CameraViewModel @Inject constructor(
         // When the phone is already hot, skip the multi-second merge (it would heat it further).
         val tooHot = uiState.value.thermalState >= com.webappypie.optilens.core.camera.thermal.DeviceThermalState.SEVERE
         if (processor != null && !tooHot && burst.packets.count { !it.isClosed } > 1) {
+            // The viewfinder analysers would compete with the merge for CPU; pause them meanwhile.
+            cameraController.setRealtimeAnalysisPaused(true)
             try {
                 val processed = processor.process(burst.packets, toneMap)
                 val saved = cameraController.saveProcessedJpeg(
@@ -922,6 +924,8 @@ class CameraViewModel @Inject constructor(
                 throw e
             } catch (_: Throwable) {
                 // Includes OutOfMemoryError on large bursts: fall back to a single real frame.
+            } finally {
+                cameraController.setRealtimeAnalysisPaused(false)
             }
         }
         saveSelectedBurstFrame(BurstFrameSelector.selectSteadiest(burst.packets, evOffsets), mirror)

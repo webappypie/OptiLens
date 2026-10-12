@@ -179,6 +179,14 @@ class CameraXController @Inject constructor(
     private val _lastCapturedPhoto = MutableStateFlow<CapturedPhoto?>(null)
     override val lastCapturedPhoto: Flow<CapturedPhoto?> = _lastCapturedPhoto.asStateFlow()
 
+    @Volatile
+    private var analysisPaused = false
+
+    override fun setRealtimeAnalysisPaused(paused: Boolean) {
+        analysisPaused = paused
+        realtimeAnalyzer?.isEnabled = !paused
+    }
+
     override suspend fun revalidateLastCapturedPhoto() {
         val photo = _lastCapturedPhoto.value ?: return
         val exists = withContext(dispatchers.io) { mediaExists(photo.contentUri ?: android.net.Uri.parse(photo.uri)) }
@@ -531,6 +539,7 @@ class CameraXController @Inject constructor(
             )
             analyzer.isFocusPeakingActive = _proState.value.focusPeakingEnabled
             analyzer.isExposureZebraActive = _proState.value.exposureZebraEnabled
+            analyzer.isEnabled = !analysisPaused
             realtimeAnalyzer = analyzer
 
             val analysis = ImageAnalysis.Builder()

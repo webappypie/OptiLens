@@ -77,14 +77,15 @@ class BurstMerger {
 
         val t0 = System.nanoTime()
 
+        val workers = max(1, parallelism)
+
         // 1. Brightness of each frame (measured: metadata ISO can miss vendor sensitivity boosts),
-        //    then reference selection: sharpest frame at half scale, compared at a common exposure
-        //    so a darker frame is not mistaken for a blurrier one.
-        // Only statistics are kept per frame; frames are re-decoded when aligned (bounded memory).
+        //    then reference selection: sharpest frame, compared at a common exposure so a darker
+        //    frame is not mistaken for a blurrier one. Uses cheap ¼-scale decodes (the decoder's
+        //    averaging also suppresses pixel noise), in parallel; only statistics are kept.
         val means = DoubleArray(frames.size)
-        val rawSharpness = frames.indices.map { i ->
-            ensureActive()
-            val img = frames[i].readDownsampled(2)
+        val rawSharpness = parallelMap(frames.indices.toList(), workers) { i ->
+            val img = frames[i].readDownsampled(4)
             means[i] = meanMidtoneLinear(img)
             gradientEnergy(Plane(img.width, img.height, lumaSqrt(img, 1f)))
         }
@@ -117,27 +118,28 @@ class BurstMerger {
         val tilesY = (refHalf.h + TILE - 1) / TILE
         val fields = arrayOfNulls<DisplacementField>(frames.size)
 
-        for (i in frames.indices) {
-            ensureActive()
-            if (i == refIndex) continue
+        // Frames are aligned in parallel, each decoded once at half scale.
+        val candidates = frames.indices.filter { i ->
+            if (i == refIndex) return@filter false
             val blurred = sharpness[i].first < MIN_RELATIVE_SHARPNESS * sharpness[refIndex].first ||
                 sharpness[i].second < MIN_RELATIVE_SHARPNESS * sharpness[refIndex].second
             if (blurred || gains[i] !in 0.25f..4f) {
                 rejected += i
-                continue
-            }
-            val img = frames[i].readDownsampled(2)
-            if (img.width != refHalf.w || img.height != refHalf.h) {
-                rejected += i
-                continue
-            }
-            val half = Plane(img.width, img.height, lumaSqrt(img, gains[i]))
-            val field = alignFrame(refPyramid, pyramid(half), tilesX, tilesY, scaleX, scaleY)
-            if (field == null || field.maxAbsDy() > MAX_SHIFT_ROWS || field.maxAbsDx() > MAX_SHIFT_ROWS) {
-                rejected += i
+                false
             } else {
-                fields[i] = field
+                true
             }
+        }
+        val aligned = parallelMap(candidates, workers) { i ->
+            val img = frames[i].readDownsampled(2)
+            if (img.width != refHalf.w || img.height != refHalf.h) return@parallelMap null
+            val half = Plane(img.width, img.height, lumaSqrt(img, gains[i]))
+            alignFrame(refPyramid, pyramid(half), tilesX, tilesY, scaleX, scaleY)
+                ?.takeIf { it.maxAbsDy() <= MAX_SHIFT_ROWS && it.maxAbsDx() <= MAX_SHIFT_ROWS }
+        }
+        candidates.forEachIndexed { k, i ->
+            val field = aligned[k]
+            if (field == null) rejected += i else fields[i] = field
         }
         val t1 = System.nanoTime()
 
@@ -149,7 +151,7 @@ class BurstMerger {
         val next = AtomicInteger(0)
         (0 until max(1, min(parallelism, bands))).map {
             async {
-                val ws = MergeWorkspace(w)
+                val ws = MergeWorkspace(w, tilesX)
                 val localAcc = DoubleArray(frames.size)
                 val localCnt = LongArray(frames.size)
                 while (true) {
@@ -180,6 +182,24 @@ class BurstMerger {
             alignMs = (t1 - t0) / 1_000_000,
             mergeMs = (t2 - t1) / 1_000_000,
         )
+    }
+
+    /** Maps [items] on up to [workers] coroutines, preserving order. */
+    private suspend fun <T, R> parallelMap(items: List<T>, workers: Int, fn: (T) -> R): List<R> = coroutineScope {
+        val out = arrayOfNulls<Any?>(items.size)
+        val next = AtomicInteger(0)
+        (0 until max(1, min(workers, items.size))).map {
+            async {
+                while (true) {
+                    val k = next.getAndIncrement()
+                    if (k >= items.size) break
+                    ensureActive()
+                    out[k] = fn(items[k])
+                }
+            }
+        }.awaitAll()
+        @Suppress("UNCHECKED_CAST")
+        out.toList() as List<R>
     }
 
     // ── Alignment ───────────────────────────────────────────────────────────
@@ -356,7 +376,7 @@ class BurstMerger {
 
     // ── Merge ───────────────────────────────────────────────────────────────
 
-    private class MergeWorkspace(val width: Int) {
+    private class MergeWorkspace(val width: Int, tilesX: Int) {
         val refRows = IntArray(width * BAND)
         val frameRows = IntArray(width * (BAND + 2 * MAX_SHIFT_ROWS + 4))
         val accR = FloatArray(width * BAND)
@@ -370,6 +390,11 @@ class BurstMerger {
         val diff = FloatArray(width * BAND)
         val hist = IntArray(HIST_BINS)
         val out = IntArray(width * BAND)
+        val colTile = IntArray(width)
+        val colFrac = FloatArray(width)
+        var colTileFor = -1
+        val rowDx = FloatArray(tilesX)
+        val rowDy = FloatArray(tilesX)
     }
 
     private fun mergeBand(
@@ -405,6 +430,14 @@ class BurstMerger {
 
         val tileW = TILE * scaleX
         val tileH = TILE * scaleY
+        if (ws.colTileFor != tilesX) {
+            for (x in 0 until w) {
+                val gx = ((x + 0.5f) / tileW - 0.5f).coerceIn(0f, (tilesX - 1).toFloat())
+                ws.colTile[x] = gx.toInt()
+                ws.colFrac[x] = gx - gx.toInt()
+            }
+            ws.colTileFor = tilesX
+        }
         for (k in used) {
             val field = fields[k]!!
             val gain = gains[k]
@@ -418,18 +451,24 @@ class BurstMerger {
             var hn = 0
             ws.hist.fill(0)
             for (y in y0 until y1) {
+                // Displacement field interpolated vertically once per row, horizontally per pixel.
                 val gy = ((y + 0.5f) / tileH - 0.5f).coerceIn(0f, (tilesY - 1).toFloat())
                 val j0 = gy.toInt()
                 val j1 = min(j0 + 1, tilesY - 1)
                 val fyT = gy - j0
+                for (t in 0 until tilesX) {
+                    val a = field.dx[j0 * tilesX + t]
+                    ws.rowDx[t] = a + (field.dx[j1 * tilesX + t] - a) * fyT
+                    val c = field.dy[j0 * tilesX + t]
+                    ws.rowDy[t] = c + (field.dy[j1 * tilesX + t] - c) * fyT
+                }
                 for (x in 0 until w) {
                     val i = (y - y0) * w + x
-                    val gx = ((x + 0.5f) / tileW - 0.5f).coerceIn(0f, (tilesX - 1).toFloat())
-                    val i0 = gx.toInt()
+                    val i0 = ws.colTile[x]
                     val i1 = min(i0 + 1, tilesX - 1)
-                    val fxT = gx - i0
-                    val dx = bilerp(field.dx, tilesX, i0, i1, j0, j1, fxT, fyT)
-                    val dy = bilerp(field.dy, tilesX, i0, i1, j0, j1, fxT, fyT)
+                    val fxT = ws.colFrac[x]
+                    val dx = ws.rowDx[i0] + (ws.rowDx[i1] - ws.rowDx[i0]) * fxT
+                    val dy = ws.rowDy[i0] + (ws.rowDy[i1] - ws.rowDy[i0]) * fxT
                     val sx = x + dx
                     val sy = y + dy
                     val ix = floor(sx).toInt()
@@ -523,27 +562,21 @@ class BurstMerger {
         const val KB = 0.0722f
         const val OPAQUE = -0x1000000
         private val LIN = LocalEnhancementPipeline.LIN
+        private val DEC = LocalEnhancementPipeline.DEC
+        private const val INV_255 = 1f / 255f
 
         fun isClipped(p: Int): Boolean =
             ((p shr 16) and 0xFF) >= 250 || ((p shr 8) and 0xFF) >= 250 || (p and 0xFF) >= 250
 
+        /** Bilinear on the 8-bit values, then one interpolated sRGB→linear lookup. */
         private fun bilinChannel(p00: Int, p01: Int, p10: Int, p11: Int, shift: Int, ax: Float, ay: Float): Float {
-            val a = LIN[(p00 shr shift) and 0xFF]
-            val b = LIN[(p01 shr shift) and 0xFF]
-            val c = LIN[(p10 shr shift) and 0xFF]
-            val d = LIN[(p11 shr shift) and 0xFF]
+            val a = ((p00 shr shift) and 0xFF).toFloat()
+            val b = ((p01 shr shift) and 0xFF).toFloat()
+            val c = ((p10 shr shift) and 0xFF).toFloat()
+            val d = ((p11 shr shift) and 0xFF).toFloat()
             val top = a + (b - a) * ax
             val bottom = c + (d - c) * ax
-            return top + (bottom - top) * ay
-        }
-
-        private fun bilerp(v: FloatArray, stride: Int, i0: Int, i1: Int, j0: Int, j1: Int, fx: Float, fy: Float): Float {
-            val a = v[j0 * stride + i0]
-            val b = v[j0 * stride + i1]
-            val c = v[j1 * stride + i0]
-            val d = v[j1 * stride + i1]
-            val top = a + (b - a) * fx
-            return top + (c + (d - c) * fx - top) * fy
+            return DEC.get((top + (bottom - top) * ay) * INV_255)
         }
 
         /** Mean linear luminance of mid-tone pixels (neither near-black nor near-clipped). */
@@ -580,32 +613,24 @@ class BurstMerger {
         }
 
         /**
-         * Mid-frequency gradient energy: 3×3 box-smoothed, differences over 2 px. The smoothing
-         * suppresses pixel noise (which would make a noisy frame look "sharp") while hand-shake
-         * blur still removes this band.
+         * Per-axis gradient energy of a ¼-scale plane. The decoder's 4×4 averaging already
+         * suppresses pixel noise (so a noisy frame doesn't look "sharp"), while hand-shake blur
+         * of a few full-resolution pixels still lowers the axis it moved along.
          */
         internal fun gradientEnergy(p: Plane): Pair<Double, Double> {
-            val sm = FloatArray(p.w * p.h)
-            for (y in 0 until p.h) for (x in 0 until p.w) {
-                var acc = 0f
-                var n = 0
-                for (j in -1..1) for (i in -1..1) {
-                    val xx = x + i
-                    val yy = y + j
-                    if (xx in 0 until p.w && yy in 0 until p.h) { acc += p.data[yy * p.w + xx]; n++ }
-                }
-                sm[y * p.w + x] = acc / n
-            }
             var sx = 0.0
             var sy = 0.0
             var n = 0
-            for (y in 0 until p.h - 2) for (x in 0 until p.w - 2) {
-                val c = sm[y * p.w + x]
-                val gx = sm[y * p.w + x + 2] - c
-                val gy = sm[(y + 2) * p.w + x] - c
-                sx += (gx * gx).toDouble()
-                sy += (gy * gy).toDouble()
-                n++
+            for (y in 0 until p.h - 1) {
+                val o = y * p.w
+                for (x in 0 until p.w - 1) {
+                    val c = p.data[o + x]
+                    val gx = p.data[o + x + 1] - c
+                    val gy = p.data[o + p.w + x] - c
+                    sx += (gx * gx).toDouble()
+                    sy += (gy * gy).toDouble()
+                    n++
+                }
             }
             val d = max(1, n).toDouble()
             return sx / d to sy / d

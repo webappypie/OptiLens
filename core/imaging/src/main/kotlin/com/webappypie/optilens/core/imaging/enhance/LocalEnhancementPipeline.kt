@@ -88,8 +88,8 @@ data class EnhancementReport(
  *    Luminance is changed by a per-pixel ratio, so hue and chromaticity are preserved.
  * 4. **Chroma denoise**: chromaticity is pulled towards a luma-guided low-resolution estimate
  *    only where the difference is within the expected noise (real colour edges are kept).
- * 5. **Luma denoise** (only if noise is measured) with a range-weighted window whose
- *    threshold follows the per-pixel noise after tone mapping.
+ * 5. **Luma denoise** (only if noise is measured): local Wiener (Lee) filter whose noise
+ *    level follows the per-pixel noise after tone mapping.
  * 6. **Sharpening** of fine detail with noise coring and clamping to the local 3×3 min/max
  *    (no overshoot → no halos), then vibrance with skin protection and gamut-safe encode.
  *
@@ -399,6 +399,8 @@ class LocalEnhancementPipeline(
         val p = FloatArray(capacity)
         val sig = FloatArray(capacity)
         val pd = FloatArray(capacity)
+        val hs = FloatArray(capacity)
+        val hs2 = FloatArray(capacity)
         val out = IntArray(width * STRIP_ROWS)
         val rowGrid = FloatArray(lw * GRID_CHANNELS)
     }
@@ -645,40 +647,54 @@ class LocalEnhancementPipeline(
         return out
     }
 
+    /**
+     * Local Wiener (Lee) filter on perceptual luminance: out = mean + k·(p − mean) with
+     * k = max(0, var − σ²) / var over a (2r+1)² window, where σ is this pixel's noise after tone
+     * mapping. Flat areas (variance ≈ noise) are smoothed; edges and texture (variance ≫ noise)
+     * are kept. Cost is two short separable sums per pixel, independent of range weighting.
+     */
     private fun denoiseRows(plan: Plan, ws: Workspace, w: Int, top: Int, bottom: Int, dTop: Int, dBottom: Int) {
         val rad = plan.denoiseRadius
-        val spatial = if (rad == 1) SPATIAL_R1 else SPATIAL_R2
-        val side = 2 * rad + 1
         val p = ws.p
-        for (y in dTop until dBottom) {
-            val rowOff = (y - top) * w
+        val hs = ws.hs
+        val hs2 = ws.hs2
+        val rowFrom = max(top, dTop - rad)
+        val rowTo = min(bottom, dBottom + rad)
+        // Horizontal sums (edge pixels replicated).
+        for (y in rowFrom until rowTo) {
+            val o = (y - top) * w
             for (x in 0 until w) {
-                val i = rowOff + x
-                val c = p[i]
-                val sigma = ws.sig[i] * RANGE_K
-                if (sigma < 1e-5f) {
-                    ws.pd[i] = c
-                    continue
+                var s1 = 0f
+                var s2 = 0f
+                for (dx in -rad..rad) {
+                    val v = p[o + (x + dx).coerceIn(0, w - 1)]
+                    s1 += v
+                    s2 += v * v
                 }
-                val inv = 1f / sigma
-                var sum = 0f
-                var wsum = 0f
+                hs[o + x] = s1
+                hs2[o + x] = s2
+            }
+        }
+        val invN = 1f / ((2 * rad + 1) * (2 * rad + 1))
+        for (y in dTop until dBottom) {
+            val o = (y - top) * w
+            for (x in 0 until w) {
+                var s1 = 0f
+                var s2 = 0f
                 for (dy in -rad..rad) {
-                    val yy = (y + dy).coerceIn(top, bottom - 1)
-                    val off = (yy - top) * w
-                    val srow = (dy + rad) * side
-                    for (dx in -rad..rad) {
-                        val xx = (x + dx).coerceIn(0, w - 1)
-                        val v = p[off + xx]
-                        val u = abs(v - c) * inv
-                        if (u < RANGE_CUTOFF) {
-                            val wgt = RANGE_LUT[(u * RANGE_LUT_SCALE).toInt()] * spatial[srow + dx + rad]
-                            sum += v * wgt
-                            wsum += wgt
-                        }
-                    }
+                    val r = ((y + dy).coerceIn(rowFrom, rowTo - 1) - top) * w + x
+                    s1 += hs[r]
+                    s2 += hs2[r]
                 }
-                ws.pd[i] = c + plan.denoiseStrength * (sum / wsum - c)
+                val i = o + x
+                val c = p[i]
+                val mean = s1 * invN
+                val variance = max(0f, s2 * invN - mean * mean)
+                val sigma = ws.sig[i]
+                val noiseVar = sigma * sigma
+                val k = if (variance > 1e-12f) max(0f, variance - noiseVar) / variance else 0f
+                val filtered = mean + k * (c - mean)
+                ws.pd[i] = c + plan.denoiseStrength * (filtered - c)
             }
         }
     }
@@ -698,9 +714,6 @@ class LocalEnhancementPipeline(
         const val CHROMA_RADIUS = 2
         const val CHROMA_EPS = 0.05f
         const val SHARPEN_GAIN = 1.6f
-        const val RANGE_K = 1.8f
-        const val RANGE_CUTOFF = 3f
-        const val RANGE_LUT_SCALE = 64f
         const val KR = 0.2126f
         const val KG = 0.7152f
         const val KB = 0.0722f
@@ -715,16 +728,6 @@ class LocalEnhancementPipeline(
         private const val ENC8_SIZE = 8192
         private val ENC8 = IntArray(ENC8_SIZE + 1) { (srgbEncode(it / ENC8_SIZE.toFloat()) * 255f + 0.5f).toInt() }
 
-        val RANGE_LUT = FloatArray((RANGE_CUTOFF * RANGE_LUT_SCALE).toInt() + 1) {
-            val u = it / RANGE_LUT_SCALE
-            exp(-0.5f * u * u)
-        }
-        val SPATIAL_R1 = floatArrayOf(0.4f, 0.6f, 0.4f, 0.6f, 1f, 0.6f, 0.4f, 0.6f, 0.4f)
-        val SPATIAL_R2 = FloatArray(25) {
-            val dx = it % 5 - 2
-            val dy = it / 5 - 2
-            exp(-(dx * dx + dy * dy) / (2f * 1.2f * 1.2f))
-        }
 
         fun srgbDecode(v: Float): Float =
             if (v <= 0.04045f) v / 12.92f else ((v + 0.055f) / 1.055f).pow(2.4f)

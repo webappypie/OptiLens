@@ -20,7 +20,7 @@ data class EnhancementResult(
  * [LocalEnhancementPipeline] on a Bitmap. See that class for the algorithm.
  *
  * Work is split into row strips processed on up to 6 cores; the worker count is lowered
- * when the heap is tight (each worker needs ≈ 32 bytes × width × 70 rows).
+ * when the heap is tight (each worker needs ≈ 48 bytes × width × 70 rows).
  */
 @Singleton
 class OnDeviceEnhancementEngine @Inject constructor(
@@ -90,7 +90,7 @@ class OnDeviceEnhancementEngine @Inject constructor(
     private fun workerCount(width: Int): Int {
         val runtime = Runtime.getRuntime()
         val free = runtime.maxMemory() - (runtime.totalMemory() - runtime.freeMemory())
-        val perWorker = 32L * width * (LocalEnhancementPipeline.STRIP_ROWS + 2 * LocalEnhancementPipeline.MARGIN)
+        val perWorker = 48L * width * (LocalEnhancementPipeline.STRIP_ROWS + 2 * LocalEnhancementPipeline.MARGIN)
         val byMemory = (free / 3 / max(1L, perWorker)).toInt()
         val cores = runtime.availableProcessors()
         return min(MAX_WORKERS, min(cores, byMemory)).coerceAtLeast(1)
