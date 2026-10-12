@@ -178,3 +178,15 @@ Not included: the burst capture itself (frames are taken one after another with 
 
 ## 14. Validation (run 3)
 `assembleDebug testDebugUnitTest lintDebug --continue` → **BUILD SUCCESSFUL**; **543 unit tests, 0 failures**; lint **0 errors**. The normal debuggable build was reinstalled on the device after benchmarking.
+
+---
+
+# Run 4 — burst capture pipelining (2026-10-13) — NOT TESTED
+
+Owner instruction: proceed without testing. Only a compile check (`:core:camera:compileDebugKotlin`) was run; **no unit tests, no lint, no device run**.
+
+| Change | Expected effect | Status |
+|---|---|---|
+| `Camera2BurstAcquisitionEngine`: when every frame of a burst has the same exposure (Night, HDR), all `takePicture` requests are issued at once (in order, `CoroutineStart.UNDISPATCHED`) and collected in sequence, so CameraX can pipeline captures instead of waiting for each JPEG to be delivered and copied before starting the next. EV-bracketed bursts stay sequential. Frames that finish after a timeout are kept as a partial burst; on failure/cancel they are released to the pool as before. The log line now says `pipelined`/`sequential` | Shorter burst capture (and "hold steady" time) for Night/HDR; size of the gain is unmeasured | **Untested.** To verify: Night/HDR capture on device (frame count, no pool exhaustion, timeout/partial path), plus `testDebugUnitTest` (the fake burst engine doesn't exercise this path) |
+
+Risk: pipelining depends on CameraX queueing several in-flight in-memory captures on this HAL. If a device rejects or drops queued requests, the existing fallback (single frame / partial burst) applies, but this has not been observed.

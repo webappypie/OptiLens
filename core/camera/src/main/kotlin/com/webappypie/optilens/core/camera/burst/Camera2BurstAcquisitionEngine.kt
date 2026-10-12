@@ -21,6 +21,10 @@ import com.webappypie.optilens.core.common.result.OptiError
 import com.webappypie.optilens.core.common.result.OptiResult
 import com.webappypie.optilens.core.logging.AppLogger
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -80,13 +84,54 @@ class Camera2BurstAcquisitionEngine(
         val packets = mutableListOf<FramePacket>()
         val interFrameIntervals = mutableListOf<Long>()
         var lastFrameTime = burstStartTime
+        // Same exposure for every frame: queue all requests at once so CameraX pipelines them
+        // (the next exposure starts while the previous JPEG is still being delivered/copied).
+        // Bracketed bursts stay sequential because each frame needs its EV applied first.
+        val pipelined = actualCount > 1 && validEvOffsets.all { it == 0 }
+        var inFlight: List<Deferred<FramePacket>> = emptyList()
+
+        /** Moves frames that finished but were not yet collected into [packets] (so they are kept or released). */
+        @OptIn(ExperimentalCoroutinesApi::class)
+        fun drainCompleted() {
+            for (k in packets.size until inFlight.size) {
+                val d = inFlight[k]
+                if (d.isCompleted && !d.isCancelled) {
+                    runCatching { d.getCompleted() }.getOrNull()?.let { packets += it }
+                }
+            }
+        }
 
         try {
             withTimeout(timeoutMs) {
                 // Ensure gyro tracking is running during the exposure sequence
                 gyroMotionTracker.start()
 
-                for (i in 0 until actualCount) {
+                if (pipelined) {
+                    imageCapture.targetRotation = targetRotation
+                    // UNDISPATCHED: each takePicture() is issued immediately, in sequence order.
+                    inFlight = (0 until actualCount).map { i ->
+                        async(start = CoroutineStart.UNDISPATCHED) {
+                            captureSingleFrameInternal(
+                                imageCapture = imageCapture,
+                                sequenceIndex = i,
+                                totalCount = actualCount,
+                                gyroStartNs = System.nanoTime(),
+                                targetRotation = targetRotation,
+                            )
+                        }
+                    }
+                    for (d in inFlight) {
+                        if (isCancelled.get()) throw CancellationException("Burst cancelled by caller")
+                        val packet = d.await()
+                        val now = System.currentTimeMillis()
+                        interFrameIntervals.add(now - lastFrameTime)
+                        lastFrameTime = now
+                        packets.add(packet)
+                        onProgress?.invoke(packets.size, actualCount)
+                    }
+                }
+
+                for (i in (if (pipelined) actualCount else 0) until actualCount) {
                     coroutineContext.ensureActive()
                     if (isCancelled.get()) throw CancellationException("Burst cancelled by caller")
 
@@ -138,7 +183,7 @@ class Camera2BurstAcquisitionEngine(
                 poolStats = bufferPool.getStats(),
             )
 
-            logger.i(TAG, "Burst acquisition completed successfully: ${packets.size}/$actualCount frames in ${totalDuration}ms.")
+            logger.i(TAG, "Burst acquisition completed successfully: ${packets.size}/$actualCount frames in ${totalDuration}ms (${if (pipelined) "pipelined" else "sequential"}).")
             OptiResult.Success(
                 BurstResult(
                     packets = packets,
@@ -149,6 +194,7 @@ class Camera2BurstAcquisitionEngine(
             )
         } catch (e: Exception) {
             logger.w(TAG, "Burst acquisition interrupted or failed: ${e.message}. Evaluating fallback...")
+            drainCompleted()
 
             // withTimeout throws TimeoutCancellationException (a CancellationException). A slow
             // device must not lose the frames it already captured: return them as a partial burst.
