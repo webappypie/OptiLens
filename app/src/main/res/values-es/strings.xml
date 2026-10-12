@@ -46,5 +46,5 @@
     <!-- Diagnostics & Privacy -->
     <string name="diagnostics_title">Diagnóstico de Cámara</string>
     <string name="diagnostics_export">Exportar Informe de Hardware</string>
-    <string name="privacy_notice_text">OptiLens procesa todas las fotos al 100% en el dispositivo. No se suben imágenes a ningún servidor.</string>
+    <string name="privacy_notice_text" formatted="false">OptiLens procesa todas las fotos al 100% en el dispositivo. No se suben imágenes a ningún servidor.</string>
 </resources>

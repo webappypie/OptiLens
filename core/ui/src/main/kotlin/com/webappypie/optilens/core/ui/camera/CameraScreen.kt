@@ -5,7 +5,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
-import android.view.Surface
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.SurfaceOrientedMeteringPointFactory
@@ -102,6 +101,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.webappypie.optilens.core.camera.model.FlashMode
@@ -119,6 +120,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.Restaurant
 import com.webappypie.optilens.core.ui.camera.sensor.HorizonSensor
+import com.webappypie.optilens.core.ui.camera.sensor.rememberCaptureRotation
 import com.webappypie.optilens.core.ui.components.OptiCameraModeChip
 import com.webappypie.optilens.core.ui.components.OptiIconButton
 import com.webappypie.optilens.core.ui.components.OptiIconButtonVariant
@@ -171,6 +173,25 @@ fun CameraScreen(
     val rollDegrees by horizonSensor.rollDegrees.collectAsStateWithLifecycle()
 
     var currentMode by remember { mutableStateOf(CameraMode.PHOTO) }
+    val captureRotation = rememberCaptureRotation()
+
+    // Single routing point for the on-screen shutter and hardware volume keys, using the
+    // device's physical orientation so saved photos are upright.
+    val dispatchShutter: () -> Unit = {
+        onShutterClick()
+        val rotation = captureRotation.intValue
+        when (currentMode) {
+            CameraMode.NIGHT -> viewModel.takeNightPhoto(targetRotation = rotation)
+            CameraMode.PORTRAIT -> viewModel.takePortraitPhoto(targetRotation = rotation)
+            CameraMode.BEST_SHOT -> viewModel.takeBestShotPhoto(targetRotation = rotation)
+            CameraMode.PET -> viewModel.takePetPhoto(targetRotation = rotation)
+            CameraMode.FOOD -> viewModel.takeFoodPhoto(targetRotation = rotation)
+            CameraMode.DOCUMENT -> viewModel.takeDocumentPhoto(targetRotation = rotation)
+            CameraMode.MOON -> viewModel.takeMoonPhoto(targetRotation = rotation)
+            CameraMode.WILDLIFE -> viewModel.takeWildlifePhoto(targetRotation = rotation)
+            else -> viewModel.takePhotoWithTimer(targetRotation = rotation)
+        }
+    }
     var hdrState by remember { mutableStateOf(HdrState.AUTO) }
     var previewViewRef by remember { mutableStateOf<PreviewView?>(null) }
 
@@ -191,15 +212,8 @@ fun CameraScreen(
     externalShutterTrigger?.let { trigger ->
         LaunchedEffect(trigger) {
             trigger.collect {
-                onShutterClick()
-                when (currentMode) {
-                    CameraMode.NIGHT -> viewModel.takeNightPhoto(targetRotation = Surface.ROTATION_0)
-                    CameraMode.PORTRAIT -> viewModel.takePortraitPhoto(targetRotation = Surface.ROTATION_0)
-                    CameraMode.BEST_SHOT -> viewModel.takeBestShotPhoto(targetRotation = Surface.ROTATION_0)
-                    CameraMode.PET -> viewModel.takePetPhoto(targetRotation = Surface.ROTATION_0)
-                    CameraMode.FOOD -> viewModel.takeFoodPhoto(targetRotation = Surface.ROTATION_0)
-                    CameraMode.DOCUMENT -> viewModel.takeDocumentPhoto(targetRotation = Surface.ROTATION_0)
-                    else -> viewModel.takePhotoWithTimer(targetRotation = Surface.ROTATION_0)
+                if (uiState.hasCameraPermission && !uiState.isCapturing && !uiState.isBurstCapturing) {
+                    dispatchShutter()
                 }
             }
         }
@@ -211,9 +225,13 @@ fun CameraScreen(
             PackageManager.PERMISSION_GRANTED
     }
 
-    // Immediately inform ViewModel of the synchronous result so first rendered frame is correct
-    if (hasCameraPermissionInitial && !uiState.hasCameraPermission) {
-        viewModel.onPermissionResult(true)
+    // Re-check on every resume: covers the first frame (no permission-screen flash, since the
+    // UI below also honours the synchronous check) and returning from system Settings after
+    // granting or revoking access.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+            PackageManager.PERMISSION_GRANTED
+        if (granted != uiState.hasCameraPermission) viewModel.onPermissionResult(granted)
     }
 
     // Camera permission request launcher for the !granted path
@@ -795,20 +813,7 @@ fun CameraScreen(
 
                 // Tactile Shutter Button with mode-specific capture routing
                 CameraShutterButton(
-                    onClick = {
-                        onShutterClick()
-                        when (currentMode) {
-                            CameraMode.NIGHT -> viewModel.takeNightPhoto(targetRotation = Surface.ROTATION_0)
-                            CameraMode.PORTRAIT -> viewModel.takePortraitPhoto(targetRotation = Surface.ROTATION_0)
-                            CameraMode.BEST_SHOT -> viewModel.takeBestShotPhoto(targetRotation = Surface.ROTATION_0)
-                            CameraMode.PET -> viewModel.takePetPhoto(targetRotation = Surface.ROTATION_0)
-                            CameraMode.FOOD -> viewModel.takeFoodPhoto(targetRotation = Surface.ROTATION_0)
-                            CameraMode.DOCUMENT -> viewModel.takeDocumentPhoto(targetRotation = Surface.ROTATION_0)
-                            CameraMode.MOON -> viewModel.takeMoonPhoto(targetRotation = Surface.ROTATION_0)
-                            CameraMode.WILDLIFE -> viewModel.takeWildlifePhoto(targetRotation = Surface.ROTATION_0)
-                            else -> viewModel.takePhotoWithTimer(targetRotation = Surface.ROTATION_0)
-                        }
-                    },
+                    onClick = dispatchShutter,
                     isVideo = currentMode == CameraMode.VIDEO,
                     enabled = !uiState.isCapturing && !uiState.isBurstCapturing &&
                             !uiState.isProcessingNightShot && !uiState.isProcessingPortraitShot &&
@@ -853,6 +858,7 @@ fun CameraScreen(
                 BestShotAlternatesSheet(
                     result = uiState.bestShotResult!!,
                     onSelectCandidate = { viewModel.overrideBestShotSelection(it) },
+                    onKeep = { viewModel.keepBestShotSelection() },
                     onDismiss = { viewModel.dismissBestShotSheet() },
                 )
             }

@@ -14,6 +14,7 @@ import com.webappypie.optilens.core.camera.model.ZoomState
 import com.webappypie.optilens.core.camera.model.ZoomStop
 import com.webappypie.optilens.core.common.result.OptiResult
 import com.webappypie.optilens.core.common.result.map
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -360,8 +361,12 @@ class FakeCameraController @Inject constructor() : CameraController {
         return OptiResult.Success(Unit)
     }
 
+    /** Simulated shutter-to-saved latency, so tests can observe in-progress capture state. */
+    var captureLatencyMs: Long = 0L
+
     override suspend fun capturePhoto(targetRotation: Int, mirrorHorizontal: Boolean): OptiResult<CapturedPhoto> {
         _sessionState.value = CameraSessionState.CAPTURING
+        if (captureLatencyMs > 0) delay(captureLatencyMs)
         val dummyUri = "content://media/external/images/media/fake_photo_${System.currentTimeMillis()}"
         val photo = CapturedPhoto(
             uri = dummyUri,
@@ -380,6 +385,25 @@ class FakeCameraController @Inject constructor() : CameraController {
 
     override suspend fun capturePhoto(): OptiResult<String> {
         return capturePhoto(0).map { it.uri }
+    }
+
+    /** Frames passed to [saveBurstFrame], for test assertions. */
+    val savedBurstFrames = mutableListOf<com.webappypie.optilens.core.camera.burst.model.FramePacket>()
+
+    override suspend fun saveBurstFrame(
+        packet: com.webappypie.optilens.core.camera.burst.model.FramePacket,
+        mirrorHorizontal: Boolean,
+    ): OptiResult<CapturedPhoto> {
+        savedBurstFrames += packet
+        val photo = CapturedPhoto(
+            uri = "content://media/external/images/media/fake_burst_${packet.sequenceIndex}",
+            width = packet.width,
+            height = packet.height,
+            timestampMs = System.currentTimeMillis(),
+            orientationDegrees = packet.metadata.orientationDegrees,
+        )
+        _lastCapturedPhoto.value = photo
+        return OptiResult.Success(photo)
     }
 
     override suspend fun acquireBurst(

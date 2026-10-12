@@ -256,13 +256,23 @@ interface CameraController {
      *
      * @param frameCount Number of frames to acquire, or null to query [CaptureStrategyEngine].
      * @param evOffsets EV offsets for exposure bracketing, or null to query [CaptureStrategyEngine].
-     * @param targetRotation Display orientation degrees.
+     * @param targetRotation Device orientation as a `Surface.ROTATION_*` constant.
      */
     suspend fun acquireBurst(
         frameCount: Int? = null,
         evOffsets: List<Int>? = null,
         targetRotation: Int = 0,
     ): OptiResult<com.webappypie.optilens.core.camera.burst.model.BurstResult>
+
+    /**
+     * Persists one already-captured burst frame (JPEG) to MediaStore and publishes it as the
+     * latest captured photo. Used by burst modes (Night, Best Shot, Wildlife, Moon) so that a
+     * shutter press always yields a saved image of a real captured frame.
+     */
+    suspend fun saveBurstFrame(
+        packet: com.webappypie.optilens.core.camera.burst.model.FramePacket,
+        mirrorHorizontal: Boolean = false,
+    ): OptiResult<CapturedPhoto>
 
     /**
      * Legacy capturePhoto returning photo URI string for backward compatibility.

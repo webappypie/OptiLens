@@ -4,6 +4,7 @@ import android.content.Context
 import android.hardware.camera2.CaptureRequest
 import androidx.camera.camera2.interop.Camera2CameraControl
 import androidx.camera.camera2.interop.CaptureRequestOptions
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraControl
 import androidx.camera.core.CameraInfo
@@ -103,6 +104,7 @@ import kotlin.coroutines.resume
  * - Orientation awareness and background MediaStore saving.
  * - Strict non-blocking I/O and deterministic [ImageProxy] closure.
  */
+@androidx.annotation.OptIn(ExperimentalCamera2Interop::class)
 @Singleton
 class CameraXController @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -516,7 +518,7 @@ class CameraXController @Inject constructor(
                 .build()
 
             control.startFocusAndMetering(action)
-            logger.d(TAG, "Focus and metering triggered at (${meteringPoint.x}, ${meteringPoint.y})")
+            logger.d(TAG, "Focus and metering triggered")
             OptiResult.Success(Unit)
         } catch (e: Exception) {
             logger.w(TAG, "Focus and metering failed: ${e.message}")
@@ -746,10 +748,12 @@ class CameraXController @Inject constructor(
                                     rawFile.delete()
                                     jpegFile.delete()
 
+                                    // targetRotation is a Surface.ROTATION_* constant, not degrees;
+                                    // CameraX already encoded the true orientation in the JPEG EXIF.
                                     val saved = mediaStoreSaver.saveRawWithCompanionJpeg(
                                         rawBytes = rBytes,
                                         jpegBytes = jBytes,
-                                        orientationDegrees = targetRotation,
+                                        orientationDegrees = mediaStoreSaver.readExifRotationDegrees(jBytes),
                                         rawFormat = rawFormat,
                                         mirrorHorizontal = mirrorHorizontal,
                                     )
@@ -783,7 +787,7 @@ class CameraXController @Inject constructor(
                                     rawFile.delete()
                                     val saved = mediaStoreSaver.saveDng(
                                         dngBytes = rBytes,
-                                        orientationDegrees = targetRotation,
+                                        orientationDegrees = mediaStoreSaver.readExifRotationDegrees(rBytes),
                                         rawFormat = rawFormat,
                                     )
                                     continuation.resume(saved)
@@ -854,6 +858,30 @@ class CameraXController @Inject constructor(
 
     override suspend fun capturePhoto(): OptiResult<String> {
         return capturePhoto(0, false).map { it.uri }
+    }
+
+    override suspend fun saveBurstFrame(
+        packet: com.webappypie.optilens.core.camera.burst.model.FramePacket,
+        mirrorHorizontal: Boolean,
+    ): OptiResult<CapturedPhoto> {
+        if (packet.isClosed) {
+            return OptiResult.Error(OptiError.ProcessingFailed("Burst frame already released", null))
+        }
+        if (packet.format != android.graphics.ImageFormat.JPEG) {
+            return OptiResult.Error(OptiError.ProcessingFailed("Unsupported burst frame format ${packet.format}", null))
+        }
+        val jpegBytes = packet.buffer.data.copyOf(packet.buffer.length)
+        val saved = mediaStoreSaver.saveJpeg(
+            jpegBytes = jpegBytes,
+            orientationDegrees = packet.metadata.orientationDegrees,
+            expectedWidth = packet.width,
+            expectedHeight = packet.height,
+            mirrorHorizontal = mirrorHorizontal,
+        )
+        if (saved is OptiResult.Success) {
+            _lastCapturedPhoto.value = saved.data
+        }
+        return saved
     }
 
     override suspend fun acquireBurst(

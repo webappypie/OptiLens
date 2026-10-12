@@ -123,6 +123,8 @@ class CameraViewModelNightTest {
             reason = "Handheld test",
         )
         cameraController.emitNightPlan(plan)
+        // 4 frames x 100 ms of simulated sensor time keeps the burst in flight past 50 ms.
+        cameraController.fakeBurstEngine.frameIntervalMs = 100L
         testScheduler.advanceUntilIdle()
 
         viewModel.uiState.test {
@@ -135,13 +137,14 @@ class CameraViewModelNightTest {
             assertTrue(capturingItem.isCapturing)
             assertNotNull(capturingItem.holdSteadyRemainingSec)
 
-            // Advance through the capture duration and processing delay
+            // Advance through the burst and the save of the selected frame
             testScheduler.advanceTimeBy(1000L)
             testScheduler.advanceUntilIdle()
 
             val finalItem = expectMostRecentItem()
             assertFalse(finalItem.isCapturing)
             assertFalse(finalItem.isProcessingNightShot)
+            assertEquals(1, cameraController.savedBurstFrames.size)
 
             cancelAndIgnoreRemainingEvents()
         }

@@ -96,6 +96,7 @@ class CameraViewModelPortraitTest {
             assertFalse(initial.isCapturing)
             assertFalse(initial.isProcessingPortraitShot)
 
+            cameraController.captureLatencyMs = 300L
             viewModel.takePortraitPhoto()
             advanceTimeBy(100L)
 

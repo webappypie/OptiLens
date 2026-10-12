@@ -34,6 +34,7 @@ class MlKitFaceDetector : FaceDetector {
 
     private val client by lazy { FaceDetection.getClient(detectorOptions) }
 
+    @androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
     override suspend fun detectFaces(imageProxy: ImageProxy): List<DetectedFace> {
         val mediaImage = imageProxy.image ?: return emptyList()
 

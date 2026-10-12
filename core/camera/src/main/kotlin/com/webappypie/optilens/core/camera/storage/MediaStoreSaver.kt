@@ -81,7 +81,8 @@ class MediaStoreSaver @Inject constructor(
             try {
                 val original = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size)
                 if (original != null) {
-                    val matrix = Matrix().apply { postScale(-1f, 1f) }
+                    val (scaleX, scaleY) = mirrorScaleForOrientation(orientationDegrees)
+                    val matrix = Matrix().apply { postScale(scaleX, scaleY) }
                     val mirrored = Bitmap.createBitmap(original, 0, 0, original.width, original.height, matrix, true)
                     val stream = java.io.ByteArrayOutputStream()
                     mirrored.compress(Bitmap.CompressFormat.JPEG, 95, stream)
@@ -111,12 +112,13 @@ class MediaStoreSaver @Inject constructor(
                 try {
                     contentResolver.openFileDescriptor(imageUri, "rw")?.use { pfd ->
                         val exif = ExifInterface(pfd.fileDescriptor)
-                        if (orientationDegrees != 0) {
-                            exif.setAttribute(
-                                ExifInterface.TAG_ORIENTATION,
-                                degreesToExifOrientation(orientationDegrees).toString()
-                            )
-                        }
+                        // Always write orientation: mirrored JPEGs are re-encoded without EXIF,
+                        // and an explicit NORMAL prevents stale HAL tags from disagreeing with
+                        // the rotation CameraX reported for this frame.
+                        exif.setAttribute(
+                            ExifInterface.TAG_ORIENTATION,
+                            degreesToExifOrientation(orientationDegrees).toString()
+                        )
                         exif.setAttribute(ExifInterface.TAG_MAKE, "OptiLens")
                         exif.setAttribute(ExifInterface.TAG_SOFTWARE, "OptiLens Pro Engine 1.0")
                         val dateFormatted = SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US).format(Date(timestamp))
@@ -333,6 +335,22 @@ class MediaStoreSaver @Inject constructor(
         }
     }
 
+    /**
+     * Reads the rotation (degrees clockwise) encoded in the EXIF orientation tag of a JPEG or
+     * DNG byte array, as written by CameraX for file-based captures. Returns 0 when absent.
+     */
+    fun readExifRotationDegrees(imageBytes: ByteArray): Int {
+        if (imageBytes.isEmpty()) return 0
+        return try {
+            val orientation = ExifInterface(ByteArrayInputStream(imageBytes))
+                .getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+            exifOrientationToDegrees(orientation)
+        } catch (e: Exception) {
+            logger.w(TAG, "Failed reading EXIF orientation: ${e.message}")
+            0
+        }
+    }
+
     private fun degreesToExifOrientation(degrees: Int): Int = when ((degrees % 360 + 360) % 360) {
         90 -> ExifInterface.ORIENTATION_ROTATE_90
         180 -> ExifInterface.ORIENTATION_ROTATE_180
@@ -342,5 +360,23 @@ class MediaStoreSaver @Inject constructor(
 
     companion object {
         private const val TAG = "MediaStoreSaver"
+
+        /**
+         * Scale factors that mirror a sensor-space buffer so the *displayed* image (after the
+         * EXIF rotation is applied) is flipped left-to-right. For 90/270 rotations the display's
+         * horizontal axis is the buffer's vertical axis, so the buffer must be flipped vertically.
+         */
+        fun mirrorScaleForOrientation(orientationDegrees: Int): Pair<Float, Float> =
+            when ((orientationDegrees % 360 + 360) % 360) {
+                90, 270 -> 1f to -1f
+                else -> -1f to 1f
+            }
+
+        fun exifOrientationToDegrees(exifOrientation: Int): Int = when (exifOrientation) {
+            ExifInterface.ORIENTATION_ROTATE_90, ExifInterface.ORIENTATION_TRANSPOSE -> 90
+            ExifInterface.ORIENTATION_ROTATE_180, ExifInterface.ORIENTATION_FLIP_VERTICAL -> 180
+            ExifInterface.ORIENTATION_ROTATE_270, ExifInterface.ORIENTATION_TRANSVERSE -> 270
+            else -> 0
+        }
     }
 }

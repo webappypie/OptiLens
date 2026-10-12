@@ -57,6 +57,10 @@ class MainActivity : ComponentActivity() {
     val volumeKeyShutterTrigger: Flow<Unit> = _volumeKeyShutterTrigger.asSharedFlow()
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Must run BEFORE super.onCreate() so postSplashScreenTheme (NoActionBar) is applied
+        // before the window decor is created; otherwise the splash theme's action bar remains
+        // drawn over the viewfinder.
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         logger.d(TAG, "MainActivity created")
@@ -68,10 +72,6 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-
-        // Install OS splash screen (API 31+ animated icon, older: simple window background).
-        // Must be called BEFORE setContent.
-        installSplashScreen()
 
         setContent {
             val themeMode by appSettings.themeMode.collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)

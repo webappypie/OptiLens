@@ -291,8 +291,13 @@ class AndroidCameraCapabilityDetector @Inject constructor(
         val extensionSupport = extensions?.copy(lowLightBoost = hasLowLightBoost)
             ?: ExtensionSupport(lowLightBoost = hasLowLightBoost)
 
-        // Physical camera enumeration (API 28+)
-        val physicalIds = chars.physicalCameraIds.toList()
+        // Physical camera enumeration (API 28+). minSdk is 26, so guard to avoid
+        // NoSuchMethodError on Android 8.0/8.1 during capability discovery.
+        val physicalIds = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            chars.physicalCameraIds.toList()
+        } else {
+            emptyList()
+        }
         val physicalSensors = mutableListOf<PhysicalSensorInfo>()
         for (physId in physicalIds) {
             try {
@@ -418,6 +423,7 @@ class AndroidCameraCapabilityDetector @Inject constructor(
         return supportedList
     }
 
+    @androidx.annotation.OptIn(androidx.camera.camera2.interop.ExperimentalCamera2Interop::class)
     private suspend fun queryCameraXExtensions(): Map<String, ExtensionSupport> {
         val result = mutableMapOf<String, ExtensionSupport>()
         try {

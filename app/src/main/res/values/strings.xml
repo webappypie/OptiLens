@@ -46,5 +46,5 @@
     <!-- Diagnostics & Privacy -->
     <string name="diagnostics_title">Camera Diagnostics</string>
     <string name="diagnostics_export">Export Hardware Report</string>
-    <string name="privacy_notice_text">OptiLens processes all photos 100% on-device. No images are uploaded to any server.</string>
+    <string name="privacy_notice_text" formatted="false">OptiLens processes all photos 100% on-device. No images are uploaded to any server.</string>
 </resources>

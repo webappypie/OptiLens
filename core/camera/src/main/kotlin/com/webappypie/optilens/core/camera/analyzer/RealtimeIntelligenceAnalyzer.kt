@@ -19,8 +19,11 @@ import com.webappypie.optilens.core.camera.strategy.AnalysisDiagnostics
 import com.webappypie.optilens.core.camera.strategy.CaptureStrategy
 import com.webappypie.optilens.core.camera.strategy.CaptureStrategyEngine
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Unified high-performance [ImageAnalysis.Analyzer] running the full real-time intelligence loop:
@@ -37,7 +40,10 @@ import kotlinx.coroutines.launch
  *    - Temporal Scene Stabilization with Hysteresis
  *    - Capture Strategy Recommendation & Viewfinder Hints
  *
- * Guarantees strict deterministic [ImageProxy.close] on every invocation without blocking the camera preview.
+ * Guarantees exactly one [ImageProxy.close] per frame. Frames handed to asynchronous face
+ * detection stay open until ML Kit has finished reading the underlying media image; closing
+ * earlier frees the native buffer under ML Kit and crashes the process (SIGSEGV in
+ * Image.getFormat).
  */
 class RealtimeIntelligenceAnalyzer(
     private val yuvPreprocessor: YuvPreprocessor = YuvPreprocessor(),
@@ -95,6 +101,8 @@ class RealtimeIntelligenceAnalyzer(
     override fun analyze(image: ImageProxy) {
         val startTimeNs = System.nanoTime()
         val now = System.currentTimeMillis()
+        // Set when ownership of [image] (and its close) moves to the face-detection coroutine.
+        var imageHandedOff = false
 
         try {
             if (!isEnabled || (now - lastFastAnalysisTimestampMs) < fastLoopIntervalMs) {
@@ -172,10 +180,21 @@ class RealtimeIntelligenceAnalyzer(
             if (shouldRunAi) {
                 lastAiInferenceTimestampMs = now
 
-                analysisScope.launch {
+                imageHandedOff = true
+                // ATOMIC: the block always starts, so the frame is closed even if the scope was
+                // cancelled (camera unbound) before the coroutine was dispatched.
+                analysisScope.launch(start = CoroutineStart.ATOMIC) {
                     val aiStartTimeNs = System.nanoTime()
+                    val detectedFaces = try {
+                        // Non-cancellable: ML Kit keeps reading the media image until its task
+                        // completes, so the frame must not be closed on cancellation either.
+                        withContext(NonCancellable) { faceDetector.detectFaces(image) }
+                    } catch (_: Exception) {
+                        emptyList()
+                    } finally {
+                        image.close()
+                    }
                     try {
-                        val detectedFaces = faceDetector.detectFaces(image)
                         cachedFaces = detectedFaces
                         onFacesDetected(detectedFaces)
 
@@ -251,7 +270,7 @@ class RealtimeIntelligenceAnalyzer(
         } catch (_: Exception) {
             // Drop gracefully on format / orientation / lifecycle transition
         } finally {
-            image.close()
+            if (!imageHandedOff) image.close()
         }
     }
 

@@ -59,6 +59,7 @@ import com.webappypie.optilens.core.ui.theme.OptiLensTheme
 fun BestShotAlternatesSheet(
     result: BestShotResult,
     onSelectCandidate: (Int) -> Unit,
+    onKeep: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -117,7 +118,7 @@ fun BestShotAlternatesSheet(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Close,
-                        contentDescription = "Close Best Shot review",
+                        contentDescription = "Discard burst without saving",
                         tint = Color.White,
                         modifier = Modifier.size(18.dp),
                     )
@@ -238,9 +239,9 @@ fun BestShotAlternatesSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Done / Keep Selection Button
+            // Keep Selection Button: saves the selected frame to the gallery
             Button(
-                onClick = onDismiss,
+                onClick = onKeep,
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color(0xFF2E7D32),

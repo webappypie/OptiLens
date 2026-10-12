@@ -22,12 +22,21 @@ class NavigationManagerTest {
 
     @Test
     fun `navigate to AiTools emits NavigateTo command`() = runTest {
-        navManager.navigate(AppDestination.AiTools)
+        navManager.navigate(AppDestination.AiTools())
         val command = navManager.navigationCommands.first()
 
         assertTrue(command is NavigationCommand.NavigateTo)
         val navigateTo = command as NavigationCommand.NavigateTo
-        assertEquals(AppDestination.AiTools, navigateTo.destination)
+        assertEquals(AppDestination.AiTools(), navigateTo.destination)
+    }
+
+    @Test
+    fun `navigate to AiTools carries the photo uri`() = runTest {
+        val uri = "content://media/external/images/media/42"
+        navManager.navigate(AppDestination.AiTools(photoUri = uri))
+        val command = navManager.navigationCommands.first() as NavigationCommand.NavigateTo
+
+        assertEquals(AppDestination.AiTools(photoUri = uri), command.destination)
     }
 
     @Test

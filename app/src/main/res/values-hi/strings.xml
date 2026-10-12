@@ -46,5 +46,5 @@
     <!-- Diagnostics & Privacy -->
     <string name="diagnostics_title">कैमरा डायग्नोस्टिक्स</string>
     <string name="diagnostics_export">हार्डवेयर रिपोर्ट एक्सपोर्ट करें</string>
-    <string name="privacy_notice_text">OptiLens सभी फ़ोटो केवल आपके डिवाइस पर प्रोसेस करता है। कोई भी तस्वीर सर्वर पर अपलोड नहीं की जाती।</string>
+    <string name="privacy_notice_text" formatted="false">OptiLens सभी फ़ोटो केवल आपके डिवाइस पर प्रोसेस करता है। कोई भी तस्वीर सर्वर पर अपलोड नहीं की जाती।</string>
 </resources>

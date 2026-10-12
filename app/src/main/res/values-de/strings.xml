@@ -46,5 +46,5 @@
     <!-- Diagnostics & Privacy -->
     <string name="diagnostics_title">Kamera-Diagnose</string>
     <string name="diagnostics_export">Hardware-Bericht exportieren</string>
-    <string name="privacy_notice_text">OptiLens verarbeitet alle Fotos zu 100 % lokal auf dem Gerät. Es werden keine Bilder übertragen.</string>
+    <string name="privacy_notice_text" formatted="false">OptiLens verarbeitet alle Fotos zu 100 % lokal auf dem Gerät. Es werden keine Bilder übertragen.</string>
 </resources>

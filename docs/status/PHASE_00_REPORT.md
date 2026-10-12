@@ -147,3 +147,7 @@ Everything else in the working tree (118 pre-existing changes) was left untouche
 ## 10. Recommended next phase
 
 Phase 01 — Crash and Capture Reliability (`prompts/PHASE_01_CRASH_CAPTURE_RELIABILITY.md`): defects 1, 2, 6, 8, 9 and the camera/ui lint errors, with on-device capture/save/review verification on the connected Redmi Note 11 Pro+.
+
+## Correction (recorded in Phase 01, 2026-10-12)
+
+The device check above observed the app for only ~6 s after launch. The device's crash dropbox shows that same session terminated with a native crash (SIGSEGV in `libmedia_jni` `Image_getFormat`, via ML Kit face detection) 53 s after launch. Root cause and fix: `docs/status/PHASE_01_REPORT.md`, defect #1.

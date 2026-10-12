@@ -21,6 +21,7 @@ import com.webappypie.optilens.core.common.result.OptiError
 import com.webappypie.optilens.core.common.result.OptiResult
 import com.webappypie.optilens.core.logging.AppLogger
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -64,6 +65,15 @@ class Camera2BurstAcquisitionEngine(
 
         val actualCount = frameCount.coerceAtLeast(1)
         val validEvOffsets = if (evOffsets.isEmpty()) listOf(0) else evOffsets
+
+        // Idempotent: never leave a bracketing EV offset applied once frames are no longer needed.
+        fun restoreBaseExposure() {
+            if (validEvOffsets.any { it != 0 } && cameraControl != null) {
+                try {
+                    cameraControl.setExposureCompensationIndex(0)
+                } catch (_: Exception) {}
+            }
+        }
 
         isCancelled.set(false)
         val burstStartTime = System.currentTimeMillis()
@@ -116,13 +126,6 @@ class Camera2BurstAcquisitionEngine(
                 }
             }
 
-            // Restore baseline EV compensation if modified
-            if (validEvOffsets.any { it != 0 } && cameraControl != null) {
-                try {
-                    cameraControl.setExposureCompensationIndex(0)
-                } catch (_: Exception) {}
-            }
-
             val totalDuration = System.currentTimeMillis() - burstStartTime
             val avgLatency = if (packets.isNotEmpty()) totalDuration.toFloat() / packets.size else 0f
 
@@ -147,13 +150,36 @@ class Camera2BurstAcquisitionEngine(
         } catch (e: Exception) {
             logger.w(TAG, "Burst acquisition interrupted or failed: ${e.message}. Evaluating fallback...")
 
-            // Clean up partially acquired packets if cancelled
-            if (e is CancellationException) {
+            // withTimeout throws TimeoutCancellationException (a CancellationException). A slow
+            // device must not lose the frames it already captured: return them as a partial burst.
+            if (e is TimeoutCancellationException && packets.isNotEmpty()) {
+                val totalDuration = System.currentTimeMillis() - burstStartTime
+                logger.w(TAG, "Burst timed out after ${packets.size}/$actualCount frames in ${totalDuration}ms; returning partial burst.")
+                return@withContext OptiResult.Success(
+                    BurstResult(
+                        packets = packets.toList(),
+                        modeUsed = mode,
+                        diagnostics = BurstDiagnostics(
+                            burstPreparationTimeMs = 0L,
+                            interFrameIntervalsMs = interFrameIntervals.toList(),
+                            totalBurstDurationMs = totalDuration,
+                            averageFrameLatencyMs = totalDuration.toFloat() / packets.size,
+                            droppedFramesCount = actualCount - packets.size,
+                            poolStats = bufferPool.getStats(),
+                        ),
+                        isFallbackSingleFrame = false,
+                    )
+                )
+            }
+
+            // Caller/user cancellation: release everything and propagate the cancellation result.
+            if (e is CancellationException && e !is TimeoutCancellationException) {
                 packets.forEach { it.close() }
                 return@withContext OptiResult.Error(OptiError.ProcessingFailed("Burst capture cancelled", e))
             }
 
-            // Task 7: Graceful fallback to single capture
+            // Task 7: Graceful fallback to single capture, at base exposure
+            restoreBaseExposure()
             val fallbackResult = executeSingleFrameFallback(
                 imageCapture = imageCapture,
                 mode = mode,
@@ -169,6 +195,8 @@ class Camera2BurstAcquisitionEngine(
             // If fallback also failed, close partial packets and return error
             packets.forEach { it.close() }
             OptiResult.Error(OptiError.ProcessingFailed("Burst acquisition failed: ${e.message}", e))
+        } finally {
+            restoreBaseExposure()
         }
     }
 
@@ -242,7 +270,9 @@ class Camera2BurstAcquisitionEngine(
                             format = image.format,
                         )
 
-                        continuation.resume(packet)
+                        // If the burst timed out / was cancelled meanwhile, nobody will receive this
+                        // packet: return its pooled buffer instead of leaking pool capacity.
+                        continuation.resume(packet) { _, unreceived, _ -> unreceived.close() }
                     } catch (e: Exception) {
                         continuation.resumeWith(Result.failure(e))
                     } finally {

@@ -46,5 +46,5 @@
     <!-- Diagnostics & Privacy -->
     <string name="diagnostics_title">Diagnostic de l’Appareil</string>
     <string name="diagnostics_export">Exporter le Rapport Matériel</string>
-    <string name="privacy_notice_text">OptiLens traite toutes les photos à 100 % sur l’appareil. Aucune image n’est transférée sur un serveur.</string>
+    <string name="privacy_notice_text" formatted="false">OptiLens traite toutes les photos à 100 % sur l’appareil. Aucune image n’est transférée sur un serveur.</string>
 </resources>

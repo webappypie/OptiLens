@@ -1,2 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Required by the ad SDK used in this module (AdView.loadAd). -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+</manifest>

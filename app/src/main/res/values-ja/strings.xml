@@ -46,5 +46,5 @@
     <!-- Diagnostics & Privacy -->
     <string name="diagnostics_title">カメラ診断</string>
     <string name="diagnostics_export">ハードウェア診断を出力</string>
-    <string name="privacy_notice_text">OptiLens はすべての写真処理を端末内で完結します。画像データがサーバーへ送信されることはありません。</string>
+    <string name="privacy_notice_text" formatted="false">OptiLens はすべての写真処理を端末内で完結します。画像データがサーバーへ送信されることはありません。</string>
 </resources>

@@ -7,7 +7,9 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.webappypie.optilens.core.camera.CameraController
+import com.webappypie.optilens.core.camera.burst.BurstFrameSelector
 import com.webappypie.optilens.core.camera.burst.model.BurstResult
+import com.webappypie.optilens.core.camera.burst.model.FramePacket
 import com.webappypie.optilens.core.camera.model.CameraSessionState
 import com.webappypie.optilens.core.camera.model.CapturedPhoto
 import com.webappypie.optilens.core.camera.model.DetectedFace
@@ -86,7 +88,7 @@ enum class TimerState(val seconds: Int) {
  * UI State representing camera viewfinder, session status, Pro controls, and capture status.
  */
 data class CameraUiState(
-    val availableModes: List<CameraMode> = CameraMode.entries,
+    val availableModes: List<CameraMode> = CameraMode.entries.filter { it in CameraViewModel.IMPLEMENTED_MODES },
     val hasCameraPermission: Boolean = false,
     val isFrontCamera: Boolean = false,
     val flashMode: FlashMode = FlashMode.AUTO,
@@ -168,12 +170,13 @@ class CameraViewModel @Inject constructor(
 ) : ViewModel() {
 
     val availableCameraModes: List<CameraMode> by lazy {
+        val implemented = CameraMode.entries.filter { it in IMPLEMENTED_MODES }
         val override = remoteConfigRepository?.getDeviceProcessingOverride(Build.MODEL)
         if (override != null && override.disabledModes.isNotEmpty()) {
             val disabledNames = override.disabledModes.map { it.uppercase() }.toSet()
-            CameraMode.entries.filter { it.name.uppercase() !in disabledNames }
+            implemented.filter { it.name.uppercase() !in disabledNames }
         } else {
-            CameraMode.entries
+            implemented
         }
     }
 
@@ -182,6 +185,9 @@ class CameraViewModel @Inject constructor(
     )
     private var focusResetJob: Job? = null
     private var timerJob: Job? = null
+
+    /** Burst awaiting the user's Keep/Discard choice in the Best Shot / Wildlife sheet. */
+    private var pendingBestShotBurst: BurstResult? = null
 
     private val _opticalHapticFlow = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val opticalHapticFlow: SharedFlow<Unit> = _opticalHapticFlow.asSharedFlow()
@@ -751,40 +757,53 @@ class CameraViewModel @Inject constructor(
                 }
             }
 
+            val shouldMirror = _internalState.value.isFrontCamera && _internalState.value.mirrorFrontCameraSelfie
             try {
-                val burstJob = launch {
-                    if (plan?.mode == NightModeType.VENDOR_EXTENSION) {
-                        when (val result = cameraController.capturePhoto(targetRotation)) {
-                            is OptiResult.Error -> _internalState.update { it.copy(errorMessage = result.error.displayMessage) }
-                            else -> Unit
+                if (plan?.mode == NightModeType.VENDOR_EXTENSION) {
+                    when (val result = cameraController.capturePhoto(targetRotation, mirrorHorizontal = shouldMirror)) {
+                        is OptiResult.Error -> _internalState.update { it.copy(errorMessage = result.error.displayMessage) }
+                        else -> Unit
+                    }
+                } else {
+                    val frameCount = plan?.exposurePlan?.frameCount ?: 6
+                    val offsets = plan?.exposurePlan?.evOffsets ?: listOf(0)
+                    when (val result = cameraController.acquireBurst(frameCount, offsets, targetRotation)) {
+                        is OptiResult.Success -> {
+                            // Multi-frame night fusion is not wired into capture yet; persist the
+                            // steadiest base-exposure frame so the shot is never silently lost.
+                            countdownJob.cancel()
+                            _internalState.update { it.copy(holdSteadyRemainingSec = null, isProcessingNightShot = true) }
+                            saveSelectedBurstFrame(
+                                frame = BurstFrameSelector.selectSteadiest(result.data.packets, offsets),
+                                mirrorHorizontal = shouldMirror,
+                            )
                         }
-                    } else {
-                        val frameCount = plan?.exposurePlan?.frameCount ?: 6
-                        val offsets = plan?.exposurePlan?.evOffsets ?: listOf(0)
-                        when (val result = cameraController.acquireBurst(frameCount, offsets, targetRotation)) {
-                            is OptiResult.Error -> _internalState.update { it.copy(errorMessage = result.error.displayMessage) }
-                            else -> Unit
-                        }
+                        is OptiResult.Error -> _internalState.update { it.copy(errorMessage = result.error.displayMessage) }
+                        else -> Unit
                     }
                 }
-                burstJob.join()
-                countdownJob.join()
             } finally {
                 countdownJob.cancel()
                 _internalState.update {
                     it.copy(
                         holdSteadyRemainingSec = null,
-                        isProcessingNightShot = true,
-                    )
-                }
-                delay(300L) // Brief processing visual state
-                _internalState.update {
-                    it.copy(
                         isCapturing = false,
                         isProcessingNightShot = false,
                     )
                 }
             }
+        }
+    }
+
+    /** Persists one real burst frame; reports an actionable error when none is usable. */
+    private suspend fun saveSelectedBurstFrame(frame: FramePacket?, mirrorHorizontal: Boolean) {
+        if (frame == null) {
+            _internalState.update { it.copy(errorMessage = "No usable frame was captured. Please try again.") }
+            return
+        }
+        when (val saved = cameraController.saveBurstFrame(frame, mirrorHorizontal)) {
+            is OptiResult.Error -> _internalState.update { it.copy(errorMessage = saved.error.displayMessage) }
+            else -> Unit
         }
     }
 
@@ -821,7 +840,6 @@ class CameraViewModel @Inject constructor(
                     else -> Unit
                 }
             } finally {
-                delay(200L)
                 _internalState.update {
                     it.copy(
                         isCapturing = false,
@@ -874,6 +892,7 @@ class CameraViewModel @Inject constructor(
                             burst = burstResult.data,
                             detectedFaces = uiState.value.detectedFaces,
                         )
+                        pendingBestShotBurst = burstResult.data
                         _internalState.update {
                             it.copy(
                                 bestShotResult = result,
@@ -905,9 +924,30 @@ class CameraViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Saves the frame currently selected in the Best Shot / Wildlife sheet (the recommended
+     * frame unless the user picked an alternate), then closes the sheet.
+     */
+    fun keepBestShotSelection() {
+        val burst = pendingBestShotBurst
+        val selectedIndex = _internalState.value.bestShotResult?.selectedIndex
+        val frame = burst?.packets?.firstOrNull { it.sequenceIndex == selectedIndex }
+        val shouldMirror = shouldMirrorCapture()
+        viewModelScope.launch {
+            saveSelectedBurstFrame(frame, shouldMirror)
+            pendingBestShotBurst = null
+            _internalState.update { it.copy(isBestShotSheetVisible = false) }
+        }
+    }
+
+    /** Closes the Best Shot / Wildlife sheet without saving any frame of the burst. */
     fun dismissBestShotSheet() {
+        pendingBestShotBurst = null
         _internalState.update { it.copy(isBestShotSheetVisible = false) }
     }
+
+    private fun shouldMirrorCapture(): Boolean =
+        _internalState.value.isFrontCamera && _internalState.value.mirrorFrontCameraSelfie
 
     fun takePetPhoto(targetRotation: Int = 0) {
         if (_internalState.value.isCapturing) return
@@ -932,12 +972,13 @@ class CameraViewModel @Inject constructor(
                     motion = uiState.value.motionState,
                 )
                 cameraController.setShutterSpeed(petConfig.targetShutterSpeedNanos)
-                when (val result = cameraController.capturePhoto(targetRotation)) {
+                when (val result = cameraController.capturePhoto(targetRotation, mirrorHorizontal = shouldMirrorCapture())) {
                     is OptiResult.Error -> _internalState.update { it.copy(errorMessage = result.error.displayMessage) }
                     else -> Unit
                 }
             } finally {
-                delay(150L)
+                // The pet fast shutter is a per-shot override; never leak it into later shots.
+                cameraController.setShutterSpeed(null)
                 _internalState.update {
                     it.copy(
                         isCapturing = false,
@@ -967,12 +1008,11 @@ class CameraViewModel @Inject constructor(
 
             try {
                 foodModeEngine.getStabilizedWhiteBalance(5200)
-                when (val result = cameraController.capturePhoto(targetRotation)) {
+                when (val result = cameraController.capturePhoto(targetRotation, mirrorHorizontal = shouldMirrorCapture())) {
                     is OptiResult.Error -> _internalState.update { it.copy(errorMessage = result.error.displayMessage) }
                     else -> Unit
                 }
             } finally {
-                delay(150L)
                 _internalState.update {
                     it.copy(
                         isCapturing = false,
@@ -1005,7 +1045,7 @@ class CameraViewModel @Inject constructor(
             }
 
             try {
-                when (val result = cameraController.capturePhoto(targetRotation)) {
+                when (val result = cameraController.capturePhoto(targetRotation, mirrorHorizontal = shouldMirrorCapture())) {
                     is OptiResult.Success -> {
                         val scanResult = DocumentScanResult(
                             uri = result.data.uri,
@@ -1022,7 +1062,6 @@ class CameraViewModel @Inject constructor(
                     else -> Unit
                 }
             } finally {
-                delay(200L)
                 _internalState.update {
                     it.copy(
                         isCapturing = false,
@@ -1051,6 +1090,7 @@ class CameraViewModel @Inject constructor(
                 _internalState.update { it.copy(isShutterBlinking = false) }
             }
 
+            var previousEvIndex: Int? = null
             try {
                 val moonState = uiState.value.moonDetectionState
                 val config = moonModeEngine.computeCaptureConfig(
@@ -1058,6 +1098,7 @@ class CameraViewModel @Inject constructor(
                     thermalPolicy = com.webappypie.optilens.core.camera.thermal.ThermalDegradationPolicy.forThermalState(uiState.value.thermalState),
                     availableZoomStops = uiState.value.zoomStops,
                 )
+                previousEvIndex = uiState.value.exposureState.index
                 cameraController.setShutterSpeed(config.shutterSpeedNanos)
                 cameraController.setExposureCompensation(config.evOffset)
 
@@ -1068,26 +1109,12 @@ class CameraViewModel @Inject constructor(
                 )
                 when (burstResult) {
                     is OptiResult.Success -> {
-                        val packets = burstResult.data.packets
-                        if (packets.isNotEmpty()) {
-                            val frames = packets.map { it.buffer.data }
-                            val centers = List(frames.size) {
-                                (moonState.roi?.centerX ?: 0.5f) to (moonState.roi?.centerY ?: 0.5f)
-                            }
-                            val stackedY = moonModeEngine.stackMoonFrames(
-                                frames = frames,
-                                width = packets[0].width,
-                                height = packets[0].height,
-                                discCenters = centers,
-                            )
-                            moonModeEngine.processLunarDetailRecovery(
-                                inputY = stackedY,
-                                width = packets[0].width,
-                                height = packets[0].height,
-                                discRoi = moonState.roi,
-                                strength = config.detailRecoveryStrength,
-                            )
-                        }
+                        // Burst frames are JPEG-encoded; lunar stacking needs decoded luma planes
+                        // and is not wired into capture yet. Persist the steadiest real frame.
+                        saveSelectedBurstFrame(
+                            frame = BurstFrameSelector.selectSteadiest(burstResult.data.packets),
+                            mirrorHorizontal = false,
+                        )
                     }
                     is OptiResult.Error -> {
                         _internalState.update { it.copy(errorMessage = burstResult.error.displayMessage) }
@@ -1097,6 +1124,8 @@ class CameraViewModel @Inject constructor(
             } catch (t: Throwable) {
                 _internalState.update { it.copy(errorMessage = t.message ?: "Moon capture failed") }
             } finally {
+                cameraController.setShutterSpeed(null)
+                previousEvIndex?.let { cameraController.setExposureCompensation(it) }
                 _internalState.update {
                     it.copy(
                         isCapturing = false,
@@ -1144,6 +1173,7 @@ class CameraViewModel @Inject constructor(
                 when (burstResult) {
                     is OptiResult.Success -> {
                         val bestShot = wildlifeModeEngine.rankWildlifeBurst(burstResult.data)
+                        pendingBestShotBurst = burstResult.data
                         _internalState.update {
                             it.copy(
                                 bestShotResult = bestShot,
@@ -1159,6 +1189,7 @@ class CameraViewModel @Inject constructor(
             } catch (t: Throwable) {
                 _internalState.update { it.copy(errorMessage = t.message ?: "Wildlife burst capture failed") }
             } finally {
+                cameraController.setShutterSpeed(null)
                 _internalState.update {
                     it.copy(
                         isCapturing = false,
@@ -1245,6 +1276,14 @@ class CameraViewModel @Inject constructor(
         val isExtractingOcr: Boolean = false,
         val errorMessage: String? = null,
     )
+
+    companion object {
+        /**
+         * Modes with a working capture path. VIDEO is excluded: there is no video recording
+         * pipeline, so exposing it would be a dead control that silently takes a still photo.
+         */
+        val IMPLEMENTED_MODES: Set<CameraMode> = CameraMode.entries.toSet() - CameraMode.VIDEO
+    }
 }
 
 private fun com.webappypie.optilens.core.settings.RawCaptureFormatSetting.toModel(): RawCaptureFormat = when (this) {

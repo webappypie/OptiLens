@@ -9,6 +9,7 @@ import com.webappypie.optilens.core.camera.burst.pool.BoundedBufferPool
 import com.webappypie.optilens.core.camera.strategy.CaptureStrategyMode
 import com.webappypie.optilens.core.common.result.OptiError
 import com.webappypie.optilens.core.common.result.OptiResult
+import kotlinx.coroutines.delay
 
 /**
  * Fake implementation of [BurstAcquisitionEngine] for deterministic unit testing.
@@ -18,6 +19,9 @@ class FakeBurstAcquisitionEngine(
 ) : BurstAcquisitionEngine {
 
     var shouldFail: Boolean = false
+
+    /** Simulated sensor time per frame, so tests can observe in-progress capture state. */
+    var frameIntervalMs: Long = 0L
     var shouldFallbackToSingle: Boolean = false
     var lastAcquiredCount: Int = 0
     var lastEvOffsets: List<Int> = emptyList()
@@ -41,6 +45,7 @@ class FakeBurstAcquisitionEngine(
         val packets = mutableListOf<FramePacket>()
 
         for (i in 0 until actualCount) {
+            if (frameIntervalMs > 0) delay(frameIntervalMs)
             val pooledBuffer = bufferPool.acquire(1024)
             val packet = FramePacket(
                 sequenceIndex = i,
