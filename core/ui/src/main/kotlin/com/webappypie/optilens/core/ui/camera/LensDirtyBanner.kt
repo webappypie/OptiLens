@@ -1,5 +1,7 @@
 package com.webappypie.optilens.core.ui.camera
 
+import androidx.compose.ui.res.stringResource
+import com.webappypie.optilens.core.ui.R
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -71,7 +73,7 @@ fun LensDirtyBanner(
             Spacer(modifier = Modifier.width(8.dp))
 
             Text(
-                text = "Lens appears dirty. Clean camera for clearer shots.",
+                text = stringResource(R.string.lens_dirty),
                 style = OptiLensCameraTypography.readout.copy(fontSize = 12.sp, color = Color.White),
                 maxLines = 1,
             )
@@ -92,7 +94,7 @@ fun LensDirtyBanner(
             ) {
                 Icon(
                     imageVector = Icons.Default.Close,
-                    contentDescription = "Dismiss warning",
+                    contentDescription = stringResource(R.string.lens_dirty_dismiss),
                     tint = Color.White,
                     modifier = Modifier.size(14.dp),
                 )

@@ -1,5 +1,7 @@
 package com.webappypie.optilens.core.ui.components
 
+import androidx.compose.ui.res.stringResource
+import com.webappypie.optilens.core.ui.R
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -75,7 +77,7 @@ fun OptiBottomSheet(
                     )
                     OptiIconButton(
                         icon = Icons.Default.Close,
-                        contentDescription = "Close",
+                        contentDescription = stringResource(R.string.common_close),
                         onClick = onDismissRequest,
                         size = 32.dp,
                     )

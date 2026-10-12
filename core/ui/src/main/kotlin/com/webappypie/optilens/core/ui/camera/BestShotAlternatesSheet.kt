@@ -1,5 +1,7 @@
 package com.webappypie.optilens.core.ui.camera
 
+import androidx.compose.ui.res.stringResource
+import com.webappypie.optilens.core.ui.R
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -95,7 +97,7 @@ fun BestShotAlternatesSheet(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Best Shot Selection",
+                        text = stringResource(R.string.bs_title),
                         style = OptiLensCameraTypography.readout.copy(
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
@@ -118,7 +120,7 @@ fun BestShotAlternatesSheet(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Close,
-                        contentDescription = "Discard burst without saving",
+                        contentDescription = stringResource(R.string.bs_discard),
                         tint = Color.White,
                         modifier = Modifier.size(18.dp),
                     )
@@ -144,7 +146,7 @@ fun BestShotAlternatesSheet(
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = "Frame #${selectedCandidate.index + 1}",
+                                text = stringResource(R.string.bs_frame, selectedCandidate.index + 1),
                                 style = OptiLensCameraTypography.readout.copy(
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.SemiBold,
@@ -160,7 +162,7 @@ fun BestShotAlternatesSheet(
                                         .padding(horizontal = 8.dp, vertical = 2.dp),
                                 ) {
                                     Text(
-                                        text = "RECOMMENDED",
+                                        text = stringResource(R.string.bs_recommended),
                                         style = OptiLensCameraTypography.readout.copy(
                                             fontSize = 10.sp,
                                             fontWeight = FontWeight.Bold,
@@ -176,7 +178,7 @@ fun BestShotAlternatesSheet(
                                         .padding(horizontal = 8.dp, vertical = 2.dp),
                                 ) {
                                     Text(
-                                        text = "MANUAL OVERRIDE",
+                                        text = stringResource(R.string.bs_manual),
                                         style = OptiLensCameraTypography.readout.copy(
                                             fontSize = 10.sp,
                                             fontWeight = FontWeight.Bold,
@@ -188,7 +190,7 @@ fun BestShotAlternatesSheet(
                         }
 
                         Text(
-                            text = "Score: ${selectedCandidate.compositeScore.toInt()}%",
+                            text = stringResource(R.string.bs_score, selectedCandidate.compositeScore.toInt()),
                             style = OptiLensCameraTypography.readout.copy(
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold,
@@ -204,11 +206,11 @@ fun BestShotAlternatesSheet(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        MetricPill(label = "Sharpness", value = "${selectedCandidate.sharpnessScore.toInt()}%")
-                        MetricPill(label = "Stability", value = "${selectedCandidate.motionScore.toInt()}%")
-                        MetricPill(label = "Exposure", value = "${selectedCandidate.exposureScore.toInt()}%")
+                        MetricPill(label = stringResource(R.string.bs_sharpness), value = "${selectedCandidate.sharpnessScore.toInt()}%")
+                        MetricPill(label = stringResource(R.string.bs_stability), value = "${selectedCandidate.motionScore.toInt()}%")
+                        MetricPill(label = stringResource(R.string.bs_exposure), value = "${selectedCandidate.exposureScore.toInt()}%")
                         selectedCandidate.eyeOpenScore?.let { eye ->
-                            MetricPill(label = "Eye Open", value = "${(eye * 100).toInt()}%")
+                            MetricPill(label = stringResource(R.string.bs_eye_open), value = "${(eye * 100).toInt()}%")
                         }
                     }
                 }
@@ -217,7 +219,7 @@ fun BestShotAlternatesSheet(
             Spacer(modifier = Modifier.height(14.dp))
 
             Text(
-                text = "Alternates (${result.candidates.size} burst frames):",
+                text = stringResource(R.string.bs_alternates, result.candidates.size),
                 style = OptiLensCameraTypography.readout.copy(fontSize = 12.sp, color = Color(0xFFAAAAAA)),
             )
 
@@ -252,7 +254,7 @@ fun BestShotAlternatesSheet(
                 Icon(imageVector = Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Keep Frame #${selectedCandidate.index + 1}",
+                    text = stringResource(R.string.bs_keep, selectedCandidate.index + 1),
                     style = OptiLensCameraTypography.readout.copy(fontSize = 14.sp, fontWeight = FontWeight.Bold),
                 )
             }

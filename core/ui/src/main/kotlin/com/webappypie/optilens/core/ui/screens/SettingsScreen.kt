@@ -87,6 +87,8 @@ fun SettingsScreen(
     val isPro by appSettings.isPro.collectAsStateWithLifecycle(initialValue = false)
 
     val context = LocalContext.current
+
+    val resources = androidx.compose.ui.platform.LocalResources.current
     val themeLabels = mapOf(
         ThemeMode.SYSTEM to stringResource(R.string.theme_system),
         ThemeMode.LIGHT to stringResource(R.string.theme_light),
@@ -345,9 +347,9 @@ fun SettingsScreen(
                                 context.cacheDir?.listFiles()?.forEach { deleteRecursively(it) }
                                 context.externalCacheDir?.listFiles()?.forEach { deleteRecursively(it) }
                                 val mb = String.format(java.util.Locale.US, "%.1f", deletedBytes / (1024f * 1024f))
-                                context.getString(R.string.settings_cache_cleared_mb, mb)
+                                resources.getString(R.string.settings_cache_cleared_mb, mb)
                             } catch (e: Exception) {
-                                context.getString(R.string.settings_cache_cleared)
+                                resources.getString(R.string.settings_cache_cleared)
                             }
                         }
                     }

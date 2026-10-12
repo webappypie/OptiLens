@@ -1,5 +1,7 @@
 package com.webappypie.optilens.core.ui.components
 
+import androidx.compose.ui.res.stringResource
+import com.webappypie.optilens.core.ui.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -77,7 +79,7 @@ fun OptiTopBar(
                 if (onBackClick != null) {
                     OptiIconButton(
                         icon = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
+                        contentDescription = stringResource(R.string.common_back),
                         onClick = onBackClick,
                         variant = if (isOverlay) OptiIconButtonVariant.OVERLAY else OptiIconButtonVariant.STANDARD,
                     )

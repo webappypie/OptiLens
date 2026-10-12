@@ -15,25 +15,11 @@ class PerformanceUiTest {
 
     @Test
     fun `CameraUiState provides correct thermal warning messages`() {
-        val normalState = CameraUiState(thermalState = DeviceThermalState.NORMAL)
-        assertNull(normalState.thermalWarningMessage)
-
-        val lightState = CameraUiState(thermalState = DeviceThermalState.LIGHT)
-        assertNull(lightState.thermalWarningMessage)
-
-        val moderateState = CameraUiState(thermalState = DeviceThermalState.MODERATE)
-        assertNull(moderateState.thermalWarningMessage)
-
-        val severeState = CameraUiState(thermalState = DeviceThermalState.SEVERE)
-        assertNotNull(severeState.thermalWarningMessage)
-        assertTrue(severeState.thermalWarningMessage!!.contains("warm"))
-
-        val criticalState = CameraUiState(thermalState = DeviceThermalState.CRITICAL)
-        assertNotNull(criticalState.thermalWarningMessage)
-        assertEquals(
-            "Device is hot. Camera features reduced to prevent overheating.",
-            criticalState.thermalWarningMessage,
-        )
+        assertNull(CameraUiState(thermalState = DeviceThermalState.NORMAL).thermalWarningRes)
+        assertNull(CameraUiState(thermalState = DeviceThermalState.LIGHT).thermalWarningRes)
+        assertNull(CameraUiState(thermalState = DeviceThermalState.MODERATE).thermalWarningRes)
+        assertEquals(com.webappypie.optilens.core.ui.R.string.thermal_severe, CameraUiState(thermalState = DeviceThermalState.SEVERE).thermalWarningRes)
+        assertEquals(com.webappypie.optilens.core.ui.R.string.thermal_critical, CameraUiState(thermalState = DeviceThermalState.CRITICAL).thermalWarningRes)
     }
 
     @Test

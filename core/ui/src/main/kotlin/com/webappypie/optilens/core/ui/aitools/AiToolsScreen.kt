@@ -1,5 +1,7 @@
 package com.webappypie.optilens.core.ui.aitools
 
+import androidx.compose.ui.res.stringResource
+import com.webappypie.optilens.core.ui.R
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
@@ -81,6 +83,7 @@ fun AiToolsScreen(
     viewModel: AiToolsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
+    val resources = androidx.compose.ui.platform.LocalResources.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val inpaintingStrokes = remember { mutableStateListOf<BrushStroke>() }
     val canvasSize = remember { androidx.compose.runtime.mutableStateOf(IntSize.Zero) }
@@ -151,7 +154,7 @@ fun AiToolsScreen(
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = uiState.errorMessage ?: "Choose a photo to edit",
+                            text = uiState.errorMessage?.resolve() ?: stringResource(R.string.tools_choose_prompt),
                             color = Color.White,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.SemiBold,
@@ -159,7 +162,7 @@ fun AiToolsScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Deblur, Object Cleanup, Reflection Cleaner, Upscale and Photo Restore run on your device. Your original is never changed.",
+                            text = stringResource(R.string.tools_intro),
                             color = Color.White.copy(alpha = 0.7f),
                             fontSize = 13.sp,
                             textAlign = TextAlign.Center,
@@ -172,7 +175,7 @@ fun AiToolsScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                         ) {
                             Text(
-                                text = if (uiState.errorMessage != null) "Choose another photo" else "Choose photo",
+                                text = stringResource(if (uiState.errorMessage != null) R.string.tools_choose_another else R.string.tools_choose),
                                 color = Color.Black,
                                 fontWeight = FontWeight.Bold,
                             )
@@ -199,13 +202,13 @@ fun AiToolsScreen(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
+                    contentDescription = stringResource(R.string.common_back),
                     tint = Color.White,
                 )
             }
 
             Text(
-                text = "Editing Tools",
+                text = stringResource(R.string.tools_title),
                 color = Color.White,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 16.sp,
@@ -223,7 +226,7 @@ fun AiToolsScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.AddPhotoAlternate,
-                            contentDescription = "Choose a different photo",
+                            contentDescription = stringResource(R.string.tools_choose_different),
                             tint = Color.White,
                         )
                     }
@@ -239,7 +242,7 @@ fun AiToolsScreen(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Undo,
-                        contentDescription = "Undo",
+                        contentDescription = stringResource(R.string.tools_undo),
                         tint = if (uiState.canUndo) Color.White else Color.Gray,
                     )
                 }
@@ -254,7 +257,7 @@ fun AiToolsScreen(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Redo,
-                        contentDescription = "Redo",
+                        contentDescription = stringResource(R.string.tools_redo),
                         tint = if (uiState.canRedo) Color.White else Color.Gray,
                     )
                 }
@@ -272,7 +275,7 @@ fun AiToolsScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Restore,
-                        contentDescription = "Revert All",
+                        contentDescription = stringResource(R.string.tools_revert_all),
                         tint = if (uiState.currentBitmap != uiState.originalBitmap) Color.White else Color.Gray,
                     )
                 }
@@ -286,7 +289,7 @@ fun AiToolsScreen(
                                 putExtra(Intent.EXTRA_STREAM, Uri.parse(uiState.savedUri))
                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             }
-                            context.startActivity(Intent.createChooser(sendIntent, "Share edited photo"))
+                            context.startActivity(Intent.createChooser(sendIntent, resources.getString(R.string.tools_share_edited)))
                         },
                         modifier = Modifier
                             .clip(CircleShape)
@@ -294,7 +297,7 @@ fun AiToolsScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Share,
-                            contentDescription = "Share",
+                            contentDescription = stringResource(R.string.common_share),
                             tint = Color.White,
                         )
                     }
@@ -310,7 +313,9 @@ fun AiToolsScreen(
                 .padding(top = 56.dp)
         ) {
             AiFidelityDisclosureBanner(
-                message = uiState.disclosureMessage,
+                message = uiState.disclosureMessage?.let { raw ->
+                    uiState.selectedTool.disclosureRes?.let { stringResource(it) } ?: raw
+                },
                 visible = uiState.disclosureMessage != null,
             )
         }
@@ -331,7 +336,7 @@ fun AiToolsScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = uiState.errorMessage!!,
+                        text = uiState.errorMessage!!.resolve(),
                         color = MaterialTheme.colorScheme.onErrorContainer,
                         fontSize = 13.sp,
                         modifier = Modifier.weight(1f, fill = false),
@@ -339,7 +344,7 @@ fun AiToolsScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                     Icon(
                         imageVector = Icons.Default.Close,
-                        contentDescription = "Dismiss message",
+                        contentDescription = stringResource(R.string.tools_dismiss_message),
                         tint = MaterialTheme.colorScheme.onErrorContainer,
                         modifier = Modifier.size(18.dp),
                     )
@@ -368,7 +373,7 @@ fun AiToolsScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = uiState.currentStage?.displayName ?: "Processing...",
+                        text = stringResource(uiState.currentStage?.labelRes ?: R.string.tools_processing),
                         color = Color.White,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
@@ -418,7 +423,7 @@ fun AiToolsScreen(
                         FilterChip(
                             selected = isSelected,
                             onClick = { viewModel.selectTool(tool) },
-                            label = { Text(tool.displayName, fontSize = 12.sp) },
+                            label = { Text(stringResource(tool.labelRes), fontSize = 12.sp) },
                             leadingIcon = if (isSelected) {
                                 {
                                     Icon(
@@ -450,13 +455,13 @@ fun AiToolsScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Text(
-                                text = "Strength: ${(uiState.deblurStrength * 100).toInt()}%",
+                                text = stringResource(R.string.tools_strength, (uiState.deblurStrength * 100).toInt()),
                                 color = Color.White.copy(alpha = 0.8f),
                                 fontSize = 12.sp,
                             )
                             uiState.blurClassification?.let {
                                 Text(
-                                    text = it.blurType.displayName,
+                                    text = stringResource(it.blurType.labelRes),
                                     color = Color(0xFFFFB74D),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium,
@@ -477,12 +482,12 @@ fun AiToolsScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Text(
-                                text = "Brush: ${uiState.inpaintingBrushSize.toInt()} px",
+                                text = stringResource(R.string.tools_brush, uiState.inpaintingBrushSize.toInt()),
                                 color = Color.White.copy(alpha = 0.8f),
                                 fontSize = 12.sp,
                             )
                             Text(
-                                text = "Clear Brush",
+                                text = stringResource(R.string.tools_clear_brush),
                                 color = MaterialTheme.colorScheme.primary,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
@@ -503,7 +508,7 @@ fun AiToolsScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Text(
-                                text = "Reflection Suppression: ${(uiState.reflectionStrength * 100).toInt()}%",
+                                text = stringResource(R.string.tools_reflection_strength, (uiState.reflectionStrength * 100).toInt()),
                                 color = Color.White.copy(alpha = 0.8f),
                                 fontSize = 12.sp,
                             )
@@ -522,7 +527,7 @@ fun AiToolsScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Text(
-                                text = "Target Magnification:",
+                                text = stringResource(R.string.tools_target_magnification),
                                 color = Color.White.copy(alpha = 0.8f),
                                 fontSize = 12.sp,
                             )
@@ -541,9 +546,13 @@ fun AiToolsScreen(
                         if (uiState.upscaleFactor !in uiState.allowedUpscaleFactors) {
                             Text(
                                 text = if (uiState.allowedUpscaleFactors.isEmpty()) {
-                                    "This photo is already large. Upscale is limited to 24 MP output on this device."
+                                    stringResource(R.string.tools_upscale_too_large)
                                 } else {
-                                    "${uiState.upscaleFactor}x would exceed the 24 MP output limit. Choose ${uiState.allowedUpscaleFactors.joinToString(" or ") { "${it}x" }}."
+                                    stringResource(
+                                        R.string.tools_upscale_exceeds,
+                                        uiState.upscaleFactor,
+                                        uiState.allowedUpscaleFactors.joinToString(" / ") { "${it}x" },
+                                    )
                                 },
                                 color = Color.White.copy(alpha = 0.7f),
                                 fontSize = 11.sp,
@@ -558,7 +567,7 @@ fun AiToolsScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Text(
-                                text = "Restoration Level: ${(uiState.restorationStrength * 100).toInt()}%",
+                                text = stringResource(R.string.tools_restoration_level, (uiState.restorationStrength * 100).toInt()),
                                 color = Color.White.copy(alpha = 0.8f),
                                 fontSize = 12.sp,
                             )
@@ -594,7 +603,7 @@ fun AiToolsScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Unlock Editing Tools",
+                            text = stringResource(R.string.tools_unlock),
                             color = Color.Black,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
@@ -643,7 +652,11 @@ fun AiToolsScreen(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = if (uiState.selectedTool == AiToolType.INPAINTING) "Erase Selection" else "Apply ${uiState.selectedTool.displayName}",
+                                text = if (uiState.selectedTool == AiToolType.INPAINTING) {
+                                    stringResource(R.string.tools_erase_selection)
+                                } else {
+                                    stringResource(R.string.tools_apply, stringResource(uiState.selectedTool.labelRes))
+                                },
                                 color = Color.Black,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
@@ -662,7 +675,7 @@ fun AiToolsScreen(
                             ),
                         ) {
                             Text(
-                                text = if (uiState.isSaved) "Saved ✓" else "Save Copy",
+                                text = stringResource(if (uiState.isSaved) R.string.tools_saved else R.string.tools_save_copy),
                                 color = Color.White,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.SemiBold,

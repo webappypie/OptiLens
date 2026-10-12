@@ -217,6 +217,15 @@ fun CameraScreen(
     }
 
     val currentOnCaptureReview by rememberUpdatedState(onNavigateToCaptureReview)
+    // Capture/save failures used to be set in state but never shown; surface them here.
+    val errorSnackbar = remember { androidx.compose.material3.SnackbarHostState() }
+    LaunchedEffect(uiState.errorMessage) {
+        uiState.errorMessage?.let { error ->
+            errorSnackbar.showSnackbar(error.resolve(context))
+            viewModel.clearErrorMessage()
+        }
+    }
+
     LaunchedEffect(Unit) {
         viewModel.captureReviewRequests.collect { uri -> currentOnCaptureReview?.invoke(uri) }
     }
@@ -595,14 +604,21 @@ fun CameraScreen(
             }
 
             // Thermal Throttling Warning Banner
-            uiState.thermalWarningMessage?.let { warningMessage ->
+            uiState.thermalWarningRes?.let { warningRes ->
                 ThermalWarningBanner(
-                    message = warningMessage,
+                    message = stringResource(warningRes),
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .padding(top = topInset + 48.dp, start = 16.dp, end = 16.dp),
                 )
             }
+
+            androidx.compose.material3.SnackbarHost(
+                hostState = errorSnackbar,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = topInset + 112.dp, start = 16.dp, end = 16.dp),
+            )
 
             // Live 64-Bin Luminance & RGB Histogram Overlay (in Pro Mode or when toggled)
             if (uiState.isHistogramVisible || currentMode == CameraMode.PRO) {

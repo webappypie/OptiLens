@@ -1,5 +1,7 @@
 package com.webappypie.optilens.core.ui.screens
 
+import com.webappypie.optilens.core.ui.R
+import com.webappypie.optilens.core.ui.text.UiText
 import android.app.Activity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -30,8 +32,8 @@ data class ProUpgradeUiState(
     val isPurchaseInProgress: Boolean = false,
     val isRestoring: Boolean = false,
     val promotionalCopy: String? = null,
-    val errorMessage: String? = null,
-    val successMessage: String? = null,
+    val errorMessage: UiText? = null,
+    val successMessage: UiText? = null,
 ) {
     val annualProduct: OptiProductDetails?
         get() = products.firstOrNull { it.id == OptiProductIds.PRO_ANNUAL }
@@ -68,8 +70,8 @@ class ProUpgradeViewModel @Inject constructor(
         remoteConfigRepository.featureFlags,
     ) { internal, entitlements, products, purchaseStatus, flags ->
         val isPending = purchaseStatus is PurchaseStatus.Pending
-        val error = if (purchaseStatus is PurchaseStatus.Error) purchaseStatus.displayMessage else internal.errorMessage
-        val success = if (purchaseStatus is PurchaseStatus.Success) "Welcome to OptiLens Pro!" else internal.successMessage
+        val error = if (purchaseStatus is PurchaseStatus.Error) UiText(R.string.pro_purchase_failed) else internal.errorMessage
+        val success = if (purchaseStatus is PurchaseStatus.Success) UiText(R.string.pro_welcome) else internal.successMessage
 
         ProUpgradeUiState(
             products = products,
@@ -116,8 +118,8 @@ class ProUpgradeViewModel @Inject constructor(
                 _internalState.update {
                     it.copy(
                         isRestoring = false,
-                        successMessage = if (entitlements.hasFullAccess) "Purchases restored successfully!" else null,
-                        errorMessage = if (!entitlements.hasFullAccess) "No active Pro purchases found to restore." else null,
+                        successMessage = if (entitlements.hasFullAccess) UiText(R.string.pro_restored) else null,
+                        errorMessage = if (!entitlements.hasFullAccess) UiText(R.string.pro_nothing_to_restore) else null,
                     )
                 }
             }
@@ -133,7 +135,7 @@ class ProUpgradeViewModel @Inject constructor(
         val selectedPlanIndex: Int = 0,
         val isPurchaseInProgress: Boolean = false,
         val isRestoring: Boolean = false,
-        val errorMessage: String? = null,
-        val successMessage: String? = null,
+        val errorMessage: UiText? = null,
+        val successMessage: UiText? = null,
     )
 }

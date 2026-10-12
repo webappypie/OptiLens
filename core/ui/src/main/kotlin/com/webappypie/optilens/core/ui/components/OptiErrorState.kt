@@ -1,5 +1,7 @@
 package com.webappypie.optilens.core.ui.components
 
+import androidx.compose.ui.res.stringResource
+import com.webappypie.optilens.core.ui.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -85,7 +87,7 @@ fun OptiErrorState(
         if (onRetry != null) {
             Spacer(modifier = Modifier.height(OptiLensTheme.spacing.xxl))
             OptiButton(
-                text = "Try Again",
+                text = stringResource(R.string.common_try_again),
                 onClick = onRetry,
             )
         }

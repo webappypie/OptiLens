@@ -3,11 +3,12 @@
 | Field | Value |
 |---|---|
 | **Roadmap** | `docs/15_ROADMAP.md` (new numbering; previous `phase-00`…`phase-24` commits belong to the earlier roadmap) |
-| **Last completed** | Consolidated run 2 — remaining phases (2026-10-13): stale-thumbnail + scene-label fixes, multi-frame Night/Moon/HDR merge, WAPCentral-controlled ads |
+| **Last completed** | UI localization parts 1–2 (6 languages) + automated validation (2026-10-13); earlier: burst pipelining, capture tags, splash overlap, tappable hints |
 | **Result** | Capture → preview → Enhance → compare → save/retake · on-device enhancement (1.16 s / 8 MP non-debuggable) · real multi-frame Night, Moon and HDR (≈6–7 s) · WAPCentral `/ads/config` drives the gallery banner · all device-verified on Redmi Note 11 Pro+ (API 33) except Moon and the thermal/cancel fallbacks · unit tests and lint: see report §11 |
 | **Reports** | `docs/status/PHASE_00_REPORT.md`, `PHASE_01_REPORT.md`, `PHASE_02_REPORT.md`, `PHASE_03_04_REPORT.md`, `CONSOLIDATED_COMPLETION_REPORT.md` |
+| **Unit tests / lint** | 543 / 0 failures; lint 0 errors (2026-10-13) |
 | **Deferred / blocked** | Enhance Photo by AI (cloud) — design in `docs/05`; WAPCentral notifications (FCM + debug package + registration contract); portrait bokeh (integrity decision); billing; release/device matrix |
-| **Pending physical checks** | Moon merge on the real moon; thermal fallback; cancel/background during processing; low-RAM devices; signed release build; Light theme/large font on the preview |
+| **Pending physical checks** | Runs 4–9 on device (burst pipelining, capture tags + gentle Enhance + HDR persistence, splash overlap, tappable hints, localized UI incl. long German/French labels, camera error snackbar); Moon merge; thermal/cancel fallbacks; low-RAM devices; signed release |
 
 ## Open owner decisions
 - Fate of the uncommitted documentation changes (new doc pack, deleted legacy reports and release/licence docs) — still uncommitted, untouched by this run.

@@ -1,5 +1,7 @@
 package com.webappypie.optilens.core.ui.camera
 
+import androidx.compose.ui.res.stringResource
+import com.webappypie.optilens.core.ui.R
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -54,7 +56,7 @@ fun ThermalWarningBanner(
         ) {
             Icon(
                 imageVector = Icons.Default.WarningAmber,
-                contentDescription = "Thermal Warning",
+                contentDescription = stringResource(R.string.thermal_warning_a11y),
                 tint = Color(0xFFFF5252),
                 modifier = Modifier.size(18.dp),
             )

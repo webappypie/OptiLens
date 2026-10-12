@@ -1,5 +1,7 @@
 package com.webappypie.optilens.core.ui.gallery
 
+import androidx.compose.ui.res.stringResource
+import com.webappypie.optilens.core.ui.R
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
@@ -98,6 +100,7 @@ fun PhotoDetailScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val resources = androidx.compose.ui.platform.LocalResources.current
     val scope = rememberCoroutineScope()
 
     var bitmap by remember(photoUri) { mutableStateOf<Bitmap?>(null) }
@@ -124,7 +127,7 @@ fun PhotoDetailScreen(
         if (bitmap != null && !bitmap!!.isRecycled) {
             Image(
                 bitmap = bitmap!!.asImageBitmap(),
-                contentDescription = "Photo Detail",
+                contentDescription = stringResource(R.string.detail_photo),
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
                     .fillMaxSize()
@@ -176,7 +179,7 @@ fun PhotoDetailScreen(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
+                    contentDescription = stringResource(R.string.common_back),
                     tint = Color.White,
                 )
             }
@@ -191,7 +194,7 @@ fun PhotoDetailScreen(
                 ) {
                     Icon(
                         imageVector = if (showInfoSheet) Icons.Filled.Info else Icons.Outlined.Info,
-                        contentDescription = "Details",
+                        contentDescription = stringResource(R.string.detail_details),
                         tint = Color.White,
                     )
                 }
@@ -212,7 +215,7 @@ fun PhotoDetailScreen(
                 ) {
                     Icon(
                         imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
-                        contentDescription = "Favorite",
+                        contentDescription = stringResource(R.string.grid_favorite),
                         tint = if (isFavorite) Color(0xFFFF4081) else Color.White,
                     )
                 }
@@ -225,7 +228,7 @@ fun PhotoDetailScreen(
                             putExtra(Intent.EXTRA_STREAM, Uri.parse(photoUri))
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }
-                        context.startActivity(Intent.createChooser(sendIntent, "Share Photo"))
+                        context.startActivity(Intent.createChooser(sendIntent, resources.getString(R.string.common_share_photo)))
                     },
                     modifier = Modifier
                         .clip(CircleShape)
@@ -233,7 +236,7 @@ fun PhotoDetailScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Share,
-                        contentDescription = "Share",
+                        contentDescription = stringResource(R.string.common_share),
                         tint = Color.White,
                     )
                 }
@@ -247,7 +250,7 @@ fun PhotoDetailScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Delete,
-                        contentDescription = "Delete",
+                        contentDescription = stringResource(R.string.common_delete),
                         tint = Color.White,
                     )
                 }
@@ -274,13 +277,13 @@ fun PhotoDetailScreen(
             ) {
                 Column {
                     Text(
-                        text = "Enhance",
+                        text = stringResource(R.string.detail_enhance),
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp,
                     )
                     Text(
-                        text = "Relight, denoise and restore detail",
+                        text = stringResource(R.string.detail_enhance_sub),
                         color = Color.White.copy(alpha = 0.7f),
                         fontSize = 11.sp,
                     )
@@ -296,11 +299,11 @@ fun PhotoDetailScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Default.AutoAwesome,
-                        contentDescription = "Enhance",
+                        contentDescription = null,
                         modifier = Modifier.size(16.dp),
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Enhance", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.detail_enhance), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -319,7 +322,7 @@ fun PhotoDetailScreen(
                     .padding(horizontal = 24.dp, vertical = 16.dp),
             ) {
                 Text(
-                    text = "Photo Information",
+                    text = stringResource(R.string.detail_info),
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -328,17 +331,17 @@ fun PhotoDetailScreen(
 
                 exifSummary?.let { exif ->
                     if (exif.opticalSummary.isNotEmpty()) {
-                        MetadataRow(label = "Optics", value = exif.opticalSummary)
+                        MetadataRow(label = stringResource(R.string.detail_optics), value = exif.opticalSummary)
                     }
                     val model = exif.lensModel
                     if (model != null) {
-                        MetadataRow(label = "Lens Model", value = model)
+                        MetadataRow(label = stringResource(R.string.detail_lens_model), value = model)
                     }
                     if (exif.focalLength35mm != null) {
-                        MetadataRow(label = "Focal Length (35mm eq)", value = "${exif.focalLength35mm}mm")
+                        MetadataRow(label = stringResource(R.string.detail_focal), value = "${exif.focalLength35mm}mm")
                     }
                     if (exif.fNumber != null) {
-                        MetadataRow(label = "Aperture", value = "f/${exif.fNumber}")
+                        MetadataRow(label = stringResource(R.string.detail_aperture), value = "f/${exif.fNumber}")
                     }
                     if (exif.iso != null) {
                         MetadataRow(label = "ISO", value = "${exif.iso}")
@@ -346,7 +349,7 @@ fun PhotoDetailScreen(
                 }
 
                 MetadataRow(
-                    label = "Storage URI",
+                    label = stringResource(R.string.detail_storage_uri),
                     value = photoUri.substringBefore("?")
                 )
 
@@ -359,8 +362,8 @@ fun PhotoDetailScreen(
     if (showDeleteConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirmDialog = false },
-            title = { Text("Delete Photo?") },
-            text = { Text("This photo will be permanently deleted from your OptiLens library.") },
+            title = { Text(stringResource(R.string.detail_delete_title)) },
+            text = { Text(stringResource(R.string.detail_delete_message)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -371,12 +374,12 @@ fun PhotoDetailScreen(
                         }
                     }
                 ) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirmDialog = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.common_cancel))
                 }
             },
         )

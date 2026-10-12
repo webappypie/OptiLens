@@ -130,7 +130,7 @@ class ProUpgradeViewModelTest {
             val proState = expectMostRecentItem()
             assertTrue(proState.isPro)
             assertTrue(proState.isLifetime)
-            assertEquals("Welcome to OptiLens Pro!", proState.successMessage)
+            assertEquals(com.webappypie.optilens.core.ui.text.UiText(com.webappypie.optilens.core.ui.R.string.pro_welcome), proState.successMessage)
         }
     }
 
@@ -147,7 +147,7 @@ class ProUpgradeViewModelTest {
 
             val restoredState = expectMostRecentItem()
             assertTrue(restoredState.isPro)
-            assertEquals("Purchases restored successfully!", restoredState.successMessage)
+            assertEquals(com.webappypie.optilens.core.ui.text.UiText(com.webappypie.optilens.core.ui.R.string.pro_restored), restoredState.successMessage)
             assertNull(restoredState.errorMessage)
         }
     }
@@ -164,7 +164,7 @@ class ProUpgradeViewModelTest {
             advanceUntilIdle()
 
             val successState = expectMostRecentItem()
-            assertEquals("Welcome to OptiLens Pro!", successState.successMessage)
+            assertEquals(com.webappypie.optilens.core.ui.text.UiText(com.webappypie.optilens.core.ui.R.string.pro_welcome), successState.successMessage)
 
             viewModel.clearMessages()
             advanceUntilIdle()

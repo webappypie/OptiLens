@@ -251,3 +251,23 @@ AI/Editing Tools screen and its ViewModel, Pro manual-control bar, Best Shot she
 All five translations are machine-assisted (marked at the top of each file) and **need native-speaker review before release**, especially Hindi and Japanese.
 
 To verify: switch the device or app language (Settings → Apps → OptiLens → Language) to each locale and walk camera → capture → preview → enhance → save → gallery → settings; check for truncation on long German/French labels (e.g. "Save Enhanced Photo" button, the view-mode switch); run `testDebugUnitTest lintDebug` (lint will flag missing translations if a key is added only in English).
+
+# Run 9 — UI localization, part 2 + automated validation (2026-10-13)
+
+## Changes
+| Change | Detail |
+|---|---|
+| More strings | 329 strings + 3 plurals per locale (en, de, es, fr, hi, ja); lint reports no missing translations |
+| Newly localized | Editing Tools screen and ViewModel (tool names, blur types, processing stages, sliders, upscale limits, fidelity disclosures via `AiToolLabels.kt`), disclosure banner, Pro manual-control bar, Best Shot sheet, Photo detail, Upgrade screen and ViewModel, lens-dirty and thermal banners, shared components (top bar, error state, bottom sheet) |
+| Errors | `OptiError.toUiText()` maps each core error type to a short localized message; internal English details (`reason`, `stage`, exception text) are no longer shown to users. Camera, Editing Tools and Upgrade ViewModels now emit `UiText` |
+| **Bug fixed: camera errors were never shown** | `CameraViewModel` set `errorMessage` on capture/save/burst failures, but the camera screen never displayed it, so failures were silent. A snackbar now shows them (then clears the state) |
+| **Misleading claim fixed** | Photo detail's Enhance subtitle said "Relight, denoise and restore detail"; it now reads "Tone, colour, noise and detail" (what the pipeline does) |
+| Lint | Strings read in click handlers/coroutines now use `LocalResources.current` (configuration-aware) instead of `LocalContext.current` (5 lint errors fixed) |
+| Intentionally English | Hardware Diagnostics and its performance card (developer tool), technical tokens (ISO, RAW10/12, DNG), the brand name and splash tagline, the Moon stability cue from `core:camera` |
+
+## Automated validation (this run)
+`assembleDebug testDebugUnitTest lintDebug --continue`, then `:core:ui:testDebugUnitTest assembleDebug` after the lint fix → **543 unit tests, 0 failures; lint 0 errors in every module; debug build OK.** This automated pass also covers Runs 4–8 at unit/lint level (their earlier "NOT TESTED" status referred to no test run at all); **device verification of Runs 4–9 is still pending.**
+Tests updated for the new types: `PhotoReviewViewModelTest`, `GalleryViewModelTest`, `ProUpgradeViewModelTest`, `PerformanceUiTest` (thermal warning now a resource id).
+
+## Translation quality
+Machine-assisted; needs native-speaker review before release (marked in each `values-xx/strings.xml`).

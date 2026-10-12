@@ -1,5 +1,7 @@
 package com.webappypie.optilens.core.ui.aitools
 
+import androidx.compose.ui.res.stringResource
+import com.webappypie.optilens.core.ui.R
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -62,14 +64,14 @@ fun AiFidelityDisclosureBanner(
             ) {
                 Icon(
                     imageVector = Icons.Default.Info,
-                    contentDescription = "Edit disclosure",
+                    contentDescription = stringResource(R.string.disclosure_a11y),
                     tint = Color(0xFFFFB74D), // Soft amber/gold warning color
                     modifier = Modifier.size(20.dp),
                 )
                 Spacer(modifier = Modifier.width(10.dp))
                 Column(verticalArrangement = Arrangement.Center) {
                     Text(
-                        text = "Reconstructed content",
+                        text = stringResource(R.string.disclosure_title),
                         color = Color(0xFFFFB74D),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,

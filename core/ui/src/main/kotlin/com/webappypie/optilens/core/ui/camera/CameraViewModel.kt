@@ -1,5 +1,8 @@
 package com.webappypie.optilens.core.ui.camera
 
+import com.webappypie.optilens.core.ui.R
+import com.webappypie.optilens.core.ui.text.UiText
+import com.webappypie.optilens.core.ui.text.toUiText
 import androidx.camera.core.MeteringPoint
 import androidx.camera.core.Preview
 import androidx.compose.ui.geometry.Offset
@@ -154,12 +157,13 @@ data class CameraUiState(
     val trackedObjectState: TrackedObjectState = TrackedObjectState.INACTIVE,
     val ocrExtractedText: String? = null,
     val isExtractingOcr: Boolean = false,
-    val errorMessage: String? = null,
+    val errorMessage: UiText? = null,
 ) {
-    val thermalWarningMessage: String?
+    @get:androidx.annotation.StringRes
+    val thermalWarningRes: Int?
         get() = when (thermalState) {
-            DeviceThermalState.CRITICAL -> "Device is hot. Camera features reduced to prevent overheating."
-            DeviceThermalState.SEVERE -> "Device warm. Camera features limited to cool down."
+            DeviceThermalState.CRITICAL -> R.string.thermal_critical
+            DeviceThermalState.SEVERE -> R.string.thermal_severe
             else -> null
         }
 }
@@ -474,7 +478,7 @@ class CameraViewModel @Inject constructor(
         viewModelScope.launch {
             when (val result = cameraController.bindPreview(lifecycleOwner, surfaceProvider)) {
                 is OptiResult.Error -> {
-                    _internalState.update { it.copy(errorMessage = result.error.displayMessage) }
+                    _internalState.update { it.copy(errorMessage = result.error.toUiText()) }
                 }
                 else -> Unit
             }
@@ -641,7 +645,7 @@ class CameraViewModel @Inject constructor(
                         _internalState.update { it.copy(isProcessingNightShot = true) }
                         result.data.use { burst -> mergeAndSaveBurst(burst, listOf(0), shouldMirror, toneMap = true, label = "HDR") }
                     }
-                    is OptiResult.Error -> _internalState.update { it.copy(errorMessage = result.error.displayMessage) }
+                    is OptiResult.Error -> _internalState.update { it.copy(errorMessage = result.error.toUiText()) }
                     else -> Unit
                 }
             } finally {
@@ -666,7 +670,7 @@ class CameraViewModel @Inject constructor(
         }
         viewModelScope.launch {
             when (val result = cameraController.setCaptureAspectRatio(next.capture)) {
-                is OptiResult.Error -> _internalState.update { it.copy(errorMessage = result.error.displayMessage) }
+                is OptiResult.Error -> _internalState.update { it.copy(errorMessage = result.error.toUiText()) }
                 else -> _internalState.update { it.copy(aspectRatio = next) }
             }
         }
@@ -712,7 +716,7 @@ class CameraViewModel @Inject constructor(
                     _internalState.update { it.copy(isTorchEnabled = next) }
                 }
                 is OptiResult.Error -> {
-                    _internalState.update { it.copy(errorMessage = result.error.displayMessage) }
+                    _internalState.update { it.copy(errorMessage = result.error.toUiText()) }
                 }
                 else -> Unit
             }
@@ -726,7 +730,7 @@ class CameraViewModel @Inject constructor(
                     _internalState.update { it.copy(isFrontCamera = cameraController.isFrontCamera) }
                 }
                 is OptiResult.Error -> {
-                    _internalState.update { it.copy(errorMessage = result.error.displayMessage) }
+                    _internalState.update { it.copy(errorMessage = result.error.toUiText()) }
                 }
                 else -> Unit
             }
@@ -783,7 +787,7 @@ class CameraViewModel @Inject constructor(
                     _internalState.update {
                         it.copy(
                             isCapturing = false,
-                            errorMessage = result.error.displayMessage,
+                            errorMessage = result.error.toUiText(),
                         )
                     }
                 }
@@ -816,7 +820,7 @@ class CameraViewModel @Inject constructor(
                     _internalState.update {
                         it.copy(
                             isBurstCapturing = false,
-                            errorMessage = result.error.displayMessage,
+                            errorMessage = result.error.toUiText(),
                         )
                     }
                 }
@@ -869,7 +873,7 @@ class CameraViewModel @Inject constructor(
             try {
                 if (plan?.mode == NightModeType.VENDOR_EXTENSION) {
                     when (val result = cameraController.capturePhoto(targetRotation, mirrorHorizontal = shouldMirror)) {
-                        is OptiResult.Error -> _internalState.update { it.copy(errorMessage = result.error.displayMessage) }
+                        is OptiResult.Error -> _internalState.update { it.copy(errorMessage = result.error.toUiText()) }
                         else -> Unit
                     }
                 } else {
@@ -883,7 +887,7 @@ class CameraViewModel @Inject constructor(
                                 mergeAndSaveBurst(burst, offsets, shouldMirror, toneMap = true, label = "Night")
                             }
                         }
-                        is OptiResult.Error -> _internalState.update { it.copy(errorMessage = result.error.displayMessage) }
+                        is OptiResult.Error -> _internalState.update { it.copy(errorMessage = result.error.toUiText()) }
                         else -> Unit
                     }
                 }
@@ -946,11 +950,11 @@ class CameraViewModel @Inject constructor(
     /** Persists one real burst frame; reports an actionable error when none is usable. */
     private suspend fun saveSelectedBurstFrame(frame: FramePacket?, mirrorHorizontal: Boolean) {
         if (frame == null) {
-            _internalState.update { it.copy(errorMessage = "No usable frame was captured. Please try again.") }
+            _internalState.update { it.copy(errorMessage = UiText(R.string.camera_error_no_frame)) }
             return
         }
         when (val saved = cameraController.saveBurstFrame(frame, mirrorHorizontal)) {
-            is OptiResult.Error -> _internalState.update { it.copy(errorMessage = saved.error.displayMessage) }
+            is OptiResult.Error -> _internalState.update { it.copy(errorMessage = saved.error.toUiText()) }
             else -> Unit
         }
     }
@@ -984,7 +988,7 @@ class CameraViewModel @Inject constructor(
             try {
                 when (val result = cameraController.capturePhoto(targetRotation, mirrorHorizontal = shouldMirror)) {
                     is OptiResult.Error -> {
-                        _internalState.update { it.copy(errorMessage = result.error.displayMessage) }
+                        _internalState.update { it.copy(errorMessage = result.error.toUiText()) }
                     }
                     else -> Unit
                 }
@@ -1051,7 +1055,7 @@ class CameraViewModel @Inject constructor(
                         }
                     }
                     is OptiResult.Error -> {
-                        _internalState.update { it.copy(errorMessage = burstResult.error.displayMessage) }
+                        _internalState.update { it.copy(errorMessage = burstResult.error.toUiText()) }
                     }
                     else -> Unit
                 }
@@ -1124,7 +1128,7 @@ class CameraViewModel @Inject constructor(
                 )
                 cameraController.setShutterSpeed(petConfig.targetShutterSpeedNanos)
                 when (val result = cameraController.capturePhoto(targetRotation, mirrorHorizontal = shouldMirrorCapture())) {
-                    is OptiResult.Error -> _internalState.update { it.copy(errorMessage = result.error.displayMessage) }
+                    is OptiResult.Error -> _internalState.update { it.copy(errorMessage = result.error.toUiText()) }
                     else -> Unit
                 }
             } finally {
@@ -1161,7 +1165,7 @@ class CameraViewModel @Inject constructor(
             try {
                 foodModeEngine.getStabilizedWhiteBalance(5200)
                 when (val result = cameraController.capturePhoto(targetRotation, mirrorHorizontal = shouldMirrorCapture())) {
-                    is OptiResult.Error -> _internalState.update { it.copy(errorMessage = result.error.displayMessage) }
+                    is OptiResult.Error -> _internalState.update { it.copy(errorMessage = result.error.toUiText()) }
                     else -> Unit
                 }
             } finally {
@@ -1209,7 +1213,7 @@ class CameraViewModel @Inject constructor(
                         _internalState.update { it.copy(documentScanResult = scanResult) }
                     }
                     is OptiResult.Error -> {
-                        _internalState.update { it.copy(errorMessage = result.error.displayMessage) }
+                        _internalState.update { it.copy(errorMessage = result.error.toUiText()) }
                     }
                     else -> Unit
                 }
@@ -1270,12 +1274,12 @@ class CameraViewModel @Inject constructor(
                         }
                     }
                     is OptiResult.Error -> {
-                        _internalState.update { it.copy(errorMessage = burstResult.error.displayMessage) }
+                        _internalState.update { it.copy(errorMessage = burstResult.error.toUiText()) }
                     }
                     else -> Unit
                 }
             } catch (t: Throwable) {
-                _internalState.update { it.copy(errorMessage = t.message ?: "Moon capture failed") }
+                _internalState.update { it.copy(errorMessage = UiText(R.string.camera_error_moon)) }
             } finally {
                 cameraController.setShutterSpeed(null)
                 previousEvIndex?.let { cameraController.setExposureCompensation(it) }
@@ -1337,12 +1341,12 @@ class CameraViewModel @Inject constructor(
                         }
                     }
                     is OptiResult.Error -> {
-                        _internalState.update { it.copy(errorMessage = burstResult.error.displayMessage) }
+                        _internalState.update { it.copy(errorMessage = burstResult.error.toUiText()) }
                     }
                     else -> Unit
                 }
             } catch (t: Throwable) {
-                _internalState.update { it.copy(errorMessage = t.message ?: "Wildlife burst capture failed") }
+                _internalState.update { it.copy(errorMessage = UiText(R.string.camera_error_wildlife)) }
             } finally {
                 cameraController.setShutterSpeed(null)
                 _internalState.update {
@@ -1376,7 +1380,7 @@ class CameraViewModel @Inject constructor(
                         _internalState.update { it.copy(ocrExtractedText = result.data) }
                     }
                     is OptiResult.Error -> {
-                        _internalState.update { it.copy(errorMessage = result.error.displayMessage) }
+                        _internalState.update { it.copy(errorMessage = result.error.toUiText()) }
                     }
                     else -> Unit
                 }
@@ -1430,7 +1434,7 @@ class CameraViewModel @Inject constructor(
         val isProcessingWildlifeShot: Boolean = false,
         val ocrExtractedText: String? = null,
         val isExtractingOcr: Boolean = false,
-        val errorMessage: String? = null,
+        val errorMessage: UiText? = null,
     )
 
     companion object {

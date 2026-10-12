@@ -1,5 +1,7 @@
 package com.webappypie.optilens.core.ui.camera.pro
 
+import androidx.compose.ui.res.stringResource
+import com.webappypie.optilens.core.ui.R
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -157,7 +159,7 @@ fun ProControlsBar(
             // ISO Tab
             ProTabChip(
                 label = "ISO",
-                value = proState.iso?.toString() ?: "AUTO",
+                value = proState.iso?.toString() ?: stringResource(R.string.pro_auto),
                 isActive = activeTab == ProControlTab.ISO,
                 isManual = proState.iso != null,
                 isEnabled = proState.isIsoManualSupported,
@@ -193,8 +195,8 @@ fun ProControlsBar(
 
             // Focus Tab
             ProTabChip(
-                label = "FOCUS",
-                value = if (!proState.isFocusManualSupported) "FIXED" else if (proState.focusDistanceDiopters != null) String.format(java.util.Locale.US, "%.1f", proState.focusDistanceDiopters) else "AF",
+                label = stringResource(R.string.pro_focus),
+                value = if (!proState.isFocusManualSupported) stringResource(R.string.pro_fixed) else if (proState.focusDistanceDiopters != null) String.format(java.util.Locale.US, "%.1f", proState.focusDistanceDiopters) else "AF",
                 isActive = activeTab == ProControlTab.FOCUS,
                 isManual = proState.focusDistanceDiopters != null,
                 isEnabled = proState.isFocusManualSupported,
@@ -218,12 +220,12 @@ fun ProControlsBar(
             // RAW Tab
             val rawValue = when {
                 !proState.isRawSupported -> "N/A"
-                !proState.isRawEnabled -> "OFF"
+                !proState.isRawEnabled -> stringResource(R.string.pro_off)
                 proState.saveCompanionJpeg -> "RAW+JPG"
                 else -> "RAW"
             }
             ProTabChip(
-                label = "FORMAT",
+                label = stringResource(R.string.pro_format),
                 value = rawValue,
                 isActive = activeTab == ProControlTab.RAW,
                 isManual = proState.isRawEnabled,
@@ -235,8 +237,8 @@ fun ProControlsBar(
 
             // Visual Assistance: Focus Peaking Quick Toggle
             ProTabChip(
-                label = "PEAK",
-                value = if (proState.focusPeakingEnabled) "ON" else "OFF",
+                label = stringResource(R.string.pro_peak),
+                value = stringResource(if (proState.focusPeakingEnabled) R.string.pro_on else R.string.pro_off),
                 isActive = false,
                 isManual = proState.focusPeakingEnabled,
                 isEnabled = true,
@@ -245,8 +247,8 @@ fun ProControlsBar(
 
             // Visual Assistance: Exposure Zebra Quick Toggle
             ProTabChip(
-                label = "ZEBRA",
-                value = if (proState.exposureZebraEnabled) "ON" else "OFF",
+                label = stringResource(R.string.pro_zebra),
+                value = stringResource(if (proState.exposureZebraEnabled) R.string.pro_on else R.string.pro_off),
                 isActive = false,
                 isManual = proState.exposureZebraEnabled,
                 isEnabled = true,
@@ -255,7 +257,7 @@ fun ProControlsBar(
 
             // Visual Assistance: Histogram Mode Cycle
             ProTabChip(
-                label = "HIST",
+                label = stringResource(R.string.pro_hist),
                 value = proState.histogramMode.label,
                 isActive = false,
                 isManual = false,
@@ -280,13 +282,13 @@ fun ProControlsBar(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Default.RestartAlt,
-                        contentDescription = "Reset Pro controls to Auto",
+                        contentDescription = stringResource(R.string.pro_reset_a11y),
                         tint = if (proState.isAnyManualActive) overlayColors.activeAccent else overlayColors.controlOnSurface.copy(alpha = 0.5f),
                         modifier = Modifier.size(16.dp),
                     )
                     Spacer(modifier = Modifier.width(2.dp))
                     Text(
-                        text = "RESET",
+                        text = stringResource(R.string.pro_reset),
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (proState.isAnyManualActive) overlayColors.activeAccent else overlayColors.controlOnSurface.copy(alpha = 0.5f),
@@ -360,7 +362,7 @@ private fun IsoControlSlider(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Auto-only exposure · Manual ISO unavailable",
+                text = stringResource(R.string.pro_iso_unavailable),
                 fontSize = 11.sp,
                 color = overlayColors.controlOnSurface.copy(alpha = 0.6f),
                 fontFamily = FontFamily.Monospace,
@@ -376,7 +378,7 @@ private fun IsoControlSlider(
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
-            text = "AUTO",
+            text = stringResource(R.string.pro_auto),
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
             color = if (currentIso == null) overlayColors.activeAccent else overlayColors.controlOnSurface,
@@ -421,7 +423,7 @@ private fun ShutterControlPicker(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Auto-only exposure · Manual Shutter unavailable",
+                text = stringResource(R.string.pro_shutter_unavailable),
                 fontSize = 11.sp,
                 color = overlayColors.controlOnSurface.copy(alpha = 0.6f),
                 fontFamily = FontFamily.Monospace,
@@ -541,7 +543,7 @@ private fun FocusControlSlider(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Fixed-focus lens · Manual focus unavailable",
+                text = stringResource(R.string.pro_focus_unavailable),
                 fontSize = 11.sp,
                 color = overlayColors.controlOnSurface.copy(alpha = 0.6f),
                 fontFamily = FontFamily.Monospace,
@@ -646,7 +648,7 @@ private fun RawControlPicker(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "RAW capture unsupported on this hardware sensor",
+                text = stringResource(R.string.pro_raw_unsupported),
                 fontSize = 11.sp,
                 color = overlayColors.controlOnSurface.copy(alpha = 0.6f),
                 fontFamily = FontFamily.Monospace,
@@ -672,7 +674,7 @@ private fun RawControlPicker(
                 .padding(horizontal = 10.dp, vertical = 5.dp),
         ) {
             Text(
-                text = "JPEG ONLY",
+                text = stringResource(R.string.pro_jpeg_only),
                 fontSize = 11.sp,
                 fontWeight = if (!isRawEnabled) FontWeight.Bold else FontWeight.Normal,
                 fontFamily = FontFamily.Monospace,
@@ -759,7 +761,7 @@ private fun RawControlPicker(
                     .padding(horizontal = 8.dp, vertical = 5.dp),
             ) {
                 Text(
-                    text = if (companionJpeg) "+ JPEG COMPANION" else "RAW ONLY",
+                    text = stringResource(if (companionJpeg) R.string.pro_jpeg_companion else R.string.pro_raw_only),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
                     fontFamily = FontFamily.Monospace,

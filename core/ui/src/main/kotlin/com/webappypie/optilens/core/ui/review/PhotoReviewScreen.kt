@@ -107,6 +107,7 @@ fun PhotoReviewScreen(
     viewModel: PhotoReviewViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
+    val resources = androidx.compose.ui.platform.LocalResources.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var confirmRetake by rememberSaveable { mutableStateOf(false) }
@@ -221,7 +222,7 @@ fun PhotoReviewScreen(
                             putExtra(Intent.EXTRA_STREAM, Uri.parse(shareUri))
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }
-                        context.startActivity(Intent.createChooser(sendIntent, context.getString(R.string.common_share_photo)))
+                        context.startActivity(Intent.createChooser(sendIntent, resources.getString(R.string.common_share_photo)))
                     },
                 )
             }

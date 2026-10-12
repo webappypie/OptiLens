@@ -1,5 +1,7 @@
 package com.webappypie.optilens.core.ui.screens
 
+import androidx.compose.ui.res.stringResource
+import com.webappypie.optilens.core.ui.R
 import android.app.Activity
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -52,9 +54,9 @@ import com.webappypie.optilens.core.ui.theme.OptiLensTheme
 
 // Only benefits the Pro entitlement actually unlocks today.
 private val ProFeatures = listOf(
-    "All editing tools: Deblur, Object Cleanup, Reflection Cleaner, Upscale and Photo Restore",
-    "No ads anywhere in the app",
-    "Processing stays on your device; photos are never uploaded",
+    R.string.pro_feature_tools,
+    R.string.pro_feature_no_ads,
+    R.string.pro_feature_on_device,
 )
 
 /**
@@ -76,11 +78,11 @@ fun ProUpgradeScreen(
 
     LaunchedEffect(uiState.errorMessage, uiState.successMessage) {
         uiState.errorMessage?.let { error ->
-            snackbarHostState.showSnackbar(error)
+            snackbarHostState.showSnackbar(error.resolve(context))
             viewModel.clearMessages()
         }
         uiState.successMessage?.let { success ->
-            snackbarHostState.showSnackbar(success)
+            snackbarHostState.showSnackbar(success.resolve(context))
             viewModel.clearMessages()
         }
     }
@@ -88,7 +90,7 @@ fun ProUpgradeScreen(
     Scaffold(
         topBar = {
             OptiTopBar(
-                title = "OptiLens Pro",
+                title = stringResource(R.string.pro_title),
                 onBackClick = onNavigateBack,
             )
         },
@@ -125,7 +127,7 @@ fun ProUpgradeScreen(
             Spacer(modifier = Modifier.height(OptiLensTheme.spacing.m))
 
             Text(
-                text = if (uiState.isPro) "You are an OptiLens Pro" else "OptiLens Pro",
+                text = stringResource(if (uiState.isPro) R.string.pro_you_are else R.string.pro_title),
                 style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.Center,
@@ -133,11 +135,11 @@ fun ProUpgradeScreen(
 
             Text(
                 text = if (uiState.isLifetime) {
-                    "Lifetime Access Active • Zero Ads • All Pro Features Unlocked"
+                    stringResource(R.string.pro_lifetime_active)
                 } else if (uiState.isPro) {
-                    "Active Pro Subscription • Zero Ads • Premium Tools Unlocked"
+                    stringResource(R.string.pro_sub_active)
                 } else {
-                    uiState.promotionalCopy ?: "Unlock every editing tool and remove ads."
+                    uiState.promotionalCopy ?: stringResource(R.string.pro_default_copy)
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -175,7 +177,7 @@ fun ProUpgradeScreen(
                         Spacer(modifier = Modifier.width(OptiLensTheme.spacing.m))
 
                         Text(
-                            text = feature,
+                            text = stringResource(feature),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.weight(1f),
@@ -193,7 +195,7 @@ fun ProUpgradeScreen(
                     shape = RoundedCornerShape(12.dp),
                 ) {
                     Text(
-                        text = "Purchases aren't available right now. Google Play didn't return any OptiLens products. Check your connection and try again later.",
+                        text = stringResource(R.string.pro_unavailable),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
@@ -228,7 +230,7 @@ fun ProUpgradeScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
                             Text(
-                                text = "Annual",
+                                text = stringResource(R.string.pro_annual),
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                             )
                             Text(
@@ -237,7 +239,7 @@ fun ProUpgradeScreen(
                                 color = MaterialTheme.colorScheme.primary,
                             )
                             Text(
-                                text = if (annual.hasFreeTrial) "Includes a free trial" else "Billed yearly",
+                                text = stringResource(if (annual.hasFreeTrial) R.string.pro_trial else R.string.pro_billed_yearly),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -266,7 +268,7 @@ fun ProUpgradeScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
                             Text(
-                                text = "Lifetime",
+                                text = stringResource(R.string.pro_lifetime),
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                             )
                             Text(
@@ -275,7 +277,7 @@ fun ProUpgradeScreen(
                                 color = MaterialTheme.colorScheme.primary,
                             )
                             Text(
-                                text = "Pay once, yours forever",
+                                text = stringResource(R.string.pro_pay_once),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -298,12 +300,14 @@ fun ProUpgradeScreen(
                 } else {
                     val selected = uiState.selectedProduct
                     OptiButton(
-                        text = when {
-                            selected == null -> "Unavailable"
-                            selected.id == uiState.lifetimeProduct?.id -> "Buy lifetime access"
-                            selected.hasFreeTrial -> "Start free trial"
-                            else -> "Subscribe yearly"
-                        },
+                        text = stringResource(
+                            when {
+                                selected == null -> R.string.pro_cta_unavailable
+                                selected.id == uiState.lifetimeProduct?.id -> R.string.pro_cta_lifetime
+                                selected.hasFreeTrial -> R.string.pro_cta_trial
+                                else -> R.string.pro_cta_subscribe
+                            },
+                        ),
                         enabled = selected != null,
                         onClick = {
                             if (activity != null) {
@@ -326,12 +330,12 @@ fun ProUpgradeScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Text(
-                            text = "PRO STATUS ACTIVE",
+                            text = stringResource(R.string.pro_status_active),
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                             color = MaterialTheme.colorScheme.primary,
                         )
                         Text(
-                            text = "All editing tools are unlocked and ads are removed.",
+                            text = stringResource(R.string.pro_status_text),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,
@@ -352,14 +356,14 @@ fun ProUpgradeScreen(
                     CircularProgressIndicator(modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Restoring...",
+                        text = stringResource(R.string.pro_restoring),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 } else {
                     TextButton(onClick = { viewModel.restorePurchases() }) {
                         Text(
-                            text = "Restore Purchases",
+                            text = stringResource(R.string.pro_restore),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

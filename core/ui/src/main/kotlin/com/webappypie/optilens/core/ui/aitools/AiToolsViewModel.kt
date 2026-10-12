@@ -1,5 +1,7 @@
 package com.webappypie.optilens.core.ui.aitools
 
+import com.webappypie.optilens.core.ui.R
+import com.webappypie.optilens.core.ui.text.UiText
 import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -51,7 +53,7 @@ data class AiToolsUiState(
     val disclosureMessage: String? = null,
     val isSaved: Boolean = false,
     val savedUri: String? = null,
-    val errorMessage: String? = null,
+    val errorMessage: UiText? = null,
     val isPro: Boolean = false,
     val hasAiPack: Boolean = false,
 ) {
@@ -161,13 +163,13 @@ class AiToolsViewModel @Inject constructor(
                     }
                 } else {
                     _uiState.update {
-                        it.copy(isLoadingPhoto = false, errorMessage = "This photo couldn't be opened. Try another one.")
+                        it.copy(isLoadingPhoto = false, errorMessage = UiText(R.string.tools_error_open))
                     }
                 }
             } catch (e: Exception) {
                 logger.e(TAG, "Error loading photo for editing tools", e)
                 _uiState.update {
-                    it.copy(isLoadingPhoto = false, errorMessage = "This photo couldn't be opened. Try another one.")
+                    it.copy(isLoadingPhoto = false, errorMessage = UiText(R.string.tools_error_open))
                 }
             }
         }
@@ -205,7 +207,7 @@ class AiToolsViewModel @Inject constructor(
         if (_uiState.value.selectedTool == AiToolType.UPSCALE &&
             _uiState.value.upscaleFactor !in _uiState.value.allowedUpscaleFactors
         ) {
-            _uiState.update { it.copy(errorMessage = "This photo is too large to upscale ${it.upscaleFactor}x.") }
+            _uiState.update { it.copy(errorMessage = UiText(R.string.tools_error_too_large, listOf(it.upscaleFactor))) }
             return
         }
 
@@ -228,7 +230,7 @@ class AiToolsViewModel @Inject constructor(
                     AiToolType.INPAINTING -> {
                         if (maskBitmap == null) {
                             _uiState.update {
-                                it.copy(isProcessing = false, errorMessage = "Please brush over an object to remove first.")
+                                it.copy(isProcessing = false, errorMessage = UiText(R.string.tools_error_brush))
                             }
                             return@launch
                         }
@@ -269,12 +271,12 @@ class AiToolsViewModel @Inject constructor(
             } catch (e: OutOfMemoryError) {
                 logger.e(TAG, "Out of memory applying edit", e)
                 _uiState.update {
-                    it.copy(isProcessing = false, currentStage = null, errorMessage = "Not enough memory for this edit on this photo.")
+                    it.copy(isProcessing = false, currentStage = null, errorMessage = UiText(R.string.tools_error_memory))
                 }
             } catch (e: Exception) {
                 logger.e(TAG, "Error applying AI transformation", e)
                 _uiState.update {
-                    it.copy(isProcessing = false, currentStage = null, errorMessage = e.message ?: "The edit couldn't be applied.")
+                    it.copy(isProcessing = false, currentStage = null, errorMessage = UiText(R.string.tools_error_apply))
                 }
             }
         }
@@ -383,13 +385,13 @@ class AiToolsViewModel @Inject constructor(
                     }
                 } else {
                     _uiState.update {
-                        it.copy(isProcessing = false, errorMessage = "Failed to export enhanced image")
+                        it.copy(isProcessing = false, errorMessage = UiText(R.string.tools_error_save))
                     }
                 }
             } catch (e: Exception) {
                 logger.e(TAG, "Error saving AI transformed photo", e)
                 _uiState.update {
-                    it.copy(isProcessing = false, errorMessage = e.message ?: "Failed to save photo")
+                    it.copy(isProcessing = false, errorMessage = UiText(R.string.tools_error_save))
                 }
             }
         }
