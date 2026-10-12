@@ -22,4 +22,13 @@ object AppModule {
         override val applicationId: String = BuildConfig.APPLICATION_ID
         override val showDiagnostics: Boolean = BuildConfig.DEBUG && LocalFeatureFlags.diagnosticsEnabled
     }
+
+    @Provides
+    @Singleton
+    fun provideWapCentralCredentials(): com.webappypie.optilens.core.common.wapcentral.WapCentralCredentials =
+        com.webappypie.optilens.core.common.wapcentral.WapCentralCredentials(
+            baseUrl = BuildConfig.WAPCENTRAL_BASE_URL,
+            appId = BuildConfig.WAPCENTRAL_APP_ID,
+            appKey = BuildConfig.WAPCENTRAL_APP_KEY,
+        )
 }

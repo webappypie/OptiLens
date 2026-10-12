@@ -211,13 +211,10 @@ class RealtimeIntelligenceAnalyzer(
                                 confidence = moonState.confidence,
                                 timestampMs = frameData.timestampMs,
                             )
-                        } else if (wildlifeState.isDetected && detectedFaces.isEmpty()) {
-                            com.webappypie.optilens.core.camera.model.SceneClassification(
-                                primaryScene = com.webappypie.optilens.core.camera.model.SceneType.WILDLIFE,
-                                confidence = wildlifeState.confidence,
-                                timestampMs = frameData.timestampMs,
-                            )
                         } else {
+                            // wildlifeState is a salient-texture region used for focus in the
+                            // user-selected Wildlife mode; it is not an animal detector, so it
+                            // must not relabel the scene.
                             sceneClassifier.classify(
                                 frameData = frameData,
                                 metrics = qualityMetrics,

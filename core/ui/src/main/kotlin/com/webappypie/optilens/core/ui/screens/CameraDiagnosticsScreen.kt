@@ -216,6 +216,8 @@ private fun DiagnosticsContent(
             modifier = Modifier.fillMaxWidth(),
         )
 
+        SpecRow("WAPCentral Ads", state.wapCentralAdsStatus)
+
         // ── Camera Selector Tabs ──────────────────────────────────────
         if (profile.cameras.isNotEmpty()) {
             ScrollableTabRow(

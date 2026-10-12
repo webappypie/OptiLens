@@ -92,9 +92,61 @@ New tests: `LocalEnhancementPipelineTest` (14: neutrality, exposure, black/white
 
 `assembleRelease` also built (R8) but was not installed (see §2). No instrumentation tests were run.
 
-## 7. Known issues found during validation (not fixed)
-| Issue | Severity |
+## 7. Known issues found during validation
+| Issue | Status |
 |---|---|
-| After Retake, the camera's gallery thumbnail still shows the deleted photo (stale `lastCapturedPhoto`); tapping it opens "couldn't be opened" | Low |
-| Scene hint pill labelled a desk scene "Wildlife" (heuristic classifier) | Low — consider hiding low-confidence scene pills |
-| Enhancement ≈ 4.8 s on 8 MP in the debug build; release unmeasured | Medium — native/NEON or GPU path is the next optimisation if release is still slow |
+| After Retake, the camera's gallery thumbnail still showed the deleted photo | **Fixed in run 2** (§8) |
+| Scene hint pill labelled a desk scene "Wildlife" | **Fixed in run 2** (§8) |
+| Enhancement ≈ 4.8 s on 8 MP in the debug build | **Measured in run 2:** 1.16 s non-debuggable (§8) |
+
+---
+
+# Run 2 — remaining phases (2026-10-13)
+
+Owner instruction: fix the stale thumbnail and the scene label, complete the remaining phases, then do one final real-device pass.
+
+## 8. Implemented in run 2
+
+| Phase | Work | Verification |
+|---|---|---|
+| Fix | **Stale thumbnail**: the camera cached its last capture in memory and never re-checked it. `CameraController.revalidateLastCapturedPhoto()` queries MediaStore on every camera resume and clears the thumbnail if the photo is gone (Retake, Gallery delete, other apps) | 2 unit tests; device: after Retake the thumbnail returns to the plain gallery icon |
+| Fix | **Scene label**: "Wildlife"/"Pet" came from green colour + any frame motion, and "Food" from warm colours. No recognition model exists, so these scene types are no longer inferred, the texture-cluster "wildlife detector" no longer relabels the scene, and pills are shown only for measured signals (faces via ML Kit, low light, backlight/high contrast, hold steady, document, moon). Selecting Pet/Wildlife mode still works | Classifier tests rewritten to assert no guessing; device: same desk scene with a moving hand now shows "High contrast" |
+| 05–08 | **Multi-frame merge** (`BurstMerger`, HDR+-style). Reference = sharpest frame (noise-robust, per-axis), coarse-to-fine global alignment, per-tile sub-pixel refinement with a smoothed displacement field, exposure normalisation by **measured** brightness (metadata ISO misses this sensor's post-RAW boost), robust √-domain merge with per-band noise estimation (2σ–4σ ghost rejection), bounded memory (row bands + region decoding) | 6 unit tests: ≥35 % RMSE reduction on 6 shifted noisy frames, no ghosting of a moving object, exposure drift normalised, blurred/different frames rejected, single frame passes through unchanged |
+| 08 | **Night** = burst → merge → tone mapping (replaces "save the steadiest frame"). **Moon** = merge without tone mapping. Fallback: if merging fails, runs out of memory, the phone is SEVERE/CRITICAL hot, or the job is cancelled, the steadiest real frame is saved (never a lost shot). UI says "Merging frames…" | Device: 3–4 frames merged, acceptance 0.96, clean brighter result |
+| 07 | **HDR toggle returns (Photo mode)**: −0.7 EV burst of 4 frames → merge → tone mapping; exposure restored afterwards | Unit test (fallback path); device: highlights on a laptop screen kept, shadows lifted |
+| 10–11 | **WAPCentral-controlled ads**: `WapCentralAdsRepository` reads the live `GET /ads/config` (schema observed from the real endpoint, read-only), in memory only. The gallery banner and the (unused) interstitial take their ad unit, enable flags and kill switch from it. No config / offline / disabled → no ad; nothing is blocked. Key from gitignored `local.properties` → BuildConfig (never committed or logged). Diagnostics screen shows the connection status | 6 unit tests (live-schema parse, auth headers, 403/offline/unconfigured fail closed, key redaction); device: banner served as "Test Ad" using the WAPCentral-supplied unit |
+| Bug found on device | First WAPCentral build showed no banner: the HTTP helper's single `read()` returned only the first network chunk, so the JSON was truncated and rejected. The host-JVM tests use an in-memory fake, so they did not catch it | Fixed (read to EOF, size-capped); confirmed on device |
+| 17 | Thermal guard for multi-frame processing; measured non-debuggable performance (below) | Device |
+| 18 | Privacy text updated: WAPCentral config fetch (app ID only) and the GPS copy rule for enhanced copies | — |
+
+### Non-debuggable performance (same `.debug` package built with `isDebuggable=false` temporarily; the change was reverted and is not committed)
+| Operation (2448×3264) | Debug build | Non-debuggable |
+|---|---|---|
+| Enhance Photo (single image) | 4.8 s | **1.16 s** (210 ms analysis + 952 ms render) |
+| Night, 4 frames: align / merge / tone | 14.2 / 10.3 / 10.0 s (3 frames) | **1.7 / 3.0 / 2.3 s** ≈ 7 s |
+| HDR, 4 frames: align / merge / tone | — | **1.5 / 2.8 / 1.5 s** ≈ 5.8 s |
+
+## 9. Not done in run 2 (blocked or out of scope, with reasons)
+| Phase | Reason |
+|---|---|
+| 12 Notifications | The feed needs a registered `deviceId`; registration needs an FCM token and its request body is undocumented. Firebase isn't integrated, and `google-services.json` has no client for `com.webappypie.optilens.debug`, so applying the plugin would break debug builds. Owner: register the debug package (or provide a debug config) and the registration contract |
+| 13 Firebase | Inventory only: project `optilens-511410`, package `com.webappypie.optilens` (matches the guide); file stays in the root (gitignored). No change until FCM is unblocked |
+| Portrait bokeh (08) | Needs segmentation plus a synthetic background blur. That conflicts with the "don't alter backgrounds" integrity rule; it needs an explicit owner decision. Mode stays hidden |
+| 09 Editing tools | Navigation from the preview works; the tools are Pro-gated and purchases can't run in debug, so they weren't re-run (Phase 02 verified them) |
+| 14 Model governance | No ML models are shipped; the pipelines are documented classic algorithms |
+| 15 Cloud AI, 16 Billing, 19 Release, 20 Growth | Deferred by instruction or blocked on owner inputs (product IDs, signing, policy URL, analytics decision) |
+| custom_ads house ads | Present in WAPCentral's mediation chain but there is no documented client API for serving creatives; skipped |
+
+## 10. Final validation (run 2)
+- `assembleDebug testDebugUnitTest lintDebug` → see §11.
+- Device (Redmi Note 11 Pro+, API 33):
+  - ✅ startup; ✅ Photo capture → preview
+  - ✅ Retake → file deleted, thumbnail cleared; ✅ scene pill honest
+  - ✅ Night merge; ✅ HDR merge
+  - ✅ Enhance + leave-without-saving dialog
+  - ✅ gallery banner from WAPCentral config; ✅ Editing Tools navigation
+  - ✅ no crashes
+- Not device-verified: Moon merge (needs the moon); thermal fallback; cancellation mid-merge; low-RAM devices; the X-App-Key in the APK is extractable (owner decision).
+
+## 11. Final automated validation (run 2)
+`assembleDebug` (earlier in run 2, plus final rebuild) and `testDebugUnitTest lintDebug --continue` → **BUILD SUCCESSFUL**. Unit tests **543, 0 failures** (app 7, camera 206, common 33, imaging 124 incl. 1 opt-in harness skipped, logging 16, navigation 7, settings 36, ui 114). Lint **0 errors** in every module. No instrumentation tests were run.

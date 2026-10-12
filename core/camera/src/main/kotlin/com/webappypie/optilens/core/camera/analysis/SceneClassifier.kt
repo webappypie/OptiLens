@@ -57,11 +57,9 @@ class SceneClassifier {
             candidates.add(SceneCandidate(SceneType.DOCUMENT, docConfidence))
         }
 
-        // 4. Food: Rich warm tones (red/yellow chrominance), central focus, indoor/dining luminance
-        if (frameData.warmScore > 0.28f && metrics.luminance in 60.0f..185.0f && faces.isEmpty()) {
-            val foodConfidence = (0.60f + (frameData.warmScore * 0.35f)).coerceIn(0.60f, 0.90f)
-            candidates.add(SceneCandidate(SceneType.FOOD, foodConfidence))
-        }
+        // Food, pets and wildlife are NOT inferred: colour/motion statistics cannot recognise
+        // them (a warm wall read as "Food", a green room plus hand movement as "Wildlife").
+        // Those scene types are set only when the user picks the mode or a real detector exists.
 
         // 5. Sky / Plant / Nature: Chromaticity signatures
         val hasSky = frameData.skyScore > 0.30f
@@ -74,15 +72,6 @@ class SceneClassifier {
             candidates.add(SceneCandidate(SceneType.SKY, (0.60f + frameData.skyScore * 0.35f).coerceIn(0.60f, 0.95f)))
         } else if (hasPlant) {
             candidates.add(SceneCandidate(SceneType.PLANT, (0.60f + frameData.plantScore * 0.35f).coerceIn(0.60f, 0.95f)))
-        }
-
-        // 6. Wildlife vs Pet (Active animal motion in nature or domestic context takes precedence over static background)
-        if (hasPlant && motionState.subjectMotionScore > 0.25f && !motionState.isCameraShaking && faces.isEmpty()) {
-            val wildlifeConfidence = (0.78f + (motionState.subjectMotionScore * 0.20f)).coerceIn(0.78f, 0.98f)
-            candidates.add(SceneCandidate(SceneType.WILDLIFE, wildlifeConfidence))
-        } else if (faces.isEmpty() && frameData.warmScore > 0.20f && metrics.sharpnessScore > 35f && motionState.subjectMotionScore > 0.15f) {
-            val petConfidence = (0.74f + (motionState.subjectMotionScore * 0.20f)).coerceIn(0.74f, 0.95f)
-            candidates.add(SceneCandidate(SceneType.PET, petConfidence))
         }
 
         // 7. Indoor vs Outdoor fallback

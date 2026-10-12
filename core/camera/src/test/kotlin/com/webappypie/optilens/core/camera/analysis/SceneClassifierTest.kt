@@ -8,6 +8,7 @@ import com.webappypie.optilens.core.camera.model.QualityMetrics
 import com.webappypie.optilens.core.camera.model.SceneType
 import com.webappypie.optilens.core.camera.model.SubjectMotionLevel
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -103,7 +104,7 @@ class SceneClassifierTest {
     }
 
     @Test
-    fun classify_warmTonesInIndoorLighting_returnsFood() {
+    fun classify_warmTonesInIndoorLighting_isNotGuessedAsFood() {
         val frame = createBaseFrame(
             meanLum = 110f,
             warmScore = 0.45f,
@@ -113,7 +114,7 @@ class SceneClassifierTest {
 
         val result = classifier.classify(frame, metrics, motion, emptyList())
 
-        assertEquals(SceneType.FOOD, result.primaryScene)
+        assertNotEquals(SceneType.FOOD, result.primaryScene)
     }
 
     @Test
@@ -162,7 +163,7 @@ class SceneClassifierTest {
     }
 
     @Test
-    fun classify_natureContextWithSubjectMotionAndStableCamera_returnsWildlife() {
+    fun classify_greenSceneWithMotion_isNotGuessedAsWildlife() {
         val frame = createBaseFrame(
             meanLum = 130f,
             plantScore = 0.40f,
@@ -176,11 +177,11 @@ class SceneClassifierTest {
 
         val result = classifier.classify(frame, metrics, motion, emptyList())
 
-        assertEquals(SceneType.WILDLIFE, result.primaryScene)
+        assertNotEquals(SceneType.WILDLIFE, result.primaryScene)
     }
 
     @Test
-    fun classify_warmTextureWithMotionInIndoor_returnsPet() {
+    fun classify_warmTextureWithMotion_isNotGuessedAsPet() {
         val frame = createBaseFrame(
             meanLum = 95f,
             warmScore = 0.25f,
@@ -197,6 +198,6 @@ class SceneClassifierTest {
 
         val result = classifier.classify(frame, metrics, motion, emptyList())
 
-        assertEquals(SceneType.PET, result.primaryScene)
+        assertNotEquals(SceneType.PET, result.primaryScene)
     }
 }

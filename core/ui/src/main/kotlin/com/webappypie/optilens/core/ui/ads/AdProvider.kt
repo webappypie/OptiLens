@@ -101,24 +101,25 @@ interface AdProvider {
 }
 
 /**
- * Google Mobile Ads implementation using official Google sample test ad units.
+ * Google Mobile Ads implementation driven by WAPCentral `/ads/config`: ad units, format
+ * enablement and the global kill switch come from WAPCentral (test units in its testing
+ * mode). Nothing is preloaded; no ad is requested unless WAPCentral enables the format.
  */
 @Singleton
 class GoogleMobileAdProvider @Inject constructor(
     @ApplicationContext private val context: Context,
     private val entitlementRepository: EntitlementRepository,
     private val frequencyCapManager: AdFrequencyCapManager,
+    private val adsRepository: com.webappypie.optilens.core.common.wapcentral.WapCentralAdsRepository,
     private val logger: AppLogger,
 ) : AdProvider {
 
     companion object {
         private const val TAG = "GoogleMobileAdProvider"
-
-        // Official Google Sample Ad Unit IDs for development & verification
-        const val TEST_BANNER_AD_UNIT_ID = "ca-app-pub-3940256099942544/6300978111"
-        const val TEST_INTERSTITIAL_AD_UNIT_ID = "ca-app-pub-3940256099942544/1033173712"
-        const val TEST_REWARDED_AD_UNIT_ID = "ca-app-pub-3940256099942544/5224354917"
     }
+
+    private fun interstitialUnit(): String? =
+        adsRepository.config?.adMobUnit(com.webappypie.optilens.core.common.wapcentral.WapAdsConfig.FORMAT_INTERSTITIAL)
 
     private var interstitialAd: InterstitialAd? = null
     private var isLoadingInterstitial = false
@@ -130,7 +131,6 @@ class GoogleMobileAdProvider @Inject constructor(
             MobileAds.initialize(context) { status ->
                 _isInitialized = true
                 logger.d(TAG, "MobileAds initialized: $status")
-                loadInterstitialIfEligible()
             }
         } catch (e: Exception) {
             logger.e(TAG, "MobileAds initialization error", e)
@@ -151,12 +151,13 @@ class GoogleMobileAdProvider @Inject constructor(
         if (entitlementRepository.isPro.value || isLoadingInterstitial || interstitialAd != null) {
             return
         }
+        val unit = interstitialUnit() ?: return
 
         isLoadingInterstitial = true
         val adRequest = AdRequest.Builder().build()
         InterstitialAd.load(
             context,
-            TEST_INTERSTITIAL_AD_UNIT_ID,
+            unit,
             adRequest,
             object : InterstitialAdLoadCallback() {
                 override fun onAdLoaded(ad: InterstitialAd) {
@@ -175,14 +176,14 @@ class GoogleMobileAdProvider @Inject constructor(
     }
 
     override fun isInterstitialReady(): Boolean {
-        if (entitlementRepository.isPro.value) return false
+        if (entitlementRepository.isPro.value || interstitialUnit() == null) return false
         return interstitialAd != null && frequencyCapManager.canShowInterstitial()
     }
 
     override fun showInterstitialAd(activity: Activity, onDismissed: () -> Unit) {
         AdPlacement.validatePlacement(AdPlacement.REVIEW_POST_SAVE_INTERSTITIAL)
 
-        if (entitlementRepository.isPro.value || !frequencyCapManager.canShowInterstitial()) {
+        if (entitlementRepository.isPro.value || interstitialUnit() == null || !frequencyCapManager.canShowInterstitial()) {
             onDismissed()
             return
         }

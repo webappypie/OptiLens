@@ -179,6 +179,26 @@ class CameraXController @Inject constructor(
     private val _lastCapturedPhoto = MutableStateFlow<CapturedPhoto?>(null)
     override val lastCapturedPhoto: Flow<CapturedPhoto?> = _lastCapturedPhoto.asStateFlow()
 
+    override suspend fun revalidateLastCapturedPhoto() {
+        val photo = _lastCapturedPhoto.value ?: return
+        val exists = withContext(dispatchers.io) { mediaExists(photo.contentUri ?: android.net.Uri.parse(photo.uri)) }
+        // Only clear if nothing newer replaced it while we were checking.
+        if (!exists) _lastCapturedPhoto.compareAndSet(photo, null)
+    }
+
+    private fun mediaExists(uri: android.net.Uri): Boolean = try {
+        if (uri.scheme == "content") {
+            context.contentResolver.query(uri, arrayOf(android.provider.BaseColumns._ID), null, null, null)
+                ?.use { it.moveToFirst() } ?: false
+        } else {
+            java.io.File(uri.path ?: uri.toString()).exists()
+        }
+    } catch (_: SecurityException) {
+        true // Cannot tell; keep the thumbnail rather than hide a photo that exists.
+    } catch (_: Exception) {
+        false
+    }
+
     private val _lastBurstResult = MutableStateFlow<BurstResult?>(null)
     override val lastBurstResult: Flow<BurstResult?> = _lastBurstResult.asStateFlow()
 
@@ -1021,6 +1041,26 @@ class CameraXController @Inject constructor(
             orientationDegrees = packet.metadata.orientationDegrees,
             expectedWidth = packet.width,
             expectedHeight = packet.height,
+            mirrorHorizontal = mirrorHorizontal,
+        )
+        if (saved is OptiResult.Success) {
+            _lastCapturedPhoto.value = saved.data
+        }
+        return saved
+    }
+
+    override suspend fun saveProcessedJpeg(
+        jpegBytes: ByteArray,
+        orientationDegrees: Int,
+        width: Int,
+        height: Int,
+        mirrorHorizontal: Boolean,
+    ): OptiResult<CapturedPhoto> {
+        val saved = mediaStoreSaver.saveJpeg(
+            jpegBytes = jpegBytes,
+            orientationDegrees = orientationDegrees,
+            expectedWidth = width,
+            expectedHeight = height,
             mirrorHorizontal = mirrorHorizontal,
         )
         if (saved is OptiResult.Success) {

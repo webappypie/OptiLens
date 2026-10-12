@@ -24,6 +24,8 @@ data class CameraDiagnosticsUiState(
     val jsonExport: String = "",
     val markdownExport: String = "",
     val performanceData: PerformanceDashboardData = PerformanceDashboardData(),
+    /** WAPCentral ads configuration status (never includes credentials). */
+    val wapCentralAdsStatus: String = "Not checked",
 ) {
     val selectedCamera: CameraDeviceProfile?
         get() = profile.cameras.getOrNull(selectedCameraIndex)
@@ -39,6 +41,7 @@ class CameraDiagnosticsViewModel @Inject constructor(
     private val frameCollector: FrameMetricsCollector,
     private val thermalMonitor: DeviceThermalMonitor,
     private val bitmapPool: BitmapPool,
+    private val wapAds: com.webappypie.optilens.core.common.wapcentral.WapCentralAdsRepository,
     dispatchers: AppDispatchers,
     private val logger: AppLogger,
 ) : BaseViewModel<CameraDiagnosticsUiState>(dispatchers) {
@@ -70,6 +73,17 @@ class CameraDiagnosticsViewModel @Inject constructor(
                 val json = exporter.exportToJson(profile)
                 val markdown = exporter.exportToMarkdown(profile)
                 val perfData = collectPerformanceData()
+                if (forceRefresh || wapAds.state.value !is com.webappypie.optilens.core.common.wapcentral.WapAdsState.Ready) {
+                    wapAds.refresh()
+                }
+                val adsStatus = when (val s = wapAds.state.value) {
+                    is com.webappypie.optilens.core.common.wapcentral.WapAdsState.Ready ->
+                        "Connected · ads ${if (s.config.enabled) "on" else "off"}" +
+                            (if (s.config.testMode) " (test mode)" else "") +
+                            " · banner ${if (s.config.adMobUnit(com.webappypie.optilens.core.common.wapcentral.WapAdsConfig.FORMAT_BANNER) != null) "enabled" else "disabled"}"
+                    is com.webappypie.optilens.core.common.wapcentral.WapAdsState.Unavailable -> "Unavailable: ${s.reason}"
+                    com.webappypie.optilens.core.common.wapcentral.WapAdsState.Unknown -> "Not checked"
+                }
 
                 setSuccess(
                     CameraDiagnosticsUiState(
@@ -78,6 +92,7 @@ class CameraDiagnosticsViewModel @Inject constructor(
                         jsonExport = json,
                         markdownExport = markdown,
                         performanceData = perfData,
+                        wapCentralAdsStatus = adsStatus,
                     )
                 )
             }

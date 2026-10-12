@@ -391,9 +391,9 @@ fun SettingsScreen(
                             "Permissions\n" +
                             "• Camera: used only for the viewfinder and taking photos.\n" +
                             "• Photos: saved to DCIM/OptiLens with scoped storage; the system Photo Picker is used to open other photos, so no broad storage permission is requested.\n" +
-                            "• Location: not used. Photos are saved without GPS coordinates.\n\n" +
+                            "• Location: not used. OptiLens photos are saved without GPS coordinates; an enhanced copy of another photo keeps its location only if the original already had it.\n\n" +
                             "Ads\n" +
-                            "The free version shows a banner in the gallery from Google Mobile Ads, which may collect device identifiers under Google's own policies. Ads never appear in the camera viewfinder. Pro removes ads.\n\n" +
+                            "The free version may show a banner in the gallery from Google Mobile Ads, which may collect device identifiers under Google's own policies. Whether ads run and which ad units are used comes from our configuration service (WAPCentral); fetching it sends only the app's identifier, never photos or personal data. Ads never appear in the camera viewfinder and never block capturing, enhancing or saving. Pro removes ads.\n\n" +
                             "Diagnostics\n" +
                             "OptiLens does not currently send analytics or crash reports anywhere.\n\n" +
                             "Cache\n" +

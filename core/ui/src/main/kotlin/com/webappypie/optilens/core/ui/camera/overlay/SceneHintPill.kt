@@ -132,14 +132,11 @@ private fun resolveHintDisplay(
         )
     }
 
-    // 3. Subtle Scene Chips (only if confidence and temporal stability meet thresholds)
+    // 3. Scene chips only for signals the app actually measures: detected faces (ML Kit) and
+    // low light (luminance). Colour-only guesses (plant, sky, food, animals) are not shown.
     if (scene.primaryScene != SceneType.GENERAL && scene.confidence >= 0.60f && scene.stabilityScore >= 0.50f) {
         val (icon, color) = when (scene.primaryScene) {
             SceneType.PORTRAIT -> Icons.Default.AutoAwesome to Color(0xFFE5C07B)
-            SceneType.FOOD -> Icons.Default.Restaurant to Color(0xFFD19A66)
-            SceneType.NATURE, SceneType.PLANT -> Icons.Default.Park to Color(0xFF98C379)
-            SceneType.SKY -> Icons.Default.WbSunny to Color(0xFF61AFEF)
-            SceneType.PET, SceneType.WILDLIFE -> Icons.Default.Pets to Color(0xFFC678DD)
             SceneType.LOW_LIGHT -> Icons.Default.DarkMode to Color(0xFF61AFEF)
             else -> return null
         }

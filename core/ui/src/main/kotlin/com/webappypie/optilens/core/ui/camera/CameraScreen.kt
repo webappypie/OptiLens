@@ -55,6 +55,8 @@ import androidx.compose.material.icons.filled.FlashOff
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Leaderboard
+import androidx.compose.material.icons.filled.HdrOff
+import androidx.compose.material.icons.filled.HdrOn
 import androidx.compose.material.icons.filled.PhotoLibrary
 import com.webappypie.optilens.core.ui.camera.overlay.ObjectTrackingOverlay
 import androidx.compose.material.icons.filled.Settings
@@ -199,6 +201,7 @@ fun CameraScreen(
             CameraMode.DOCUMENT -> viewModel.takeDocumentPhoto(targetRotation = rotation)
             CameraMode.MOON -> viewModel.takeMoonPhoto(targetRotation = rotation)
             CameraMode.WILDLIFE -> viewModel.takeWildlifePhoto(targetRotation = rotation)
+            CameraMode.PHOTO -> viewModel.takePhotoWithTimer(targetRotation = rotation, hdr = uiState.isHdrEnabled)
             else -> viewModel.takePhotoWithTimer(targetRotation = rotation)
         }
     }
@@ -246,6 +249,7 @@ fun CameraScreen(
         val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
             PackageManager.PERMISSION_GRANTED
         if (granted != uiState.hasCameraPermission) viewModel.onPermissionResult(granted)
+        viewModel.onScreenResumed()
     }
 
     // Camera permission request launcher for the !granted path
@@ -655,8 +659,15 @@ fun CameraScreen(
                     onClick = { viewModel.toggleTimer() },
                 )
 
-                // HDR toggle removed: it only changed local UI state. It returns with the real
-                // multi-frame HDR capture path (roadmap Phases 05-07).
+                // HDR: real multi-frame capture (underexposed burst, merged and tone-mapped).
+                if (currentMode == CameraMode.PHOTO) {
+                    OptiIconButton(
+                        icon = if (uiState.isHdrEnabled) Icons.Default.HdrOn else Icons.Default.HdrOff,
+                        contentDescription = if (uiState.isHdrEnabled) "HDR on" else "HDR off",
+                        variant = if (uiState.isHdrEnabled) OptiIconButtonVariant.OVERLAY_ACTIVE else OptiIconButtonVariant.OVERLAY,
+                        onClick = { viewModel.toggleHdr() },
+                    )
+                }
 
                 // Live Histogram Toggle
                 OptiIconButton(
@@ -1205,7 +1216,7 @@ fun NightProcessingIndicator(
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Enhancing Low-Light...",
+                text = "Merging frames…",
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
                 color = Color.White,
             )

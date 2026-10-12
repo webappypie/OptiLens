@@ -80,6 +80,12 @@ interface CameraController {
     /** Most recently captured photo saved to MediaStore. */
     val lastCapturedPhoto: Flow<CapturedPhoto?>
 
+    /**
+     * Re-checks that [lastCapturedPhoto] still exists in MediaStore and clears it if it was
+     * deleted (Retake, Gallery or another app), so the camera never shows a stale thumbnail.
+     */
+    suspend fun revalidateLastCapturedPhoto() {}
+
     /** Most recently acquired multi-frame burst result. */
     val lastBurstResult: Flow<com.webappypie.optilens.core.camera.burst.model.BurstResult?>
 
@@ -271,6 +277,18 @@ interface CameraController {
      */
     suspend fun saveBurstFrame(
         packet: com.webappypie.optilens.core.camera.burst.model.FramePacket,
+        mirrorHorizontal: Boolean = false,
+    ): OptiResult<CapturedPhoto>
+
+    /**
+     * Persists a JPEG produced from captured frames (e.g. a merged Night burst) exactly like a
+     * captured photo: MediaStore, EXIF orientation, thumbnail, latest-photo update.
+     */
+    suspend fun saveProcessedJpeg(
+        jpegBytes: ByteArray,
+        orientationDegrees: Int,
+        width: Int,
+        height: Int,
         mirrorHorizontal: Boolean = false,
     ): OptiResult<CapturedPhoto>
 

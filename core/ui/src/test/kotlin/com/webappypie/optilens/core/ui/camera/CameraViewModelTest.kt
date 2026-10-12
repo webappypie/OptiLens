@@ -506,4 +506,50 @@ class CameraViewModelTest {
             expectNoEvents()
         }
     }
+
+    @Test
+    fun `thumbnail of a deleted photo is cleared when the camera resumes`() = runTest(testDispatcher) {
+        viewModel.uiState.test {
+            viewModel.takePhoto()
+            testDispatcher.scheduler.advanceUntilIdle()
+            val captured = expectMostRecentItem().lastCapturedPhoto
+            assertNotNull(captured)
+
+            cameraController.deletedMediaUris += captured!!.uri
+            viewModel.onScreenResumed()
+            testDispatcher.scheduler.advanceUntilIdle()
+            assertNull(expectMostRecentItem().lastCapturedPhoto)
+        }
+    }
+
+    @Test
+    fun `thumbnail of an existing photo survives resume`() = runTest(testDispatcher) {
+        viewModel.uiState.test {
+            viewModel.takePhoto()
+            testDispatcher.scheduler.advanceUntilIdle()
+            assertNotNull(expectMostRecentItem().lastCapturedPhoto)
+            viewModel.onScreenResumed()
+            testDispatcher.scheduler.advanceUntilIdle()
+            assertNotNull(viewModel.uiState.value.lastCapturedPhoto)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `hdr capture takes a burst, saves a real frame and clears capture state`() = runTest(testDispatcher) {
+        viewModel.uiState.test {
+            viewModel.toggleHdr()
+            testDispatcher.scheduler.advanceUntilIdle()
+            assertTrue(expectMostRecentItem().isHdrEnabled)
+
+            viewModel.takePhotoWithTimer(hdr = true)
+            testDispatcher.scheduler.advanceUntilIdle()
+            // No processor in unit tests: falls back to saving the steadiest captured frame.
+            assertTrue(cameraController.savedBurstFrames.isNotEmpty())
+            val state = expectMostRecentItem()
+            assertFalse(state.isCapturing)
+            assertFalse(state.isProcessingNightShot)
+            assertNotNull(state.lastCapturedPhoto)
+        }
+    }
 }

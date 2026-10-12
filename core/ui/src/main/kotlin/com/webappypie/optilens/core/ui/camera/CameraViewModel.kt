@@ -106,6 +106,8 @@ data class CameraUiState(
     val proState: ProCameraState = ProCameraState(),
     val histogramData: HistogramData = HistogramData.EMPTY,
     val isHistogramVisible: Boolean = false,
+    /** Photo-mode multi-frame HDR (underexposed burst → merge → tone mapping). */
+    val isHdrEnabled: Boolean = false,
     val focusPeakingData: FocusPeakingData = FocusPeakingData.EMPTY,
     val exposureZebraData: ExposureZebraData = ExposureZebraData.EMPTY,
     val lensMetadata: LensMetadata = LensMetadata.EMPTY,
@@ -176,6 +178,8 @@ class CameraViewModel @Inject constructor(
     private val wildlifeModeEngine: WildlifeModeEngine = WildlifeModeEngine(),
     private val startupMetricsTracker: com.webappypie.optilens.core.common.performance.StartupMetricsTracker =
         com.webappypie.optilens.core.common.performance.StartupMetricsTracker(),
+    /** Multi-frame merge + tone mapping for Night/Moon bursts; null (tests) saves the steadiest frame. */
+    private val burstPhotoProcessor: com.webappypie.optilens.core.imaging.fusion.BurstPhotoProcessor? = null,
 ) : ViewModel() {
 
     val availableCameraModes: List<CameraMode> by lazy {
@@ -401,6 +405,7 @@ class CameraViewModel @Inject constructor(
             proState = s2.proState,
             histogramData = s2.histogram,
             isHistogramVisible = internal.isHistogramVisible,
+            isHdrEnabled = internal.isHdrEnabled,
             focusPeakingData = assist.peaking,
             exposureZebraData = assist.zebra,
             lensMetadata = assist.lensMetadata,
@@ -595,6 +600,54 @@ class CameraViewModel @Inject constructor(
         setHistogramMode(next)
     }
 
+    fun toggleHdr() {
+        _internalState.update { it.copy(isHdrEnabled = !it.isHdrEnabled) }
+    }
+
+    /**
+     * Multi-frame HDR (HDR+ approach): lower exposure by ~0.7 EV so fewer highlights clip,
+     * capture [HDR_FRAMES] frames, merge them (less noise) and tone-map the result, which
+     * brings mid-tones and shadows back up. Falls back to the steadiest frame on failure.
+     */
+    fun takeHdrPhoto(targetRotation: Int = 0) {
+        if (_internalState.value.isCapturing || _internalState.value.isBurstCapturing) return
+        captureReviewArmed = true
+        _internalState.update { it.copy(isCapturing = true, isShutterBlinking = true) }
+
+        viewModelScope.launch {
+            launch {
+                delay(80L)
+                _internalState.update { it.copy(isShutterBlinking = false) }
+            }
+            val exposure = uiState.value.exposureState
+            val previousIndex = exposure.index
+            val shouldMirror = _internalState.value.isFrontCamera && _internalState.value.mirrorFrontCameraSelfie
+            try {
+                if (exposure.step > 0f) {
+                    val target = (previousIndex + kotlin.math.round(HDR_EV_OFFSET / exposure.step).toInt())
+                        .coerceIn(exposure.minIndex, exposure.maxIndex)
+                    if (target != previousIndex) {
+                        cameraController.setExposureCompensation(target)
+                        delay(HDR_AE_SETTLE_MS) // let AE converge; residual drift is measured and normalised
+                    }
+                }
+                when (val result = cameraController.acquireBurst(HDR_FRAMES, listOf(0), targetRotation)) {
+                    is OptiResult.Success -> {
+                        _internalState.update { it.copy(isProcessingNightShot = true) }
+                        result.data.use { burst -> mergeAndSaveBurst(burst, listOf(0), shouldMirror, toneMap = true) }
+                    }
+                    is OptiResult.Error -> _internalState.update { it.copy(errorMessage = result.error.displayMessage) }
+                    else -> Unit
+                }
+            } finally {
+                if (uiState.value.exposureState.index != previousIndex) {
+                    cameraController.setExposureCompensation(previousIndex)
+                }
+                _internalState.update { it.copy(isCapturing = false, isProcessingNightShot = false) }
+            }
+        }
+    }
+
     fun toggleHistogram() {
         val next = !_internalState.value.isHistogramVisible
         _internalState.update { it.copy(isHistogramVisible = next) }
@@ -675,10 +728,16 @@ class CameraViewModel @Inject constructor(
         }
     }
 
-    fun takePhotoWithTimer(targetRotation: Int = 0) {
+    /** Called when the camera screen resumes; drops the thumbnail of a deleted photo. */
+    fun onScreenResumed() {
+        viewModelScope.launch { cameraController.revalidateLastCapturedPhoto() }
+    }
+
+    fun takePhotoWithTimer(targetRotation: Int = 0, hdr: Boolean = false) {
+        val shoot: (Int) -> Unit = if (hdr) ::takeHdrPhoto else ::takePhoto
         val timer = _internalState.value.timerState
         if (timer == TimerState.OFF) {
-            takePhoto(targetRotation)
+            shoot(targetRotation)
             return
         }
 
@@ -689,7 +748,7 @@ class CameraViewModel @Inject constructor(
                 delay(1_000L)
             }
             _internalState.update { it.copy(timerCountdown = null) }
-            takePhoto(targetRotation)
+            shoot(targetRotation)
         }
     }
 
@@ -813,14 +872,11 @@ class CameraViewModel @Inject constructor(
                     val offsets = plan?.exposurePlan?.evOffsets ?: listOf(0)
                     when (val result = cameraController.acquireBurst(frameCount, offsets, targetRotation)) {
                         is OptiResult.Success -> {
-                            // Multi-frame night fusion is not wired into capture yet; persist the
-                            // steadiest base-exposure frame so the shot is never silently lost.
                             countdownJob.cancel()
                             _internalState.update { it.copy(holdSteadyRemainingSec = null, isProcessingNightShot = true) }
-                            saveSelectedBurstFrame(
-                                frame = BurstFrameSelector.selectSteadiest(result.data.packets, offsets),
-                                mirrorHorizontal = shouldMirror,
-                            )
+                            result.data.use { burst ->
+                                mergeAndSaveBurst(burst, offsets, shouldMirror, toneMap = true)
+                            }
                         }
                         is OptiResult.Error -> _internalState.update { it.copy(errorMessage = result.error.displayMessage) }
                         else -> Unit
@@ -837,6 +893,38 @@ class CameraViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    /**
+     * Merges a burst into one photo ([com.webappypie.optilens.core.imaging.fusion.BurstPhotoProcessor])
+     * and saves it. If merging is unavailable, fails, the device is thermally throttled, or the
+     * job is cancelled, the steadiest real frame is saved instead so the shot is never lost.
+     */
+    private suspend fun mergeAndSaveBurst(burst: BurstResult, evOffsets: List<Int>, mirror: Boolean, toneMap: Boolean) {
+        val processor = burstPhotoProcessor
+        // When the phone is already hot, skip the multi-second merge (it would heat it further).
+        val tooHot = uiState.value.thermalState >= com.webappypie.optilens.core.camera.thermal.DeviceThermalState.SEVERE
+        if (processor != null && !tooHot && burst.packets.count { !it.isClosed } > 1) {
+            try {
+                val processed = processor.process(burst.packets, toneMap)
+                val saved = cameraController.saveProcessedJpeg(
+                    jpegBytes = processed.jpeg,
+                    orientationDegrees = processed.orientationDegrees,
+                    width = processed.width,
+                    height = processed.height,
+                    mirrorHorizontal = mirror,
+                )
+                if (saved !is OptiResult.Error) return
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                    saveSelectedBurstFrame(BurstFrameSelector.selectSteadiest(burst.packets, evOffsets), mirror)
+                }
+                throw e
+            } catch (_: Throwable) {
+                // Includes OutOfMemoryError on large bursts: fall back to a single real frame.
+            }
+        }
+        saveSelectedBurstFrame(BurstFrameSelector.selectSteadiest(burst.packets, evOffsets), mirror)
     }
 
     /** Persists one real burst frame; reports an actionable error when none is usable. */
@@ -1158,12 +1246,12 @@ class CameraViewModel @Inject constructor(
                 )
                 when (burstResult) {
                     is OptiResult.Success -> {
-                        // Burst frames are JPEG-encoded; lunar stacking needs decoded luma planes
-                        // and is not wired into capture yet. Persist the steadiest real frame.
-                        saveSelectedBurstFrame(
-                            frame = BurstFrameSelector.selectSteadiest(burstResult.data.packets),
-                            mirrorHorizontal = false,
-                        )
+                        // Stack the aligned frames (noise reduction); no tone mapping, which would
+                        // lift the black sky around the moon.
+                        _internalState.update { it.copy(isProcessingNightShot = true) }
+                        burstResult.data.use { burst ->
+                            mergeAndSaveBurst(burst, listOf(config.evOffset), mirror = false, toneMap = false)
+                        }
                     }
                     is OptiResult.Error -> {
                         _internalState.update { it.copy(errorMessage = burstResult.error.displayMessage) }
@@ -1178,6 +1266,7 @@ class CameraViewModel @Inject constructor(
                 _internalState.update {
                     it.copy(
                         isCapturing = false,
+                        isProcessingNightShot = false,
                         isBurstCapturing = false,
                         isProcessingMoonShot = false,
                     )
@@ -1310,6 +1399,7 @@ class CameraViewModel @Inject constructor(
         val timerCountdown: Int? = null,
         val aspectRatio: CameraAspectRatio = CameraAspectRatio.RATIO_4_3,
         val isHistogramVisible: Boolean = false,
+        val isHdrEnabled: Boolean = false,
         val currentMode: CameraMode = CameraMode.PHOTO,
         val bestShotResult: BestShotResult? = null,
         val isEvaluatingBestShot: Boolean = false,
@@ -1328,6 +1418,10 @@ class CameraViewModel @Inject constructor(
     )
 
     companion object {
+        const val HDR_FRAMES = 4
+        const val HDR_EV_OFFSET = -0.7f
+        const val HDR_AE_SETTLE_MS = 400L
+
         /**
          * Modes whose capture differs from PHOTO in a real way. Excluded until implemented
          * (PRD: modes only where real supported paths exist):

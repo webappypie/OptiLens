@@ -200,6 +200,7 @@ fun GalleryScreen(
             com.webappypie.optilens.core.ui.ads.SafeAdBanner(
                 placement = com.webappypie.optilens.core.ui.ads.AdPlacement.GALLERY_BOTTOM_BANNER,
                 entitlementRepository = entitlementRepository,
+                adsRepository = helper.adsRepository,
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -327,4 +328,5 @@ fun GalleryScreen(
 class GalleryScreenViewModelHelper @javax.inject.Inject constructor(
     val thumbnailLoader: ThumbnailLoader,
     val entitlementRepository: com.webappypie.optilens.core.common.monetization.EntitlementRepository,
+    val adsRepository: com.webappypie.optilens.core.common.wapcentral.WapCentralAdsRepository,
 ) : androidx.lifecycle.ViewModel()

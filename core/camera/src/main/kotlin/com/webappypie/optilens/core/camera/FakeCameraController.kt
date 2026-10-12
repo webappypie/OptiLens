@@ -137,6 +137,14 @@ class FakeCameraController @Inject constructor() : CameraController {
     private val _lastCapturedPhoto = MutableStateFlow<CapturedPhoto?>(null)
     override val lastCapturedPhoto: Flow<CapturedPhoto?> = _lastCapturedPhoto.asStateFlow()
 
+    /** URIs treated as deleted from MediaStore (tests). */
+    val deletedMediaUris = mutableSetOf<String>()
+
+    override suspend fun revalidateLastCapturedPhoto() {
+        val photo = _lastCapturedPhoto.value ?: return
+        if (photo.uri in deletedMediaUris) _lastCapturedPhoto.compareAndSet(photo, null)
+    }
+
     private val _lastBurstResult = MutableStateFlow<com.webappypie.optilens.core.camera.burst.model.BurstResult?>(null)
     override val lastBurstResult: Flow<com.webappypie.optilens.core.camera.burst.model.BurstResult?> = _lastBurstResult.asStateFlow()
 
@@ -401,6 +409,28 @@ class FakeCameraController @Inject constructor() : CameraController {
             height = packet.height,
             timestampMs = System.currentTimeMillis(),
             orientationDegrees = packet.metadata.orientationDegrees,
+        )
+        _lastCapturedPhoto.value = photo
+        return OptiResult.Success(photo)
+    }
+
+    /** JPEGs passed to [saveProcessedJpeg] (tests). */
+    val savedProcessedJpegs = mutableListOf<ByteArray>()
+
+    override suspend fun saveProcessedJpeg(
+        jpegBytes: ByteArray,
+        orientationDegrees: Int,
+        width: Int,
+        height: Int,
+        mirrorHorizontal: Boolean,
+    ): OptiResult<CapturedPhoto> {
+        savedProcessedJpegs += jpegBytes
+        val photo = CapturedPhoto(
+            uri = "content://media/external/images/media/fake_processed_${savedProcessedJpegs.size}",
+            width = width,
+            height = height,
+            timestampMs = System.currentTimeMillis(),
+            orientationDegrees = orientationDegrees,
         )
         _lastCapturedPhoto.value = photo
         return OptiResult.Success(photo)

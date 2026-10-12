@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     // kotlin.android intentionally omitted: AGP 9.0+ includes Kotlin support built-in.
@@ -20,6 +22,19 @@ android {
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // WAPCentral (see WAPCentral_OptiLens_Integration_Guide.md). The app key is read from the
+        // gitignored local.properties (`wapcentral.appKey`) or the WAP_APP_KEY env var — never
+        // committed. Without it the WAPCentral integration stays off (no ads; app unaffected).
+        val localProps = Properties().apply {
+            val f = rootProject.file("local.properties")
+            if (f.exists()) f.inputStream().use { load(it) }
+        }
+        val wapAppKey = (localProps.getProperty("wapcentral.appKey") ?: System.getenv("WAP_APP_KEY") ?: "")
+            .replace("\"", "")
+        buildConfigField("String", "WAPCENTRAL_BASE_URL", "\"https://wapcentral-prod.web.app/api/platform/v1\"")
+        buildConfigField("String", "WAPCENTRAL_APP_ID", "\"app_1791801351561\"")
+        buildConfigField("String", "WAPCENTRAL_APP_KEY", "\"$wapAppKey\"")
 
         vectorDrawables {
             useSupportLibrary = true
