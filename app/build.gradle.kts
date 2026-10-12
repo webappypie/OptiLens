@@ -129,6 +129,9 @@ dependencies {
     // ── Activity ───────────────────────────────────────────
     implementation(libs.androidx.activity.compose)
 
+    // ── Splash Screen ──────────────────────────────────────
+    implementation(libs.androidx.core.splashscreen)
+
     // ── Compose BOM ────────────────────────────────────────
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

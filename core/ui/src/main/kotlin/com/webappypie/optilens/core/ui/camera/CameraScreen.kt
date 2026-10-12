@@ -48,6 +48,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.FlashAuto
 import androidx.compose.material.icons.filled.FlashOff
@@ -153,6 +154,7 @@ fun CameraScreen(
     onNavigateToSettings: () -> Unit,
     onNavigateToGallery: () -> Unit,
     onNavigateToPhotoReview: ((String) -> Unit)? = null,
+    onNavigateToAiTools: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     onShutterClick: () -> Unit = {},
     showGrid: Boolean = true,
@@ -203,7 +205,18 @@ fun CameraScreen(
         }
     }
 
-    // Camera permission check and launcher
+    // Synchronous permission pre-check — runs inline before first composition to eliminate flash
+    val hasCameraPermissionInitial = remember {
+        ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+            PackageManager.PERMISSION_GRANTED
+    }
+
+    // Immediately inform ViewModel of the synchronous result so first rendered frame is correct
+    if (hasCameraPermissionInitial && !uiState.hasCameraPermission) {
+        viewModel.onPermissionResult(true)
+    }
+
+    // Camera permission request launcher for the !granted path
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
     ) { isGranted ->
@@ -211,17 +224,13 @@ fun CameraScreen(
     }
 
     LaunchedEffect(Unit) {
-        val granted = ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.CAMERA,
-        ) == PackageManager.PERMISSION_GRANTED
-        viewModel.onPermissionResult(granted)
-        if (!granted) {
+        if (!hasCameraPermissionInitial) {
+            // Only request if not already granted
             permissionLauncher.launch(Manifest.permission.CAMERA)
         }
     }
 
-    if (!uiState.hasCameraPermission) {
+    if (!uiState.hasCameraPermission && !hasCameraPermissionInitial) {
         OptiPermissionState(
             title = "Camera Access Required",
             description = "OptiLens requires camera access to preview and capture photos. No gallery or media permissions are requested.",
@@ -634,6 +643,16 @@ fun CameraScreen(
                     variant = if (uiState.isHistogramVisible) OptiIconButtonVariant.OVERLAY_ACTIVE else OptiIconButtonVariant.OVERLAY,
                     onClick = { viewModel.toggleHistogram() },
                 )
+
+                // AI Tools Direct Access Button
+                if (onNavigateToAiTools != null) {
+                    OptiIconButton(
+                        icon = Icons.Default.AutoAwesome,
+                        contentDescription = "Open AI Tools",
+                        variant = OptiIconButtonVariant.OVERLAY,
+                        onClick = onNavigateToAiTools,
+                    )
+                }
 
                 // Settings Navigation Button
                 OptiIconButton(

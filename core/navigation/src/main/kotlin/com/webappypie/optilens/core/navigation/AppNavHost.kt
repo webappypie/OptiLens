@@ -17,13 +17,14 @@ import androidx.navigation.toRoute
  */
 @Composable
 fun AppNavHost(
+    splashScreen: @Composable (onSplashComplete: () -> Unit) -> Unit,
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
-    startDestination: AppDestination = AppDestination.Camera,
+    startDestination: AppDestination = AppDestination.Splash,
     cameraScreen: @Composable () -> Unit = { NavigationPlaceholderScreen("Camera") },
     galleryScreen: @Composable () -> Unit = { NavigationPlaceholderScreen("Gallery") },
     settingsScreen: @Composable () -> Unit = { NavigationPlaceholderScreen("Settings") },
-    aiToolsScreen: @Composable () -> Unit = { NavigationPlaceholderScreen("AI Tools") },
+    aiToolsScreen: @Composable (AppDestination.AiTools) -> Unit = { NavigationPlaceholderScreen("AI Tools") },
     photoDetailScreen: @Composable (AppDestination.PhotoDetail) -> Unit = { NavigationPlaceholderScreen("Photo Detail") },
     proUpgradeScreen: @Composable () -> Unit = { NavigationPlaceholderScreen("Pro Upgrade") },
     onboardingScreen: @Composable () -> Unit = { NavigationPlaceholderScreen("Onboarding") },
@@ -34,6 +35,14 @@ fun AppNavHost(
         startDestination = startDestination,
         modifier = modifier,
     ) {
+        composable<AppDestination.Splash> {
+            splashScreen {
+                navController.navigate(AppDestination.Camera) {
+                    popUpTo<AppDestination.Splash> { inclusive = true }
+                }
+            }
+        }
+
         composable<AppDestination.Camera>(
             deepLinks = listOf(
                 navDeepLink { uriPattern = "optilens://camera" },
@@ -62,7 +71,7 @@ fun AppNavHost(
                 navDeepLink { uriPattern = "https://optilens.app/enhance" },
                 navDeepLink { uriPattern = "https://optilens.app/aitools" },
             ),
-        ) { aiToolsScreen() }
+        ) { backStackEntry -> aiToolsScreen(backStackEntry.toRoute()) }
 
         composable<AppDestination.PhotoDetail> { backStackEntry ->
             photoDetailScreen(backStackEntry.toRoute())

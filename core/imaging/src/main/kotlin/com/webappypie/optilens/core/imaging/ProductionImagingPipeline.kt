@@ -33,6 +33,7 @@ class ProductionImagingPipeline @Inject constructor(
     private val portraitEngine: com.webappypie.optilens.core.imaging.portrait.NativePortraitEngine = com.webappypie.optilens.core.imaging.portrait.NativePortraitEngine(),
     private val aiEnhanceEngine: com.webappypie.optilens.core.imaging.enhance.NativeAiEnhanceEngine = com.webappypie.optilens.core.imaging.enhance.NativeAiEnhanceEngine(),
     private val superResEngine: com.webappypie.optilens.core.imaging.sr.NativeSuperResolutionEngine = com.webappypie.optilens.core.imaging.sr.NativeSuperResolutionEngine(),
+    private val onDeviceEnhanceEngine: com.webappypie.optilens.core.imaging.enhance.OnDeviceEnhancementEngine? = null,
     private val dispatchers: AppDispatchers,
     private val logger: AppLogger,
 ) : ImagingPipeline {
@@ -140,6 +141,38 @@ class ProductionImagingPipeline @Inject constructor(
         // Handle AI_ENHANCE mode explicitly
         if (isAiEnhanceMode) {
             logger.i(TAG, "Executing AI Enhance pipeline on ${request.inputUri}")
+            val inputFile = File(request.inputUri)
+            if (inputFile.exists() && onDeviceEnhanceEngine != null) {
+                val origBitmap = android.graphics.BitmapFactory.decodeFile(inputFile.absolutePath)
+                if (origBitmap != null) {
+                    val enhancedBitmap = onDeviceEnhanceEngine.enhance(
+                        bitmap = origBitmap,
+                        config = com.webappypie.optilens.core.imaging.enhance.EnhancementConfig.BALANCED,
+                        onProgress = { p -> onProgress?.invoke(p) }
+                    )
+                    val outFile = File(request.inputUri.replace(".jpg", "_enhanced.jpg"))
+                    FileOutputStream(outFile).use { fos ->
+                        enhancedBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, fos)
+                    }
+                    val duration = System.currentTimeMillis() - startTime
+                    return@withContext OptiResult.Success(
+                        ProcessingResult(
+                            outputUri = outFile.absolutePath,
+                            originalUri = if (request.keepOriginal) request.inputUri else null,
+                            modeUsed = ProcessingMode.AI_ENHANCE,
+                            processingDurationMs = duration,
+                            width = enhancedBitmap.width,
+                            height = enhancedBitmap.height,
+                            isHdrApplied = true,
+                            isNightModeApplied = false,
+                            isPortraitApplied = false,
+                            isAiEnhanceApplied = true,
+                            isFallbackUsed = false,
+                        )
+                    )
+                }
+            }
+
             val config = request.aiEnhanceConfig ?: com.webappypie.optilens.core.imaging.enhance.AiEnhanceConfig()
             val width = 4000
             val height = 3000

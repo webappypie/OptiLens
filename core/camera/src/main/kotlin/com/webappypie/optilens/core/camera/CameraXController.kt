@@ -18,6 +18,7 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.Observer
 import com.webappypie.optilens.core.camera.analysis.face.FaceDetector
 import com.webappypie.optilens.core.camera.analysis.face.MlKitFaceDetector
 import com.webappypie.optilens.core.camera.analysis.motion.GyroMotionTracker
@@ -800,6 +801,8 @@ class CameraXController @Inject constructor(
             } else {
                 // Standard in-memory JPEG capture
                 val rawBytesResult = suspendCancellableCoroutine<Pair<ByteArray, Int>> { continuation ->
+                    // Safety: if coroutine is cancelled, ensure the capture guard is released
+                    continuation.invokeOnCancellation { isCapturing.set(false) }
                     capture.takePicture(
                         captureExecutor,
                         object : ImageCapture.OnImageCapturedCallback() {
@@ -834,6 +837,7 @@ class CameraXController @Inject constructor(
                 )
             }
 
+            // Update captured photo BEFORE releasing isCapturing so UI gets photo at same recomposition
             if (saveResult is OptiResult.Success) {
                 _lastCapturedPhoto.value = saveResult.data
             }
@@ -843,8 +847,8 @@ class CameraXController @Inject constructor(
             logger.e(TAG, "Capture execution failed: ${e.message}", e)
             OptiResult.Error(OptiError.ProcessingFailed(stage = "Capture execution", cause = e))
         } finally {
-            isCapturing.set(false)
             _sessionState.value = CameraSessionState.PREVIEW_ACTIVE
+            isCapturing.set(false)
         }
     }
 
@@ -964,8 +968,16 @@ class CameraXController @Inject constructor(
         recomputePortraitPlan()
     }
 
+    private var activeZoomObserver: Observer<androidx.camera.core.ZoomState>? = null
+    private var activeCameraInfo: CameraInfo? = null
+
     override fun release() {
         try {
+            activeZoomObserver?.let { obs ->
+                activeCameraInfo?.zoomState?.removeObserver(obs)
+            }
+            activeZoomObserver = null
+            activeCameraInfo = null
             thermalMonitor.stopMonitoring()
             _lastBurstResult.value?.close()
             _lastBurstResult.value = null
@@ -979,6 +991,27 @@ class CameraXController @Inject constructor(
             logger.d(TAG, "CameraXController fully released.")
         } catch (e: Exception) {
             logger.w(TAG, "Error releasing CameraXController: ${e.message}")
+        }
+    }
+
+    override fun unbind() {
+        try {
+            activeZoomObserver?.let { obs ->
+                activeCameraInfo?.zoomState?.removeObserver(obs)
+            }
+            activeZoomObserver = null
+            activeCameraInfo = null
+            gyroMotionTracker.stop()
+            realtimeAnalyzer?.reset()
+            cameraProvider?.unbindAll()
+            camera = null
+            previewUseCase = null
+            imageCaptureUseCase = null
+            imageAnalysisUseCase = null
+            _sessionState.value = CameraSessionState.IDLE
+            logger.d(TAG, "CameraXController unbound (lightweight — executors preserved).")
+        } catch (e: Exception) {
+            logger.w(TAG, "Error unbinding CameraXController: ${e.message}")
         }
     }
 
@@ -999,8 +1032,14 @@ class CameraXController @Inject constructor(
     }
 
     private fun setupCameraStateObservers(cam: Camera) {
+        // Clean up any existing observer on previous camera to prevent observer leaks across rebinds
+        activeZoomObserver?.let { obs ->
+            activeCameraInfo?.zoomState?.removeObserver(obs)
+        }
+
         val info = cam.cameraInfo
-        info.zoomState.observeForever { zoom ->
+        activeCameraInfo = info
+        val observer = Observer<androidx.camera.core.ZoomState> { zoom ->
             if (zoom != null) {
                 _zoomState.value = ZoomState(
                     currentZoom = zoom.zoomRatio,
@@ -1010,6 +1049,8 @@ class CameraXController @Inject constructor(
                 )
             }
         }
+        activeZoomObserver = observer
+        info.zoomState.observeForever(observer)
 
         val exp = info.exposureState
         _exposureState.value = ExposureState(

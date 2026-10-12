@@ -10,4 +10,16 @@
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar" tools:targetApi="23">false</item>
     </style>
+
+    <!--
+        Splash screen theme using the Android 12+ SplashScreen API.
+        Configured here so the OS renders the branded background before
+        Compose is initialized. The animated Compose splash runs immediately after.
+    -->
+    <style name="Theme.OptiLens.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@android:color/black</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="windowSplashScreenAnimationDuration">400</item>
+        <item name="postSplashScreenTheme">@style/Theme.OptiLens</item>
+    </style>
 </resources>

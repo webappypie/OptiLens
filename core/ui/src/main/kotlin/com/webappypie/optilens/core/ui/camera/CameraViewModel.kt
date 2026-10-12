@@ -1208,7 +1208,8 @@ class CameraViewModel @Inject constructor(
         super.onCleared()
         focusResetJob?.cancel()
         timerJob?.cancel()
-        cameraController.release()
+        // Use unbind() not release() — the controller is a Singleton; executors must persist
+        cameraController.unbind()
     }
 
     private data class CameraInternalState(

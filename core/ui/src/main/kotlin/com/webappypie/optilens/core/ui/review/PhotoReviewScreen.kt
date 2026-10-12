@@ -129,7 +129,7 @@ fun PhotoReviewScreen(
             }
 
             Text(
-                text = if (uiState.isEnhanced) "AI Enhanced" else "Review",
+                text = if (uiState.isCloudEnhanced) "Cloud AI Enhanced" else if (uiState.isEnhanced) "AI Enhanced" else "Review",
                 color = Color.White,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 16.sp,
@@ -192,12 +192,10 @@ fun PhotoReviewScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 if (uiState.isEnhancing) {
-                    // Genuine stage progress indicator
-                    val stage = uiState.currentStage ?: AiEnhanceStage.ANALYZING_SCENE
-                    val progress = stage.stageIndex.toFloat() / stage.totalStages.toFloat()
+                    val progress = (uiState.currentStage?.stageIndex ?: 2).toFloat() / 5f
 
                     Text(
-                        text = stage.displayName,
+                        text = uiState.statusText ?: uiState.currentStage?.displayName ?: "Enhancing photo...",
                         color = Color.White,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
@@ -213,66 +211,92 @@ fun PhotoReviewScreen(
                         trackColor = Color.White.copy(alpha = 0.2f),
                     )
                 } else if (!uiState.isEnhanced) {
-                    Row(
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Button(
-                            onClick = { viewModel.enhance() },
-                            modifier = Modifier
-                                .weight(1.1f)
-                                .height(52.dp),
-                            shape = RoundedCornerShape(26.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                            ),
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.AutoAwesome,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                                tint = Color.Black,
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "AI Enhance",
-                                color = Color.Black,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
+                            Button(
+                                onClick = { viewModel.enhance(requestCloud = false) },
+                                modifier = Modifier
+                                    .weight(1.1f)
+                                    .height(50.dp),
+                                shape = RoundedCornerShape(25.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                ),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                    tint = Color.Black,
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "AI Enhance",
+                                    color = Color.Black,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
 
-                        OutlinedButton(
-                            onClick = { onNavigateToAiTools(photoUri) },
-                            modifier = Modifier
-                                .weight(0.9f)
-                                .height(52.dp),
-                            shape = RoundedCornerShape(26.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Tune,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                                tint = Color.White,
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "AI Tools",
-                                color = Color.White,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold,
-                            )
+                            if (uiState.isPro) {
+                                Button(
+                                    onClick = { viewModel.enhance(requestCloud = true) },
+                                    modifier = Modifier
+                                        .weight(1.1f)
+                                        .height(50.dp),
+                                    shape = RoundedCornerShape(25.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFF673AB7),
+                                    ),
+                                ) {
+                                    Text(
+                                        text = "Cloud AI (${uiState.remainingCloudQuota})",
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                }
+                            }
+
+                            OutlinedButton(
+                                onClick = { onNavigateToAiTools(photoUri) },
+                                modifier = Modifier
+                                    .weight(0.9f)
+                                    .height(50.dp),
+                                shape = RoundedCornerShape(25.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Tune,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                    tint = Color.White,
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "AI Tools",
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
                         }
                     }
                 } else {
                     // Enhanced mode actions: Revert and Save Copy
                     Text(
-                        text = "Drag slider to compare • Long press for original",
-                        color = Color.White.copy(alpha = 0.7f),
+                        text = if (uiState.isCloudEnhanced) "☁️ ${uiState.enhancementMethod} • Drag to compare"
+                               else "⚡ ${uiState.enhancementMethod ?: "Neural Enhanced"} • Drag to compare",
+                        color = MaterialTheme.colorScheme.primary,
                         fontSize = 12.sp,
-                        fontWeight = FontWeight.Normal,
+                        fontWeight = FontWeight.SemiBold,
                     )
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),

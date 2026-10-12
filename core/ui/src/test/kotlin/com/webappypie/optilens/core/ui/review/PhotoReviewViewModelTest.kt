@@ -231,5 +231,26 @@ class PhotoReviewViewModelTest {
 
         override val favoriteUris: Flow<Set<String>> = MutableStateFlow(emptySet())
         override suspend fun setFavorite(uri: String, isFavorite: Boolean) {}
+
+        override val analyticsEnabled: Flow<Boolean> = MutableStateFlow(true)
+        override suspend fun setAnalyticsEnabled(enabled: Boolean) {}
+
+        override val crashReportingEnabled: Flow<Boolean> = MutableStateFlow(true)
+        override suspend fun setCrashReportingEnabled(enabled: Boolean) {}
+
+        override val successfulCapturesCount: Flow<Int> = MutableStateFlow(0)
+        override suspend fun incrementSuccessfulCaptures() {}
+
+        override val lastReviewPromptTimestamp: Flow<Long> = MutableStateFlow(0L)
+        override suspend fun setLastReviewPromptTimestamp(timestamp: Long) {}
+
+        override val hasUserReviewed: Flow<Boolean> = MutableStateFlow(false)
+        override suspend fun setHasUserReviewed(reviewed: Boolean) {}
+
+        override val firstInstallTimestamp: Flow<Long> = MutableStateFlow(0L)
+        override suspend fun setFirstInstallTimestamp(timestamp: Long) {}
+
+        override val recentFailureTimestamp: Flow<Long> = MutableStateFlow(0L)
+        override suspend fun setRecentFailureTimestamp(timestamp: Long) {}
     }
 }

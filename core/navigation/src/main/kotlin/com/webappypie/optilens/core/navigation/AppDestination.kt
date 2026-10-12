@@ -13,6 +13,10 @@ sealed interface AppDestination {
 
     // ── Top-level screens ──────────────────────────────────────────────
 
+    /** Branded splash screen shown once per process on cold start. */
+    @Serializable
+    data object Splash : AppDestination
+
     /** Main camera viewfinder — the app entry point. */
     @Serializable
     data object Camera : AppDestination
@@ -25,9 +29,12 @@ sealed interface AppDestination {
     @Serializable
     data object Settings : AppDestination
 
-    /** AI computational photography tools screen. */
+    /**
+     * AI computational photography tools screen.
+     * @param photoUri Optional content URI of a photo to load for editing. Empty string if opened standalone.
+     */
     @Serializable
-    data object AiTools : AppDestination
+    data class AiTools(val photoUri: String = "") : AppDestination
 
     // ── Photo detail / result ─────────────────────────────────────────
 

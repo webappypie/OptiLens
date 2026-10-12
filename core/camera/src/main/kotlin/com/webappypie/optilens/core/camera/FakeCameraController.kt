@@ -443,6 +443,8 @@ class FakeCameraController @Inject constructor() : CameraController {
         stopPreviewSync()
     }
 
+    override fun unbind() {}
+
     private fun stopPreviewSync() {
         _sessionState.value = CameraSessionState.IDLE
         isPreviewActive = false

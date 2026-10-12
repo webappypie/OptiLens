@@ -5,6 +5,7 @@ import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -30,6 +31,7 @@ import com.webappypie.optilens.core.ui.screens.CameraDiagnosticsScreen
 import com.webappypie.optilens.core.ui.screens.GalleryScreen
 import com.webappypie.optilens.core.ui.screens.ProUpgradeScreen
 import com.webappypie.optilens.core.ui.screens.SettingsScreen
+import com.webappypie.optilens.core.ui.screens.SplashScreen
 import com.webappypie.optilens.ui.theme.OptiLensTheme
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.Flow
@@ -66,6 +68,10 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+
+        // Install OS splash screen (API 31+ animated icon, older: simple window background).
+        // Must be called BEFORE setContent.
+        installSplashScreen()
 
         setContent {
             val themeMode by appSettings.themeMode.collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
@@ -130,11 +136,15 @@ fun OptiLensNavigationShell(
     AppNavHost(
         modifier = modifier,
         navController = navController,
+        splashScreen = { onSplashComplete ->
+            SplashScreen(onSplashComplete = onSplashComplete)
+        },
         cameraScreen = {
             CameraScreen(
                 onNavigateToSettings = { navController.navigate(AppDestination.Settings) },
                 onNavigateToGallery  = { navController.navigate(AppDestination.Gallery) },
                 onNavigateToPhotoReview = { uri -> navController.navigate(AppDestination.PhotoDetail(uri)) },
+                onNavigateToAiTools = { navController.navigate(AppDestination.AiTools()) },
                 showGrid = gridEnabled,
                 showLevel = levelEnabled,
                 externalShutterTrigger = volumeKeyShutterTrigger,
@@ -144,6 +154,9 @@ fun OptiLensNavigationShell(
             PhotoReviewScreen(
                 photoUri = detail.photoUri,
                 onNavigateBack = { navController.popBackStack() },
+                onNavigateToAiTools = { uri ->
+                    navController.navigate(AppDestination.AiTools(photoUri = uri))
+                },
             )
         },
         galleryScreen = {
@@ -161,9 +174,11 @@ fun OptiLensNavigationShell(
                 onNavigateToDiagnostics = { navController.navigate(AppDestination.CameraDiagnostics) },
             )
         },
-        aiToolsScreen = {
+        aiToolsScreen = { destination ->
             AiToolsScreen(
+                photoUri = destination.photoUri,
                 onNavigateBack = { navController.popBackStack() },
+                onNavigateToUpgrade = { navController.navigate(AppDestination.ProUpgrade) },
             )
         },
         proUpgradeScreen = {

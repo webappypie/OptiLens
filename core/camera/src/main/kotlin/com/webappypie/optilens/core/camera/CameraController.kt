@@ -280,4 +280,10 @@ interface CameraController {
 
     /** Release all active camera and executor resources. */
     fun release()
+
+    /**
+     * Unbind all camera use cases and stop analysis without destroying thread pools.
+     * Safe to call from ViewModel.onCleared() when controller is a Singleton.
+     */
+    fun unbind()
 }

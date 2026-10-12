@@ -86,7 +86,7 @@ class DeviceThermalMonitorTest {
 
         monitor.setSimulatedThermalState(DeviceThermalState.SEVERE)
         assertEquals(DeviceThermalState.SEVERE, monitor.thermalState.value)
-        assertEquals(2, monitor.policy.value.maxBurstFrames)
+        assertEquals(3, monitor.policy.value.maxBurstFrames)
         assertFalse(monitor.policy.value.enableHeavyFilters)
 
         monitor.setSimulatedThermalState(DeviceThermalState.NORMAL)
