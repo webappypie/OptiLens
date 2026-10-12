@@ -7,6 +7,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
@@ -39,9 +40,16 @@ import com.webappypie.optilens.core.camera.model.SceneType
 import com.webappypie.optilens.core.camera.strategy.CaptureStrategy
 import com.webappypie.optilens.core.camera.strategy.CaptureUiHint
 
+/** What tapping a hint pill does, when the camera screen offers it. */
+enum class SceneHintAction(val label: String) {
+    ENABLE_HDR("Tap for HDR"),
+    SWITCH_TO_NIGHT("Tap for Night"),
+}
+
 /**
  * Non-intrusive floating pill badge rendering subtle contextual scene indicators
- * or acquisition hints (e.g. "Night", "HDR", "Hold steady", "Document").
+ * or acquisition hints (e.g. "Night suggested", "High contrast", "Hold steady", "Document").
+ * A hint becomes tappable only when its action is in [availableActions].
  */
 @Composable
 fun SceneHintPill(
@@ -49,8 +57,11 @@ fun SceneHintPill(
     strategy: CaptureStrategy,
     motion: MotionState,
     modifier: Modifier = Modifier,
+    availableActions: Set<SceneHintAction> = emptySet(),
+    onAction: (SceneHintAction) -> Unit = {},
 ) {
     val displayInfo = resolveHintDisplay(scene, strategy, motion)
+    val action = displayInfo?.action?.takeIf { it in availableActions }
 
     AnimatedVisibility(
         visible = displayInfo != null,
@@ -65,8 +76,17 @@ fun SceneHintPill(
                 modifier = Modifier
                     .clip(CircleShape)
                     .background(Color(0xDD18181A))
-                    .border(0.5.dp, displayInfo.accentColor.copy(alpha = 0.35f), CircleShape)
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .border(0.5.dp, displayInfo.accentColor.copy(alpha = if (action != null) 0.8f else 0.35f), CircleShape)
+                    .then(
+                        if (action != null) {
+                            Modifier.clickable(role = androidx.compose.ui.semantics.Role.Button, onClickLabel = action.label) {
+                                onAction(action)
+                            }
+                        } else {
+                            Modifier
+                        },
+                    )
+                    .padding(horizontal = 12.dp, vertical = if (action != null) 10.dp else 6.dp),
             ) {
                 Icon(
                     imageVector = displayInfo.icon,
@@ -75,7 +95,7 @@ fun SceneHintPill(
                     modifier = Modifier.size(14.dp),
                 )
                 Text(
-                    text = displayInfo.text,
+                    text = if (action != null) "${displayInfo.text} · ${action.label}" else displayInfo.text,
                     color = Color.White.copy(alpha = 0.92f),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium,
@@ -90,6 +110,7 @@ private data class HintDisplay(
     val icon: ImageVector,
     val text: String,
     val accentColor: Color = Color(0xFFE5C07B),
+    val action: SceneHintAction? = null,
 )
 
 private fun resolveHintDisplay(
@@ -112,6 +133,7 @@ private fun resolveHintDisplay(
             icon = Icons.Default.DarkMode,
             text = "Night suggested",
             accentColor = Color(0xFF61AFEF),
+            action = SceneHintAction.SWITCH_TO_NIGHT,
         )
     }
 
@@ -121,6 +143,7 @@ private fun resolveHintDisplay(
             // Describes the scene only: there is no HDR capture mode to suggest yet.
             text = if (strategy.uiHint == CaptureUiHint.BACKLIGHT_DETECTED) "Backlight" else "High contrast",
             accentColor = Color(0xFFE5C07B),
+            action = SceneHintAction.ENABLE_HDR,
         )
     }
 

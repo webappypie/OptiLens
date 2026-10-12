@@ -215,3 +215,13 @@ Owner instruction: proceed without testing. Only `:app:compileDebugKotlin` was r
 Audit note (no change): `AdProvider`/`GoogleMobileAdProvider` is not injected anywhere, so the Mobile Ads SDK is not initialised at startup and interstitial code is unused; the gallery `AdView` initialises the SDK lazily on first load.
 
 To verify: cold start with permission granted (splash shows, then a live preview with no delay or flicker; taps during splash do nothing); first install without permission (old flow, permission dialog after the splash); rotation/process restore don't show the splash again; `testDebugUnitTest lintDebug`; compare Diagnostics "camera ready" against the Phase 03–04 figures (≈3.6 s).
+
+# Run 7 — actionable viewfinder hints (2026-10-13) — NOT TESTED
+
+Owner instruction: proceed without testing. Only `:core:ui:compileDebugKotlin` was run; **no unit tests, no lint, no device run**.
+
+| Change | Why |
+|---|---|
+| Hint pills can carry an action. "High contrast"/"Backlight" → **Tap for HDR** (offered only in Photo mode while HDR is off); "Night suggested" → **Tap for Night** (offered when not already in Night). Actionable pills get a stronger outline, a larger touch area, the "· Tap for …" suffix and a Button role/click label for TalkBack. Other hints stay purely informational | The hints were suggestions the user had to act on elsewhere; now they lead straight to the real feature they describe |
+
+To verify: point at a backlit/high-contrast scene in Photo mode with HDR off → pill reads "High contrast · Tap for HDR" → tap turns the HDR button on and the pill returns to plain "High contrast"; in a dark scene "Night suggested · Tap for Night" switches the mode rail to Night; TalkBack announces the action.

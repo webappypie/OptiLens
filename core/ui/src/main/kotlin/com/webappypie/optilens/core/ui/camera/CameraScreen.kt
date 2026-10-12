@@ -114,6 +114,7 @@ import com.webappypie.optilens.core.ui.camera.overlay.ExposureZebraOverlay
 import com.webappypie.optilens.core.ui.camera.overlay.FaceBoundingBoxOverlay
 import com.webappypie.optilens.core.ui.camera.overlay.FocusPeakingOverlay
 import com.webappypie.optilens.core.ui.camera.overlay.SceneHintPill as IntelligentSceneHintPill
+import com.webappypie.optilens.core.ui.camera.overlay.SceneHintAction
 import com.webappypie.optilens.core.ui.camera.pro.LensMetadataHud
 import com.webappypie.optilens.core.ui.camera.pro.ProControlsBar
 import com.webappypie.optilens.core.camera.model.CameraMode
@@ -459,6 +460,21 @@ fun CameraScreen(
                 scene = uiState.sceneClassification,
                 strategy = uiState.captureStrategy,
                 motion = uiState.motionState,
+                availableActions = buildSet {
+                    if (currentMode == CameraMode.PHOTO && !uiState.isHdrEnabled) add(SceneHintAction.ENABLE_HDR)
+                    if (currentMode != CameraMode.NIGHT && CameraMode.NIGHT in viewModel.availableCameraModes) {
+                        add(SceneHintAction.SWITCH_TO_NIGHT)
+                    }
+                },
+                onAction = { action ->
+                    when (action) {
+                        SceneHintAction.ENABLE_HDR -> viewModel.toggleHdr()
+                        SceneHintAction.SWITCH_TO_NIGHT -> {
+                            currentMode = CameraMode.NIGHT
+                            viewModel.setCameraMode(CameraMode.NIGHT)
+                        }
+                    }
+                },
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .padding(top = topInset + 64.dp),
