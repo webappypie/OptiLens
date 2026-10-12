@@ -121,7 +121,7 @@ class AdFrequencyCapManagerTest {
         override val unlockedPacks: StateFlow<Set<String>> = _unlockedPacks.asStateFlow()
 
         override val availableProducts: StateFlow<List<OptiProductDetails>> =
-            MutableStateFlow(OptiProductDetails.DEFAULT_PRODUCTS)
+            MutableStateFlow(emptyList())
 
         private val _purchaseStatus = MutableStateFlow<PurchaseStatus>(PurchaseStatus.Idle)
         override val purchaseStatus: StateFlow<PurchaseStatus> = _purchaseStatus.asStateFlow()
@@ -134,6 +134,8 @@ class AdFrequencyCapManagerTest {
 
         override suspend fun restorePurchases(): OptiResult<UserEntitlements> =
             OptiResult.Success(_entitlements.value)
+
+        override fun updateAvailableProducts(products: List<OptiProductDetails>) {}
 
         override fun setPurchaseStatus(status: PurchaseStatus) {
             _purchaseStatus.value = status

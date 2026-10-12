@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -246,7 +247,9 @@ fun BeforeAfterSplitViewer(
             exit = fadeOut(),
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .padding(top = 16.dp, start = 16.dp),
+                .statusBarsPadding()
+                // Below the screen's top app bar so badges never overlap it or the status bar.
+                .padding(top = 64.dp, start = 16.dp),
         ) {
             Box(
                 modifier = Modifier
@@ -270,7 +273,8 @@ fun BeforeAfterSplitViewer(
             exit = fadeOut(),
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(top = 16.dp, end = 16.dp),
+                .statusBarsPadding()
+                .padding(top = 64.dp, end = 16.dp),
         ) {
             Box(
                 modifier = Modifier
@@ -295,7 +299,8 @@ fun BeforeAfterSplitViewer(
             exit = fadeOut(),
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 16.dp),
+                .statusBarsPadding()
+                .padding(top = 64.dp),
         ) {
             Box(
                 modifier = Modifier

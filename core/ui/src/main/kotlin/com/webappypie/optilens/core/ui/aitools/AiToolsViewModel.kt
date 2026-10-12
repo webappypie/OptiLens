@@ -13,6 +13,7 @@ import com.webappypie.optilens.core.imaging.ai.DeblurConfig
 import com.webappypie.optilens.core.imaging.ai.InpaintingConfig
 import com.webappypie.optilens.core.imaging.ai.ReflectionConfig
 import com.webappypie.optilens.core.imaging.ai.RestorationConfig
+import com.webappypie.optilens.core.imaging.ai.UpscaleBudget
 import com.webappypie.optilens.core.imaging.ai.UpscaleConfig
 import com.webappypie.optilens.core.logging.AppLogger
 import com.webappypie.optilens.core.settings.AppSettings
@@ -31,6 +32,7 @@ import javax.inject.Inject
 
 data class AiToolsUiState(
     val photoUri: String = "",
+    val isLoadingPhoto: Boolean = false,
     val originalBitmap: Bitmap? = null,
     val currentBitmap: Bitmap? = null,
     val selectedTool: AiToolType = AiToolType.DEBLUR,
@@ -54,6 +56,19 @@ data class AiToolsUiState(
     val hasAiPack: Boolean = false,
 ) {
     val isGated: Boolean get() = selectedTool.isGatedByProPack && !isPro && !hasAiPack
+
+    /** True once at least one edit has changed the photo (Save is pointless before that). */
+    val hasEdits: Boolean get() = currentBitmap != null && currentBitmap !== originalBitmap
+
+    /** Upscale factors whose output fits [UpscaleBudget] for the current image. */
+    val allowedUpscaleFactors: List<Int>
+        get() = currentBitmap?.let { UpscaleBudget.allowedFactors(it.width, it.height) } ?: emptyList()
+
+    val canApply: Boolean
+        get() = currentBitmap != null && !isProcessing &&
+            (selectedTool != AiToolType.UPSCALE || upscaleFactor in allowedUpscaleFactors)
+
+    val canSave: Boolean get() = hasEdits && !isSaved && !isProcessing
 }
 
 @HiltViewModel
@@ -99,9 +114,37 @@ class AiToolsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Loads the navigation argument once. Ignored when a session already exists, so an activity
+     * recreation cannot replace a photo the user picked (and discard their edits).
+     */
+    fun loadInitialPhoto(uriString: String) {
+        if (_uiState.value.photoUri.isNotBlank()) return
+        loadPhoto(uriString)
+    }
+
+    /**
+     * Loads [uriString] as a new editing session (from navigation or the photo picker).
+     * A blank URI leaves the screen in its "choose a photo" state.
+     */
     fun loadPhoto(uriString: String) {
         if (uriString.isBlank() || uriString == _uiState.value.photoUri) return
-        _uiState.update { it.copy(photoUri = uriString, errorMessage = null) }
+        undoStack.clear()
+        redoStack.clear()
+        _uiState.update {
+            it.copy(
+                photoUri = uriString,
+                isLoadingPhoto = true,
+                originalBitmap = null,
+                currentBitmap = null,
+                blurClassification = null,
+                canUndo = false,
+                canRedo = false,
+                isSaved = false,
+                savedUri = null,
+                errorMessage = null,
+            )
+        }
 
         viewModelScope.launch(ioDispatcher) {
             try {
@@ -110,17 +153,22 @@ class AiToolsViewModel @Inject constructor(
                     val classification = aiToolsCoordinator.classifyBlur(bitmap)
                     _uiState.update {
                         it.copy(
+                            isLoadingPhoto = false,
                             originalBitmap = bitmap,
                             currentBitmap = bitmap,
                             blurClassification = classification,
                         )
                     }
                 } else {
-                    _uiState.update { it.copy(errorMessage = "Failed to load image from URI") }
+                    _uiState.update {
+                        it.copy(isLoadingPhoto = false, errorMessage = "This photo couldn't be opened. Try another one.")
+                    }
                 }
             } catch (e: Exception) {
-                logger.e(TAG, "Error loading photo for AI tools", e)
-                _uiState.update { it.copy(errorMessage = e.message ?: "Failed to load photo") }
+                logger.e(TAG, "Error loading photo for editing tools", e)
+                _uiState.update {
+                    it.copy(isLoadingPhoto = false, errorMessage = "This photo couldn't be opened. Try another one.")
+                }
             }
         }
     }
@@ -143,8 +191,8 @@ class AiToolsViewModel @Inject constructor(
     }
 
     fun updateUpscaleFactor(factor: Int) {
-        val valid = if (factor >= 4) 4 else 2
-        _uiState.update { it.copy(upscaleFactor = valid) }
+        if (factor !in UpscaleBudget.SUPPORTED_FACTORS) return
+        _uiState.update { it.copy(upscaleFactor = factor) }
     }
 
     fun updateRestorationStrength(strength: Float) {
@@ -154,6 +202,12 @@ class AiToolsViewModel @Inject constructor(
     fun applyCurrentTool(maskBitmap: Bitmap? = null) {
         val current = _uiState.value.currentBitmap ?: return
         if (_uiState.value.isProcessing) return
+        if (_uiState.value.selectedTool == AiToolType.UPSCALE &&
+            _uiState.value.upscaleFactor !in _uiState.value.allowedUpscaleFactors
+        ) {
+            _uiState.update { it.copy(errorMessage = "This photo is too large to upscale ${it.upscaleFactor}x.") }
+            return
+        }
 
         _uiState.update {
             it.copy(isProcessing = true, currentStage = AiExecutionStage.ANALYZING_IMAGE, errorMessage = null)
@@ -211,27 +265,42 @@ class AiToolsViewModel @Inject constructor(
                     }
                 }
 
-                // Push previous into undo stack
-                undoStack.add(current)
-                redoStack.clear()
-
+                onEditApplied(previous = current, edited = result.processedBitmap, disclosure = result.disclosureText)
+            } catch (e: OutOfMemoryError) {
+                logger.e(TAG, "Out of memory applying edit", e)
                 _uiState.update {
-                    it.copy(
-                        currentBitmap = result.processedBitmap,
-                        isProcessing = false,
-                        currentStage = null,
-                        canUndo = undoStack.isNotEmpty(),
-                        canRedo = false,
-                        disclosureMessage = result.disclosureText,
-                    )
+                    it.copy(isProcessing = false, currentStage = null, errorMessage = "Not enough memory for this edit on this photo.")
                 }
             } catch (e: Exception) {
                 logger.e(TAG, "Error applying AI transformation", e)
                 _uiState.update {
-                    it.copy(isProcessing = false, currentStage = null, errorMessage = e.message ?: "Processing failed")
+                    it.copy(isProcessing = false, currentStage = null, errorMessage = e.message ?: "The edit couldn't be applied.")
                 }
             }
         }
+    }
+
+    /** Records a completed edit: previous image to undo history; any earlier save is now stale. */
+    private fun onEditApplied(previous: Bitmap, edited: Bitmap, disclosure: String?) {
+        undoStack.add(previous)
+        redoStack.clear()
+        _uiState.update {
+            it.copy(
+                currentBitmap = edited,
+                isProcessing = false,
+                currentStage = null,
+                canUndo = undoStack.isNotEmpty(),
+                canRedo = false,
+                disclosureMessage = disclosure,
+                isSaved = false,
+                savedUri = null,
+            )
+        }
+    }
+
+    internal fun applyEditForTesting(edited: Bitmap, disclosure: String? = null) {
+        val current = _uiState.value.currentBitmap ?: return
+        onEditApplied(previous = current, edited = edited, disclosure = disclosure)
     }
 
     fun undo() {
@@ -245,6 +314,8 @@ class AiToolsViewModel @Inject constructor(
                 currentBitmap = previous,
                 canUndo = undoStack.isNotEmpty(),
                 canRedo = redoStack.isNotEmpty(),
+                isSaved = false,
+                savedUri = null,
             )
         }
     }
@@ -260,6 +331,8 @@ class AiToolsViewModel @Inject constructor(
                 currentBitmap = next,
                 canUndo = undoStack.isNotEmpty(),
                 canRedo = redoStack.isNotEmpty(),
+                isSaved = false,
+                savedUri = null,
             )
         }
     }
@@ -275,6 +348,7 @@ class AiToolsViewModel @Inject constructor(
                 canUndo = false,
                 canRedo = false,
                 isSaved = false,
+                savedUri = null,
                 disclosureMessage = null,
             )
         }
@@ -290,7 +364,7 @@ class AiToolsViewModel @Inject constructor(
 
     fun saveCopy() {
         val processed = _uiState.value.currentBitmap ?: return
-        if (_uiState.value.isSaved || _uiState.value.isProcessing) return
+        if (!_uiState.value.canSave) return
 
         _uiState.update { it.copy(isProcessing = true, errorMessage = null) }
 

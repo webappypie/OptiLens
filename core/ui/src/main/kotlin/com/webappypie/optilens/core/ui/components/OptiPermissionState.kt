@@ -46,6 +46,9 @@ fun OptiPermissionState(
     Column(
         modifier = modifier
             .fillMaxSize()
+            // Paint the themed background so onSurface text is legible in both Light and Dark
+            // themes (the camera window background behind this screen is always black).
+            .background(MaterialTheme.colorScheme.background)
             .padding(OptiLensTheme.spacing.xxxl),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,

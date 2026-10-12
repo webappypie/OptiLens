@@ -26,7 +26,7 @@ import javax.inject.Inject
 enum class GalleryFilter(val label: String) {
     ALL("All Photos"),
     FAVORITES("Favorites"),
-    ENHANCED("AI Enhanced"),
+    ENHANCED("Edited"),
     RAW("RAW / DNG");
 }
 

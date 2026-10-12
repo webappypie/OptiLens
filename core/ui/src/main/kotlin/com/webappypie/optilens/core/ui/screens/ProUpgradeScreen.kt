@@ -50,14 +50,11 @@ import com.webappypie.optilens.core.ui.components.OptiButton
 import com.webappypie.optilens.core.ui.components.OptiTopBar
 import com.webappypie.optilens.core.ui.theme.OptiLensTheme
 
+// Only benefits the Pro entitlement actually unlocks today.
 private val ProFeatures = listOf(
-    "16-bit RAW DNG capture with embedded color matrices",
-    "On-device AI Super-Resolution Zoom up to 30x",
-    "Studio Portrait Relighting and adjustable optical bokeh",
-    "Full Manual Controls: Shutter Speed, ISO, Manual Focus & WB",
-    "Handheld Astro & Night Vision burst synthesis",
-    "100% on-device private processing — zero cloud uploads",
-    "Ad-free camera experience app-wide",
+    "All editing tools: Deblur, Object Cleanup, Reflection Cleaner, Upscale and Photo Restore",
+    "No ads anywhere in the app",
+    "Processing stays on your device; photos are never uploaded",
 )
 
 /**
@@ -128,7 +125,7 @@ fun ProUpgradeScreen(
             Spacer(modifier = Modifier.height(OptiLensTheme.spacing.m))
 
             Text(
-                text = if (uiState.isPro) "You are an OptiLens Pro" else "Unleash Full Sensor Power",
+                text = if (uiState.isPro) "You are an OptiLens Pro" else "OptiLens Pro",
                 style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.Center,
@@ -140,7 +137,7 @@ fun ProUpgradeScreen(
                 } else if (uiState.isPro) {
                     "Active Pro Subscription • Zero Ads • Premium Tools Unlocked"
                 } else {
-                    uiState.promotionalCopy ?: "Pro manual shooting, 16-bit RAW, and real-time AI tools."
+                    uiState.promotionalCopy ?: "Unlock every editing tool and remove ads."
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -189,16 +186,30 @@ fun ProUpgradeScreen(
 
             Spacer(modifier = Modifier.height(OptiLensTheme.spacing.xxl))
 
-            if (!uiState.isPro) {
-                // Subscription Cards
+            if (!uiState.isPro && !uiState.hasPurchasableProducts) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Text(
+                        text = "Purchases aren't available right now. Google Play didn't return any OptiLens products. Check your connection and try again later.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(OptiLensTheme.spacing.l),
+                    )
+                }
+            } else if (!uiState.isPro) {
+                // Plan cards: only plans Google Play actually returned, at Play's prices.
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(OptiLensTheme.spacing.m),
                 ) {
                     // Annual Plan Card
-                    val isAnnualSelected = uiState.selectedPlanIndex == 0
-                    val annualPrice = uiState.annualProduct?.formattedPrice ?: "$29.99 / yr"
-                    Card(
+                    val annual = uiState.annualProduct
+                    val isAnnualSelected = uiState.selectedProduct?.id == annual?.id
+                    if (annual != null) Card(
                         modifier = Modifier
                             .weight(1f)
                             .border(
@@ -216,31 +227,17 @@ fun ProUpgradeScreen(
                             modifier = Modifier.padding(OptiLensTheme.spacing.l),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            Surface(
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.primary,
-                            ) {
-                                Text(
-                                    text = "BEST VALUE",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onPrimary,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(OptiLensTheme.spacing.s))
-
                             Text(
                                 text = "Annual",
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                             )
                             Text(
-                                text = annualPrice,
+                                text = annual.formattedPrice,
                                 style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Black),
                                 color = MaterialTheme.colorScheme.primary,
                             )
                             Text(
-                                text = "7-day free trial",
+                                text = if (annual.hasFreeTrial) "Includes a free trial" else "Billed yearly",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -248,9 +245,9 @@ fun ProUpgradeScreen(
                     }
 
                     // Lifetime Card
-                    val isLifetimeSelected = uiState.selectedPlanIndex == 1
-                    val lifetimePrice = uiState.lifetimeProduct?.formattedPrice ?: "$69.99"
-                    Card(
+                    val lifetime = uiState.lifetimeProduct
+                    val isLifetimeSelected = uiState.selectedProduct?.id == lifetime?.id
+                    if (lifetime != null) Card(
                         modifier = Modifier
                             .weight(1f)
                             .border(
@@ -268,14 +265,12 @@ fun ProUpgradeScreen(
                             modifier = Modifier.padding(OptiLensTheme.spacing.l),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            Spacer(modifier = Modifier.height(20.dp))
-
                             Text(
                                 text = "Lifetime",
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                             )
                             Text(
-                                text = lifetimePrice,
+                                text = lifetime.formattedPrice,
                                 style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Black),
                                 color = MaterialTheme.colorScheme.primary,
                             )
@@ -301,8 +296,15 @@ fun ProUpgradeScreen(
                         CircularProgressIndicator(modifier = Modifier.size(24.dp))
                     }
                 } else {
+                    val selected = uiState.selectedProduct
                     OptiButton(
-                        text = if (uiState.selectedPlanIndex == 0) "Start 7-Day Free Trial" else "Purchase Lifetime Access",
+                        text = when {
+                            selected == null -> "Unavailable"
+                            selected.id == uiState.lifetimeProduct?.id -> "Buy lifetime access"
+                            selected.hasFreeTrial -> "Start free trial"
+                            else -> "Subscribe yearly"
+                        },
+                        enabled = selected != null,
                         onClick = {
                             if (activity != null) {
                                 viewModel.startPurchase(activity)
@@ -329,7 +331,7 @@ fun ProUpgradeScreen(
                             color = MaterialTheme.colorScheme.primary,
                         )
                         Text(
-                            text = "All pro camera tools, 16-bit RAW, AI zoom, and ad removal are enabled.",
+                            text = "All editing tools are unlocked and ads are removed.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,
@@ -364,19 +366,7 @@ fun ProUpgradeScreen(
                     }
                 }
 
-                Text(
-                    text = "•",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = OptiLensTheme.spacing.xs),
-                )
-
-                TextButton(onClick = { /* Privacy Policy and Terms */ }) {
-                    Text(
-                        text = "Privacy & Terms",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                // "Privacy & Terms" removed: there is no published policy URL yet (owner input).
             }
 
             Spacer(modifier = Modifier.height(OptiLensTheme.spacing.xl))

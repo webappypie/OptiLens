@@ -15,15 +15,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.VolumeUp
-import androidx.compose.material.icons.outlined.BarChart
-import androidx.compose.material.icons.outlined.BugReport
-import androidx.compose.material.icons.outlined.ColorLens
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.GridOn
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.LocationOn
-import androidx.compose.material.icons.outlined.Photo
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.Vibration
@@ -49,14 +44,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.webappypie.optilens.core.settings.AppSettings
-import com.webappypie.optilens.core.settings.ColorProfile
 import com.webappypie.optilens.core.settings.ThemeMode
 import com.webappypie.optilens.core.ui.components.OptiSegmentedControl
 import com.webappypie.optilens.core.ui.components.OptiSettingsRow
 import com.webappypie.optilens.core.ui.components.OptiSettingsToggleRow
 import com.webappypie.optilens.core.ui.components.OptiTopBar
 import com.webappypie.optilens.core.ui.theme.OptiLensTheme
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Settings Screen for OptiLens.
@@ -85,11 +81,6 @@ fun SettingsScreen(
     val shutterSoundEnabled by appSettings.shutterSoundEnabled.collectAsStateWithLifecycle(initialValue = true)
     val hapticFeedbackEnabled by appSettings.hapticFeedbackEnabled.collectAsStateWithLifecycle(initialValue = true)
     val volumeKeyShutterEnabled by appSettings.volumeKeyShutterEnabled.collectAsStateWithLifecycle(initialValue = false)
-    val colorProfile by appSettings.colorProfile.collectAsStateWithLifecycle(initialValue = ColorProfile.BALANCED)
-    val keepOriginalEnabled by appSettings.keepOriginalEnabled.collectAsStateWithLifecycle(initialValue = true)
-    val locationTaggingEnabled by appSettings.locationTaggingEnabled.collectAsStateWithLifecycle(initialValue = false)
-    val analyticsEnabled by appSettings.analyticsEnabled.collectAsStateWithLifecycle(initialValue = false)
-    val crashReportingEnabled by appSettings.crashReportingEnabled.collectAsStateWithLifecycle(initialValue = false)
     val isPro by appSettings.isPro.collectAsStateWithLifecycle(initialValue = false)
 
     val context = LocalContext.current
@@ -147,7 +138,7 @@ fun SettingsScreen(
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                             )
                             Text(
-                                text = "RAW DNG capture, unlimited AI tools & studio filters",
+                                text = "Editing tools and an ad-free gallery",
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
@@ -270,70 +261,8 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.outlineVariant,
             )
 
-            // ── Processing & Color Section ─────────────────────────────────
-            SettingsSectionHeader(title = "Image Processing")
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = OptiLensTheme.spacing.l, vertical = OptiLensTheme.spacing.s),
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(bottom = OptiLensTheme.spacing.s),
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.ColorLens,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(OptiLensTheme.iconSizes.standard),
-                    )
-                    Text(
-                        text = "Color Rendering Profile",
-                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                        modifier = Modifier.padding(start = OptiLensTheme.spacing.l),
-                    )
-                }
-
-                OptiSegmentedControl(
-                    items = listOf(ColorProfile.NATURAL, ColorProfile.BALANCED, ColorProfile.VIVID),
-                    selectedIndex = when (colorProfile) {
-                        ColorProfile.NATURAL  -> 0
-                        ColorProfile.BALANCED -> 1
-                        ColorProfile.VIVID    -> 2
-                    },
-                    onItemSelected = { index ->
-                        val selected = when (index) {
-                            0 -> ColorProfile.NATURAL
-                            1 -> ColorProfile.BALANCED
-                            else -> ColorProfile.VIVID
-                        }
-                        coroutineScope.launch { appSettings.setColorProfile(selected) }
-                    },
-                    itemLabel = { profile ->
-                        when (profile) {
-                            ColorProfile.NATURAL  -> "Natural"
-                            ColorProfile.BALANCED -> "Balanced"
-                            ColorProfile.VIVID    -> "Vivid"
-                        }
-                    },
-                )
-            }
-
-            OptiSettingsToggleRow(
-                title = "Save Original Photo",
-                subtitle = "Keep unenhanced shot alongside processed photo",
-                leadingIcon = Icons.Outlined.Photo,
-                checked = keepOriginalEnabled,
-                onCheckedChange = { checked ->
-                    coroutineScope.launch { appSettings.setKeepOriginalEnabled(checked) }
-                },
-            )
-
-            HorizontalDivider(
-                modifier = Modifier.padding(vertical = OptiLensTheme.spacing.s),
-                color = MaterialTheme.colorScheme.outlineVariant,
-            )
+            // Image Processing (colour profile, save-original) is hidden until capture-time
+            // processing is wired (roadmap Phase 05): today neither setting changes any output.
 
             // ── Privacy & Data Safety Section ──────────────────────────────
             SettingsSectionHeader(title = "Privacy & Data Safety")
@@ -368,7 +297,7 @@ fun SettingsScreen(
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "All computational photography, HDR, AI enhancements, and raw buffers are processed strictly on your device. Your photos are never uploaded to any cloud server.",
+                            text = "Capture, processing and editing all run on your device. OptiLens never uploads your photos.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f),
                         )
@@ -378,40 +307,13 @@ fun SettingsScreen(
 
             OptiSettingsRow(
                 title = "Privacy Policy & Commitments",
-                subtitle = "Read our comprehensive zero-upload privacy policy",
+                subtitle = "How OptiLens handles your photos and data",
                 leadingIcon = Icons.Outlined.Security,
                 onClick = { showPrivacyPolicyDialog = true },
             )
 
-            OptiSettingsToggleRow(
-                title = "Location Tagging",
-                subtitle = "Add GPS coordinates to photo EXIF metadata (opt-in)",
-                leadingIcon = Icons.Outlined.LocationOn,
-                checked = locationTaggingEnabled,
-                onCheckedChange = { checked ->
-                    coroutineScope.launch { appSettings.setLocationTaggingEnabled(checked) }
-                },
-            )
-
-            OptiSettingsToggleRow(
-                title = "Anonymous Diagnostics",
-                subtitle = "Share aggregated performance telemetry (zero personal data)",
-                leadingIcon = Icons.Outlined.BarChart,
-                checked = analyticsEnabled,
-                onCheckedChange = { checked ->
-                    coroutineScope.launch { appSettings.setAnalyticsEnabled(checked) }
-                },
-            )
-
-            OptiSettingsToggleRow(
-                title = "Crash Reporting",
-                subtitle = "Send redacted diagnostic logs upon app crashes to help fix issues",
-                leadingIcon = Icons.Outlined.BugReport,
-                checked = crashReportingEnabled,
-                onCheckedChange = { checked ->
-                    coroutineScope.launch { appSettings.setCrashReportingEnabled(checked) }
-                },
-            )
+            // Location tagging, analytics and crash-reporting toggles were removed: no feature or
+            // backend acts on them yet, so offering them would be a dead/misleading control.
 
             OptiSettingsRow(
                 title = "Clear Temporary Cache",
@@ -419,21 +321,23 @@ fun SettingsScreen(
                 leadingIcon = Icons.Outlined.Delete,
                 onClick = {
                     coroutineScope.launch {
-                        var deletedBytes = 0L
-                        fun deleteRecursively(file: java.io.File) {
-                            if (file.isDirectory) {
-                                file.listFiles()?.forEach { deleteRecursively(it) }
+                        cacheNoticeMessage = withContext(Dispatchers.IO) {
+                            var deletedBytes = 0L
+                            fun deleteRecursively(file: java.io.File) {
+                                if (file.isDirectory) {
+                                    file.listFiles()?.forEach { deleteRecursively(it) }
+                                }
+                                deletedBytes += file.length()
+                                file.delete()
                             }
-                            deletedBytes += file.length()
-                            file.delete()
-                        }
-                        try {
-                            context.cacheDir?.listFiles()?.forEach { deleteRecursively(it) }
-                            context.externalCacheDir?.listFiles()?.forEach { deleteRecursively(it) }
-                            val mb = String.format(java.util.Locale.US, "%.1f", deletedBytes / (1024f * 1024f))
-                            cacheNoticeMessage = "Cache cleared ($mb MB freed)"
-                        } catch (e: Exception) {
-                            cacheNoticeMessage = "Cache cleared"
+                            try {
+                                context.cacheDir?.listFiles()?.forEach { deleteRecursively(it) }
+                                context.externalCacheDir?.listFiles()?.forEach { deleteRecursively(it) }
+                                val mb = String.format(java.util.Locale.US, "%.1f", deletedBytes / (1024f * 1024f))
+                                "Cache cleared ($mb MB freed)"
+                            } catch (e: Exception) {
+                                "Cache cleared"
+                            }
                         }
                     }
                 },
@@ -472,16 +376,18 @@ fun SettingsScreen(
                     modifier = Modifier.verticalScroll(rememberScrollState()),
                 ) {
                     Text(
-                        text = "Zero-Cloud Guarantee\n" +
-                            "OptiLens is built on a 100% on-device computational photography architecture. Every preview frame, camera capture, raw Bayer buffer, HDR stack, and AI enhancement runs locally using your phone's CPU, GPU, and NPU. Photos are never uploaded to any remote server.\n\n" +
+                        text = "Your photos stay on your device\n" +
+                            "Capture, processing, enhancement and editing all run locally on your phone. OptiLens does not upload your photos.\n\n" +
                             "Permissions\n" +
-                            "• Camera: Required exclusively for live viewfinder display and image capture.\n" +
-                            "• Location: Strictly opt-in. When enabled, GPS coordinates are encoded into EXIF tags locally and are never shared.\n" +
-                            "• Storage & Media: Complies with scoped storage (MediaStore and PhotoPicker) without requiring broad storage permissions.\n\n" +
-                            "Telemetry & Crash Reporting\n" +
-                            "Telemetry and crash diagnostics are opt-in and disabled by default. If enabled, all local file paths, content URIs, email addresses, and network identifiers are redacted on-device before any transmission.\n\n" +
-                            "Cache Management\n" +
-                            "Temporary buffers and cached thumbnails can be cleared at any time from this Settings screen.",
+                            "• Camera: used only for the viewfinder and taking photos.\n" +
+                            "• Photos: saved to DCIM/OptiLens with scoped storage; the system Photo Picker is used to open other photos, so no broad storage permission is requested.\n" +
+                            "• Location: not used. Photos are saved without GPS coordinates.\n\n" +
+                            "Ads\n" +
+                            "The free version shows a banner in the gallery from Google Mobile Ads, which may collect device identifiers under Google's own policies. Ads never appear in the camera viewfinder. Pro removes ads.\n\n" +
+                            "Diagnostics\n" +
+                            "OptiLens does not currently send analytics or crash reports anywhere.\n\n" +
+                            "Cache\n" +
+                            "Temporary files and thumbnails can be cleared at any time from this Settings screen.",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }

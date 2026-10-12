@@ -4,6 +4,8 @@ import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.media.ExifInterface
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -11,14 +13,59 @@ import android.provider.MediaStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.InputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
 interface PhotoBitmapLoader {
+    /**
+     * Decodes the photo upright (EXIF orientation applied) with its long edge capped at
+     * [PhotoDecodeMath.MAX_EDIT_LONG_EDGE_PX], so editing never holds an unbounded bitmap.
+     */
     suspend fun loadBitmap(uriString: String): Bitmap?
+
+    /** Writes [bitmap] as a new JPEG in DCIM/OptiLens. The original photo is never modified. */
     suspend fun saveEnhancedBitmap(bitmap: Bitmap, originalUri: String, keepOriginal: Boolean): String?
+}
+
+/** Pure sizing/orientation maths for [DefaultPhotoBitmapLoader], kept free of Android types. */
+object PhotoDecodeMath {
+
+    /** Long-edge cap for editing: ~12.6 MP at 4:3, i.e. full resolution for typical 12 MP photos. */
+    const val MAX_EDIT_LONG_EDGE_PX = 4096
+
+    /** Largest power-of-two sample size that keeps the decoded long edge >= [maxLongEdge] where possible. */
+    fun inSampleSize(width: Int, height: Int, maxLongEdge: Int = MAX_EDIT_LONG_EDGE_PX): Int {
+        if (width <= 0 || height <= 0) return 1
+        var sample = 1
+        while (maxOf(width, height) / (sample * 2) >= maxLongEdge) sample *= 2
+        // A power-of-two step can still leave the edge above the cap; that remainder is
+        // removed by an exact scale after decoding.
+        return sample
+    }
+
+    /** Exact scale (<= 1) applied after sampled decode so the long edge does not exceed [maxLongEdge]. */
+    fun residualScale(decodedWidth: Int, decodedHeight: Int, maxLongEdge: Int = MAX_EDIT_LONG_EDGE_PX): Float {
+        val longEdge = maxOf(decodedWidth, decodedHeight)
+        return if (longEdge <= maxLongEdge || longEdge <= 0) 1f else maxLongEdge.toFloat() / longEdge
+    }
+
+    /** Clockwise rotation and horizontal flip that display an image upright for an EXIF orientation. */
+    data class Transform(val rotationDegrees: Int, val flipHorizontal: Boolean) {
+        val isIdentity: Boolean get() = rotationDegrees == 0 && !flipHorizontal
+    }
+
+    fun exifTransform(exifOrientation: Int): Transform = when (exifOrientation) {
+        ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> Transform(0, true)
+        ExifInterface.ORIENTATION_ROTATE_180 -> Transform(180, false)
+        ExifInterface.ORIENTATION_FLIP_VERTICAL -> Transform(180, true)
+        ExifInterface.ORIENTATION_TRANSPOSE -> Transform(90, true)
+        ExifInterface.ORIENTATION_ROTATE_90 -> Transform(90, false)
+        ExifInterface.ORIENTATION_TRANSVERSE -> Transform(270, true)
+        ExifInterface.ORIENTATION_ROTATE_270 -> Transform(270, false)
+        else -> Transform(0, false)
+    }
 }
 
 @Singleton
@@ -28,18 +75,61 @@ class DefaultPhotoBitmapLoader @Inject constructor(
 
     override suspend fun loadBitmap(uriString: String): Bitmap? = withContext(Dispatchers.IO) {
         try {
+            val open: () -> InputStream?
             if (uriString.startsWith("content://")) {
                 val uri = Uri.parse(uriString)
-                context.contentResolver.openInputStream(uri)?.use { stream ->
-                    BitmapFactory.decodeStream(stream)
-                }
+                open = { context.contentResolver.openInputStream(uri) }
             } else {
                 val file = File(uriString)
-                if (file.exists()) BitmapFactory.decodeFile(file.absolutePath) else null
+                if (!file.isFile) return@withContext null
+                open = { file.inputStream() }
             }
+
+            // Bounds-only decode always returns null by design; the result is in bounds.out*.
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            val boundsStream = open() ?: return@withContext null
+            boundsStream.use { BitmapFactory.decodeStream(it, null, bounds) }
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@withContext null
+
+            val options = BitmapFactory.Options().apply {
+                inSampleSize = PhotoDecodeMath.inSampleSize(bounds.outWidth, bounds.outHeight)
+            }
+            val decoded = open()?.use { BitmapFactory.decodeStream(it, null, options) }
+                ?: return@withContext null
+
+            val exifOrientation = try {
+                open()?.use {
+                    ExifInterface(it).getAttributeInt(
+                        ExifInterface.TAG_ORIENTATION,
+                        ExifInterface.ORIENTATION_NORMAL,
+                    )
+                } ?: ExifInterface.ORIENTATION_NORMAL
+            } catch (_: Exception) {
+                ExifInterface.ORIENTATION_NORMAL
+            }
+
+            uprightAndBounded(decoded, PhotoDecodeMath.exifTransform(exifOrientation))
+        } catch (_: OutOfMemoryError) {
+            null
         } catch (_: Exception) {
             null
         }
+    }
+
+    private fun uprightAndBounded(source: Bitmap, transform: PhotoDecodeMath.Transform): Bitmap {
+        val scale = PhotoDecodeMath.residualScale(source.width, source.height)
+        if (transform.isIdentity && scale == 1f) return source
+
+        // Rotate first, then mirror: required for TRANSPOSE/TRANSVERSE (same order as the
+        // EXIF spec's composite orientations; flipping first would swap the two).
+        val matrix = Matrix().apply {
+            if (scale != 1f) postScale(scale, scale)
+            if (transform.rotationDegrees != 0) postRotate(transform.rotationDegrees.toFloat())
+            if (transform.flipHorizontal) postScale(-1f, 1f)
+        }
+        val result = Bitmap.createBitmap(source, 0, 0, source.width, source.height, matrix, true)
+        if (result !== source) source.recycle()
+        return result
     }
 
     override suspend fun saveEnhancedBitmap(
@@ -47,6 +137,8 @@ class DefaultPhotoBitmapLoader @Inject constructor(
         originalUri: String,
         keepOriginal: Boolean,
     ): String? = withContext(Dispatchers.IO) {
+        val resolver = context.contentResolver
+        var uri: Uri? = null
         try {
             val filename = "OptiLens_AI_${System.currentTimeMillis()}.jpg"
             val contentValues = ContentValues().apply {
@@ -58,12 +150,13 @@ class DefaultPhotoBitmapLoader @Inject constructor(
                 }
             }
 
-            val resolver = context.contentResolver
-            val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues) ?: return@withContext null
+            uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+                ?: return@withContext null
 
-            resolver.openOutputStream(uri)?.use { stream ->
+            val written = resolver.openOutputStream(uri)?.use { stream ->
                 bitmap.compress(Bitmap.CompressFormat.JPEG, 96, stream)
-            }
+            } ?: false
+            check(written) { "JPEG encode failed" }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 contentValues.clear()
@@ -73,6 +166,8 @@ class DefaultPhotoBitmapLoader @Inject constructor(
 
             uri.toString()
         } catch (_: Exception) {
+            // Remove the half-written pending entry so no broken file appears in the gallery.
+            uri?.let { runCatching { resolver.delete(it, null, null) } }
             null
         }
     }

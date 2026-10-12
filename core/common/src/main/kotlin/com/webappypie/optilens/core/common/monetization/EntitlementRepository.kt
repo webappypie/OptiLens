@@ -40,6 +40,9 @@ interface EntitlementRepository {
     /** Updates the purchase status (e.g. from billing callbacks or UI dismissals). */
     fun setPurchaseStatus(status: PurchaseStatus)
 
+    /** Publishes the products Google Play actually returned (empty when unavailable). */
+    fun updateAvailableProducts(products: List<OptiProductDetails>)
+
     /** Atomically persists new verified entitlements. */
     suspend fun updateEntitlements(entitlements: UserEntitlements)
 }

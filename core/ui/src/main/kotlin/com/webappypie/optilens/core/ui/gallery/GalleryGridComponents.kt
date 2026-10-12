@@ -136,7 +136,7 @@ fun MediaThumbnailCard(
             }
             if (item.isEnhanced) {
                 TextBadge(
-                    text = "AI",
+                    text = "Edited",
                     backgroundColor = Color(0xFF7C4DFF), // Purple
                     textColor = Color.White,
                 )

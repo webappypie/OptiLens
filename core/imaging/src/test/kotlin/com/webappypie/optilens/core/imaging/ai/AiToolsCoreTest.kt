@@ -7,6 +7,7 @@ import com.webappypie.optilens.core.imaging.ai.download.ModelDownloadStatus
 import com.webappypie.optilens.core.imaging.ai.inpainting.InpaintingEngine
 import com.webappypie.optilens.core.imaging.ai.reflection.ReflectionReductionEngine
 import com.webappypie.optilens.core.imaging.ai.registry.AiModelRegistry
+import com.webappypie.optilens.core.imaging.ai.registry.EngineKind
 import com.webappypie.optilens.core.imaging.ai.restoration.PhotoRestorationEngine
 import com.webappypie.optilens.core.imaging.ai.tier.AiDeviceTier
 import com.webappypie.optilens.core.imaging.ai.tier.AiDeviceTierGate
@@ -17,6 +18,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -355,7 +357,7 @@ class AiToolsCoreTest {
     // ==========================================
 
     @Test
-    fun `modelRegistry has entries for all five AI tools with valid licenses and checksums`() {
+    fun `modelRegistry describes every tool honestly as an embedded algorithm without placeholder model data`() {
         val tools = listOf(
             AiToolType.DEBLUR,
             AiToolType.INPAINTING,
@@ -368,9 +370,10 @@ class AiToolsCoreTest {
             val entry = modelRegistry.getEntryForTool(tool)
             assertNotNull("Model registry must contain entry for $tool", entry)
             assertTrue("Model ID must not be blank", entry!!.modelId.isNotBlank())
-            assertTrue("License must be Apache 2.0", entry.license.contains("Apache"))
-            assertTrue("SHA-256 hash must be 64 characters", entry.checksumSha256.length == 64)
-            assertTrue("Benchmark latency must be positive", entry.benchmarkLatencyMs > 0)
+            assertEquals(EngineKind.EMBEDDED_ALGORITHM, entry.kind)
+            assertNull("Algorithms have no model file, so no checksum", entry.checksumSha256)
+            assertNull("No benchmark has been recorded yet", entry.benchmarkLatencyMs)
+            assertTrue("License must be stated", entry.license.isNotBlank())
         }
     }
 
@@ -385,20 +388,14 @@ class AiToolsCoreTest {
     }
 
     @Test
-    fun `downloadManager correctly verifies SHA-256 checksum`() {
+    fun `downloadManager never verifies a checksum for engines without a model file`() {
         val sampleData = "OptiLens-Model-Test-Payload".toByteArray(Charsets.UTF_8)
-        val digest = MessageDigest.getInstance("SHA-256")
-        val sha256 = digest.digest(sampleData).joinToString("") { "%02x".format(it) }
-
-        // Test with real hash of dummy data
-        val dummyEntry = modelRegistry.getEntryForTool(AiToolType.DEBLUR)!!
-        val isMatch = downloadManager.verifyChecksum(dummyEntry.modelId, sampleData)
-        // Dummy entry has its own known sha256, so mismatch is expected
-        assertFalse(isMatch)
+        val entry = modelRegistry.getEntryForTool(AiToolType.DEBLUR)!!
+        assertFalse(downloadManager.verifyChecksum(entry.modelId, sampleData))
     }
 
     @Test
-    fun `downloadManager tracks download progress for on-demand assets`() = runBlocking {
+    fun `downloadManager reports bundled engines available without simulated progress`() = runBlocking {
         val entry = modelRegistry.getEntryForTool(AiToolType.UPSCALE)!!
         val progressList = mutableListOf<Int>()
 
@@ -408,9 +405,13 @@ class AiToolsCoreTest {
         )
 
         assertTrue(success)
-        assertTrue(progressList.isNotEmpty())
-        assertEquals(100, progressList.last())
+        assertEquals(listOf(100), progressList)
         assertTrue(downloadManager.isModelAvailableLocally(entry.modelId))
+    }
+
+    @Test
+    fun `downloadManager fails unknown models instead of pretending to download`() = runBlocking {
+        assertFalse(downloadManager.downloadModel(modelId = "not_registered"))
     }
 
     // ==========================================

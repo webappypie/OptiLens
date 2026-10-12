@@ -24,7 +24,7 @@ class PhotoRestorationEngine @Inject constructor() {
 
     companion object {
         const val RESTORATION_DISCLOSURE_LABEL =
-            "AI Restored: Colors and details reconstructed algorithmically. Not guaranteed historical truth."
+            "Photo Restore: colours and repaired areas reconstructed algorithmically. Not guaranteed historical truth."
     }
 
     /**

@@ -26,6 +26,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import com.webappypie.optilens.core.ui.billing.BillingManager
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -62,13 +63,35 @@ class ProUpgradeViewModelTest {
     @Test
     fun `initial uiState defaults to free tier and selects annual plan`() = runTest {
         viewModel.uiState.test {
-            val initial = awaitItem()
-            assertFalse(initial.isPro)
-            assertFalse(initial.isLifetime)
-            assertEquals(0, initial.selectedPlanIndex)
-            assertNotNull(initial.annualProduct)
-            assertNotNull(initial.lifetimeProduct)
-            assertEquals(initial.annualProduct?.id, initial.selectedProduct?.id)
+            var state = awaitItem()
+            assertFalse(state.isPro)
+            assertFalse(state.isLifetime)
+            assertEquals(0, state.selectedPlanIndex)
+            // Wait for the products the billing fake actually returns.
+            while (state.annualProduct == null) state = awaitItem()
+            assertNotNull(state.lifetimeProduct)
+            assertEquals(state.annualProduct?.id, state.selectedProduct?.id)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `no products are invented when Google Play returns none`() = runTest {
+        val emptyRepo = FakeTestEntitlementRepo()
+        val noProductsBilling = object : BillingManager by FakeBillingManager(emptyRepo) {
+            override fun queryProductDetails(onDetailsReceived: (List<OptiProductDetails>) -> Unit) {
+                emptyRepo.updateAvailableProducts(emptyList())
+                onDetailsReceived(emptyList())
+            }
+        }
+        val vm = ProUpgradeViewModel(noProductsBilling, emptyRepo, LocalRemoteConfigRepository(), NoOpLogger())
+
+        vm.uiState.test {
+            testDispatcher.scheduler.advanceUntilIdle()
+            val state = expectMostRecentItem()
+            assertTrue(state.products.isEmpty())
+            assertFalse(state.hasPurchasableProducts)
+            assertNull(state.selectedProduct)
             cancelAndIgnoreRemainingEvents()
         }
     }
@@ -132,7 +155,9 @@ class ProUpgradeViewModelTest {
     @Test
     fun `clearMessages clears transient messages`() = runTest {
         viewModel.uiState.test {
-            awaitItem() // Initial
+            // A purchase needs a product Google Play (here: the billing fake) actually returned.
+            var state = awaitItem()
+            while (state.selectedProduct == null) state = awaitItem()
 
             // Trigger purchase to get success message
             viewModel.startPurchase(Activity())
@@ -162,7 +187,7 @@ class ProUpgradeViewModelTest {
         private val _unlockedPacks = MutableStateFlow(initialEntitlements.unlockedPacks)
         override val unlockedPacks: StateFlow<Set<String>> = _unlockedPacks.asStateFlow()
 
-        private val _availableProducts = MutableStateFlow(OptiProductDetails.DEFAULT_PRODUCTS)
+        private val _availableProducts = MutableStateFlow<List<OptiProductDetails>>(emptyList())
         override val availableProducts: StateFlow<List<OptiProductDetails>> = _availableProducts.asStateFlow()
 
         private val _purchaseStatus = MutableStateFlow<PurchaseStatus>(PurchaseStatus.Idle)
@@ -176,6 +201,10 @@ class ProUpgradeViewModelTest {
 
         override suspend fun restorePurchases(): OptiResult<UserEntitlements> =
             OptiResult.Success(_entitlements.value)
+
+        override fun updateAvailableProducts(products: List<OptiProductDetails>) {
+            _availableProducts.value = products
+        }
 
         override fun setPurchaseStatus(status: PurchaseStatus) {
             _purchaseStatus.value = status

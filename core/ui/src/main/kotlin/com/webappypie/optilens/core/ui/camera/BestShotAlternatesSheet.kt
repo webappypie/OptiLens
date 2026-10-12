@@ -160,7 +160,7 @@ fun BestShotAlternatesSheet(
                                         .padding(horizontal = 8.dp, vertical = 2.dp),
                                 ) {
                                     Text(
-                                        text = "AI RECOMMENDED",
+                                        text = "RECOMMENDED",
                                         style = OptiLensCameraTypography.readout.copy(
                                             fontSize = 10.sp,
                                             fontWeight = FontWeight.Bold,

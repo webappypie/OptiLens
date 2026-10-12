@@ -274,7 +274,7 @@ fun PhotoDetailScreen(
             ) {
                 Column {
                     Text(
-                        text = "AI Enhancement",
+                        text = "Enhance",
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp,

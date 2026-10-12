@@ -6,6 +6,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -129,7 +130,7 @@ fun PhotoReviewScreen(
             }
 
             Text(
-                text = if (uiState.isCloudEnhanced) "Cloud AI Enhanced" else if (uiState.isEnhanced) "AI Enhanced" else "Review",
+                text = if (uiState.isEnhanced) "Enhanced" else "Review",
                 color = Color.White,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 16.sp,
@@ -191,11 +192,22 @@ fun PhotoReviewScreen(
                     .padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
+                if (uiState.errorMessage != null && uiState.originalBitmap != null) {
+                    Text(
+                        text = uiState.errorMessage!!,
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 13.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.clearError() }
+                            .padding(bottom = 10.dp),
+                    )
+                }
                 if (uiState.isEnhancing) {
-                    val progress = (uiState.currentStage?.stageIndex ?: 2).toFloat() / 5f
+                    val progress = uiState.enhanceProgress
 
                     Text(
-                        text = uiState.statusText ?: uiState.currentStage?.displayName ?: "Enhancing photo...",
+                        text = "Enhancing on your device...",
                         color = Color.White,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
@@ -220,7 +232,8 @@ fun PhotoReviewScreen(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
                             Button(
-                                onClick = { viewModel.enhance(requestCloud = false) },
+                                onClick = { viewModel.enhance() },
+                                enabled = uiState.originalBitmap != null,
                                 modifier = Modifier
                                     .weight(1.1f)
                                     .height(50.dp),
@@ -237,31 +250,11 @@ fun PhotoReviewScreen(
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = "AI Enhance",
+                                    text = "Enhance",
                                     color = Color.Black,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                 )
-                            }
-
-                            if (uiState.isPro) {
-                                Button(
-                                    onClick = { viewModel.enhance(requestCloud = true) },
-                                    modifier = Modifier
-                                        .weight(1.1f)
-                                        .height(50.dp),
-                                    shape = RoundedCornerShape(25.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = Color(0xFF673AB7),
-                                    ),
-                                ) {
-                                    Text(
-                                        text = "Cloud AI (${uiState.remainingCloudQuota})",
-                                        color = Color.White,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                    )
-                                }
                             }
 
                             OutlinedButton(
@@ -279,7 +272,7 @@ fun PhotoReviewScreen(
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = "AI Tools",
+                                    text = "Edit Tools",
                                     color = Color.White,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.SemiBold,
@@ -290,8 +283,7 @@ fun PhotoReviewScreen(
                 } else {
                     // Enhanced mode actions: Revert and Save Copy
                     Text(
-                        text = if (uiState.isCloudEnhanced) "☁️ ${uiState.enhancementMethod} • Drag to compare"
-                               else "⚡ ${uiState.enhancementMethod ?: "Neural Enhanced"} • Drag to compare",
+                        text = "Enhanced on device • Drag to compare",
                         color = MaterialTheme.colorScheme.primary,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -332,8 +324,9 @@ fun PhotoReviewScreen(
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(text = "Saved", fontWeight = FontWeight.Bold)
                             } else {
+                                // A new file is always written; the original is never replaced.
                                 Text(
-                                    text = if (uiState.keepOriginal) "Save Copy" else "Save",
+                                    text = "Save Copy",
                                     fontWeight = FontWeight.Bold,
                                 )
                             }

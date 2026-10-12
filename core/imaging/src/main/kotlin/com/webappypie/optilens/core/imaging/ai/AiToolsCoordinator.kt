@@ -87,7 +87,7 @@ class AiToolsCoordinator @Inject constructor(
             disclosureText = AiToolType.INPAINTING.disclosureText,
             metadataTags = mapOf(
                 "X-OptiLens-AI" to "Inpainting-Synthesized",
-                "UserComment" to "AI Inpainting: Selected pixels synthesized from surrounding texture. Not guaranteed historical truth.",
+                "UserComment" to "Object Cleanup: brushed pixels filled from surrounding content. Not guaranteed historical truth.",
             ),
         )
     }
@@ -123,6 +123,9 @@ class AiToolsCoordinator @Inject constructor(
         config: UpscaleConfig = UpscaleConfig(),
         onStage: ((AiExecutionStage) -> Unit)? = null,
     ): AiToolExecutionResult {
+        require(UpscaleBudget.isAllowed(bitmap.width, bitmap.height, config.scaleFactor)) {
+            "This photo is too large to upscale ${config.scaleFactor}x on this device."
+        }
         var resultBitmap: Bitmap = bitmap
         val timeMs = measureTimeMillis {
             onStage?.invoke(AiExecutionStage.PREPARING_TILES)
@@ -143,7 +146,7 @@ class AiToolsCoordinator @Inject constructor(
             disclosureApplied = false,
             disclosureText = null,
             metadataTags = mapOf(
-                "X-OptiLens-AI" to "SuperResolution-${config.scaleFactor}x",
+                "X-OptiLens-AI" to "Upscale-Interpolated-${config.scaleFactor}x",
             ),
         )
     }

@@ -1,7 +1,9 @@
 package com.webappypie.optilens.core.imaging.ai
 
 /**
- * Permitted Advanced AI tool operations.
+ * Photo editing tools. All are first-party classical image-processing algorithms that run on
+ * device; none uses a trained ML model (see AiModelRegistry), so names and descriptions must not
+ * claim AI inference or super-resolution.
  */
 enum class AiToolType(
     val id: String,
@@ -14,38 +16,38 @@ enum class AiToolType(
     DEBLUR(
         id = "deblur",
         displayName = "Deblur",
-        description = "Analyzes motion and defocus blur to sharpen details using regularized deconvolution.",
+        description = "Estimates motion or focus blur and sharpens with regularized deconvolution. Works best on mild blur.",
         requiresDisclosure = false,
         isGatedByProPack = true,
     ),
     INPAINTING(
         id = "inpainting",
         displayName = "Object Cleanup",
-        description = "Removes background distractions and synthesizes realistic surrounding textures.",
+        description = "Fills the area you brush using the surrounding pixels. Best for small distractions on simple backgrounds.",
         requiresDisclosure = true,
-        disclosureText = "AI Cleanup applied: Selected pixels were synthesized from surrounding image textures. Reconstructed detail is not guaranteed historical truth.",
+        disclosureText = "Object Cleanup applied: brushed pixels were filled in from surrounding image content. Reconstructed detail is not guaranteed historical truth.",
         isGatedByProPack = true,
     ),
     REFLECTION_REDUCTION(
         id = "reflection",
         displayName = "Reflection Cleaner",
-        description = "Attenuates glass reflections, surface glares, and flares from transparent barriers.",
+        description = "Reduces the low-contrast haze that window glass and glare add across a photo.",
         requiresDisclosure = false,
         isGatedByProPack = true,
     ),
     UPSCALE(
         id = "upscale",
-        displayName = "AI Upscale",
-        description = "Increases image resolution by 2x or 4x with edge-directed high frequency reconstruction.",
+        displayName = "Upscale",
+        description = "Enlarges the photo 2x or 4x with edge-directed interpolation. It does not add detail that was not captured.",
         requiresDisclosure = false,
         isGatedByProPack = true,
     ),
     RESTORATION(
         id = "restoration",
         displayName = "Photo Restore",
-        description = "Removes scratches and creases, balances faded sepia/yellow color casts, and revives contrast.",
+        description = "Repairs thin scratches and creases, corrects faded or yellowed colour casts, and restores contrast.",
         requiresDisclosure = true,
-        disclosureText = "AI Restoration applied: Colors, tones, and crease areas have been reconstructed algorithmically. Reconstructed detail is not guaranteed historical truth.",
+        disclosureText = "Photo Restore applied: scratch areas were filled in and colours were adjusted algorithmically; reconstructed detail is not guaranteed historical truth.",
         isGatedByProPack = true,
     );
 

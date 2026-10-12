@@ -3,7 +3,8 @@ package com.webappypie.optilens.core.ui.review
 import android.graphics.Bitmap
 import app.cash.turbine.test
 import com.webappypie.optilens.core.imaging.enhance.AiEnhanceConfig
-import com.webappypie.optilens.core.imaging.enhance.NativeAiEnhanceEngine
+import com.webappypie.optilens.core.common.coroutines.AppDispatchers
+import com.webappypie.optilens.core.imaging.enhance.OnDeviceEnhancementEngine
 import com.webappypie.optilens.core.logging.NoOpLogger
 import com.webappypie.optilens.core.settings.AppSettings
 import com.webappypie.optilens.core.settings.ColorProfile
@@ -36,7 +37,13 @@ class PhotoReviewViewModelTest {
     private lateinit var fakeSettings: FakeAppSettings
     private lateinit var fakeLoader: FakePhotoBitmapLoader
     private lateinit var viewModel: PhotoReviewViewModel
-    private val fakeAiEngine = NativeAiEnhanceEngine(useNativeIfAvailable = false)
+    private val testDispatchers = object : AppDispatchers {
+        override val default = testDispatcher
+        override val io = testDispatcher
+        override val main = testDispatcher
+        override val mainImmediate = testDispatcher
+    }
+    private val enhancementEngine = OnDeviceEnhancementEngine(testDispatchers, NoOpLogger())
 
     @Before
     fun setUp() {
@@ -47,7 +54,7 @@ class PhotoReviewViewModelTest {
             photoBitmapLoader = fakeLoader,
             appSettings = fakeSettings,
             logger = NoOpLogger(),
-            aiEnhanceEngine = fakeAiEngine,
+            enhancementEngine = enhancementEngine,
             ioDispatcher = testDispatcher,
         )
     }

@@ -62,14 +62,14 @@ fun AiFidelityDisclosureBanner(
             ) {
                 Icon(
                     imageVector = Icons.Default.Info,
-                    contentDescription = "AI Disclosure",
+                    contentDescription = "Edit disclosure",
                     tint = Color(0xFFFFB74D), // Soft amber/gold warning color
                     modifier = Modifier.size(20.dp),
                 )
                 Spacer(modifier = Modifier.width(10.dp))
                 Column(verticalArrangement = Arrangement.Center) {
                     Text(
-                        text = "AI Transparency Notice",
+                        text = "Reconstructed content",
                         color = Color(0xFFFFB74D),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,

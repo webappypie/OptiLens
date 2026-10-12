@@ -1,9 +1,6 @@
 package com.webappypie.optilens.core.imaging.ai.download
 
 import com.webappypie.optilens.core.imaging.ai.registry.AiModelRegistry
-import com.webappypie.optilens.core.imaging.ai.registry.ModelRegistryEntry
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,7 +20,10 @@ sealed interface ModelDownloadStatus {
 }
 
 /**
- * Manages on-demand model asset downloading, local verification, and offline fallback.
+ * Tracks availability of tool engines and verifies model-file checksums.
+ *
+ * All current engines are bundled algorithms. No remote model source is configured, so
+ * non-bundled models are reported as unavailable rather than "downloaded".
  */
 @Singleton
 class ModelDownloadManager @Inject constructor(
@@ -50,8 +50,11 @@ class ModelDownloadManager @Inject constructor(
     }
 
     /**
-     * Executes download of on-demand model assets with checksum verification.
+     * Makes a model available locally. Bundled engines are available immediately.
+     * There is no download source yet, so any non-bundled model fails with an explicit error
+     * (no simulated progress, no placeholder file).
      */
+    @Suppress("UNUSED_PARAMETER")
     suspend fun downloadModel(
         modelId: String,
         targetDir: File? = null,
@@ -62,39 +65,25 @@ class ModelDownloadManager @Inject constructor(
             onProgress?.invoke(100)
             return true
         }
-
-        val stateFlow = downloadStates.getOrPut(modelId) {
-            MutableStateFlow(ModelDownloadStatus.NotDownloaded)
-        }
-
-        try {
-            stateFlow.value = ModelDownloadStatus.Downloading(0)
-            for (p in 10..100 step 20) {
-                delay(40)
-                stateFlow.value = ModelDownloadStatus.Downloading(p)
-                onProgress?.invoke(p)
-            }
-
-            val targetFile = File(targetDir ?: File("/tmp"), "${modelId}.bin")
-            stateFlow.value = ModelDownloadStatus.Downloaded(targetFile.absolutePath)
-            return true
-        } catch (e: CancellationException) {
-            stateFlow.value = ModelDownloadStatus.NotDownloaded
-            throw e
-        } catch (e: Exception) {
-            stateFlow.value = ModelDownloadStatus.Error(e.message ?: "Download failed")
-            return false
-        }
+        downloadStates.getOrPut(modelId) { MutableStateFlow(ModelDownloadStatus.NotDownloaded) }.value =
+            ModelDownloadStatus.Error(NO_DOWNLOAD_SOURCE)
+        return false
     }
 
     /**
-     * Verifies SHA-256 checksum of raw bytes against the model registry.
+     * Verifies SHA-256 checksum of raw bytes against the model registry. Always false for
+     * engines without a model file (no checksum to verify against).
      */
     fun verifyChecksum(modelId: String, data: ByteArray): Boolean {
         val entry = modelRegistry.getEntry(modelId) ?: return false
+        val expected = entry.checksumSha256 ?: return false
         val digest = MessageDigest.getInstance("SHA-256")
         val hashBytes = digest.digest(data)
         val calculatedHash = hashBytes.joinToString("") { "%02x".format(it) }
-        return calculatedHash.equals(entry.checksumSha256, ignoreCase = true)
+        return calculatedHash.equals(expected, ignoreCase = true)
+    }
+
+    companion object {
+        const val NO_DOWNLOAD_SOURCE = "No verified download source is configured for this model."
     }
 }

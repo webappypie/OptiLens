@@ -4,27 +4,43 @@ import com.webappypie.optilens.core.imaging.ai.AiToolType
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** What actually implements a tool: first-party image-processing code, or a model file. */
+enum class EngineKind {
+    /** Deterministic first-party algorithm compiled into the app; there is no model file. */
+    EMBEDDED_ALGORITHM,
+
+    /** A trained model file (e.g. LiteRT). Requires source, licence, checksum and benchmarks. */
+    ML_MODEL,
+}
+
 /**
- * Metadata registration entry describing an AI computational tool or model.
+ * Governance record for one editing-tool engine (see docs/14_DEPENDENCY_AND_MODEL_LICENSES.md).
+ *
+ * Fields that only apply to model files are nullable and stay null for embedded algorithms,
+ * rather than holding placeholder values.
  */
 data class ModelRegistryEntry(
     val modelId: String,
     val toolType: AiToolType,
+    val kind: EngineKind,
     val name: String,
     val source: String,
     val version: String,
+    /** Licence of the implementation or model. */
     val license: String,
-    val checksumSha256: String,
+    /** SHA-256 of the model file; null when [kind] is [EngineKind.EMBEDDED_ALGORITHM]. */
+    val checksumSha256: String?,
     val inputSpec: String,
     val outputSpec: String,
-    val benchmarkLatencyMs: Long,
+    /** Measured on-device latency; null until a benchmark has actually been recorded. */
+    val benchmarkLatencyMs: Long?,
     val sizeBytes: Long,
     val isBundledLocally: Boolean = true,
 )
 
 /**
- * Central registry cataloging all available AI models, computational DSP engines,
- * license origins, cryptographic checksums, and reference benchmarks.
+ * Catalog of the engines behind the editing tools. Every current tool is a first-party
+ * classical image-processing algorithm bundled in the APK; no ML model files are shipped.
  */
 @Singleton
 class AiModelRegistry @Inject constructor() {
@@ -33,72 +49,72 @@ class AiModelRegistry @Inject constructor() {
         ModelRegistryEntry(
             modelId = "optilens_deblur_regularized_v1",
             toolType = AiToolType.DEBLUR,
-            name = "OptiLens Directional Lucy-Richardson Deblur",
-            source = "OptiLens Native Imaging DSP",
+            kind = EngineKind.EMBEDDED_ALGORITHM,
+            name = "Directional Richardson–Lucy deconvolution with shock-filter sharpening",
+            source = FIRST_PARTY_SOURCE,
             version = "1.2.0",
-            license = "Apache 2.0",
-            checksumSha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            inputSpec = "RGB Planar Float32 [1, H, W, 3], range [0, 255]",
-            outputSpec = "RGB Planar Float32 [1, H, W, 3], range [0, 255]",
-            benchmarkLatencyMs = 120L,
-            sizeBytes = 0L, // Embedded native algorithm
-            isBundledLocally = true,
+            license = FIRST_PARTY_LICENSE,
+            checksumSha256 = null,
+            inputSpec = "ARGB_8888 bitmap",
+            outputSpec = "ARGB_8888 bitmap, same size",
+            benchmarkLatencyMs = null,
+            sizeBytes = 0L,
         ),
         ModelRegistryEntry(
             modelId = "optilens_inpainting_telea_v1",
             toolType = AiToolType.INPAINTING,
-            name = "OptiLens Fast Marching Exemplar Inpainter",
-            source = "OptiLens Computational Vision",
+            kind = EngineKind.EMBEDDED_ALGORITHM,
+            name = "Fast-marching (Telea) inpainting with seam smoothing",
+            source = FIRST_PARTY_SOURCE,
             version = "1.1.0",
-            license = "Apache 2.0",
-            checksumSha256 = "d41d8cd98f00b204e9800998ecf8427e02d68962638891f7c006606822c95439",
-            inputSpec = "RGB Image + Binary Mask (0/255) [1, H, W, 4]",
-            outputSpec = "Synthesized RGB Image [1, H, W, 3]",
-            benchmarkLatencyMs = 180L,
+            license = FIRST_PARTY_LICENSE,
+            checksumSha256 = null,
+            inputSpec = "ARGB_8888 bitmap + binary mask",
+            outputSpec = "ARGB_8888 bitmap, masked pixels filled from surroundings",
+            benchmarkLatencyMs = null,
             sizeBytes = 0L,
-            isBundledLocally = true,
         ),
         ModelRegistryEntry(
             modelId = "optilens_reflection_separator_v1",
             toolType = AiToolType.REFLECTION_REDUCTION,
-            name = "OptiLens Gradient Layer Reflection Suppressor",
-            source = "OptiLens Optics Lab",
+            kind = EngineKind.EMBEDDED_ALGORITHM,
+            name = "Low-frequency veil estimation and subtraction",
+            source = FIRST_PARTY_SOURCE,
             version = "1.0.4",
-            license = "Apache 2.0",
-            checksumSha256 = "9f83463185f67e22992f36541b30504f40f52a61d31a129b71e37142169aa381",
-            inputSpec = "RGB Image [1, H, W, 3], 8-bit ARGB",
-            outputSpec = "Transmission Restored RGB Image [1, H, W, 3]",
-            benchmarkLatencyMs = 95L,
+            license = FIRST_PARTY_LICENSE,
+            checksumSha256 = null,
+            inputSpec = "ARGB_8888 bitmap",
+            outputSpec = "ARGB_8888 bitmap, same size",
+            benchmarkLatencyMs = null,
             sizeBytes = 0L,
-            isBundledLocally = true,
         ),
         ModelRegistryEntry(
             modelId = "optilens_upscale_edi_v2",
             toolType = AiToolType.UPSCALE,
-            name = "OptiLens Sub-Pixel Edge-Directed Upscaler (2x/4x)",
-            source = "OptiLens Neural Super Resolution",
+            kind = EngineKind.EMBEDDED_ALGORITHM,
+            name = "Edge-directed interpolation upscaler (2x/4x)",
+            source = FIRST_PARTY_SOURCE,
             version = "2.0.1",
-            license = "Apache 2.0",
-            checksumSha256 = "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
-            inputSpec = "RGB Image [1, H, W, 3]",
-            outputSpec = "Super-Resolved RGB Image [1, s*H, s*W, 3] where s in {2, 4}",
-            benchmarkLatencyMs = 210L,
+            license = FIRST_PARTY_LICENSE,
+            checksumSha256 = null,
+            inputSpec = "ARGB_8888 bitmap",
+            outputSpec = "ARGB_8888 bitmap scaled by 2 or 4 (interpolated, no detail synthesis)",
+            benchmarkLatencyMs = null,
             sizeBytes = 0L,
-            isBundledLocally = true,
         ),
         ModelRegistryEntry(
             modelId = "optilens_restoration_archival_v1",
             toolType = AiToolType.RESTORATION,
-            name = "OptiLens Archival Photo Restorer",
-            source = "OptiLens Archival Preservation",
+            kind = EngineKind.EMBEDDED_ALGORITHM,
+            name = "Scratch detection/repair with colour-cast and contrast correction",
+            source = FIRST_PARTY_SOURCE,
             version = "1.0.0",
-            license = "Apache 2.0",
-            checksumSha256 = "ef2d127de37b942baad06145e54b0c619a1f22327b2ebbcfbec78f5564afe39d",
-            inputSpec = "RGB Vintage Image [1, H, W, 3]",
-            outputSpec = "Scratch-Repaired & Color-Revitalized Image [1, H, W, 3]",
-            benchmarkLatencyMs = 145L,
+            license = FIRST_PARTY_LICENSE,
+            checksumSha256 = null,
+            inputSpec = "ARGB_8888 bitmap",
+            outputSpec = "ARGB_8888 bitmap, same size",
+            benchmarkLatencyMs = null,
             sizeBytes = 0L,
-            isBundledLocally = true,
         ),
     )
 
@@ -109,4 +125,10 @@ class AiModelRegistry @Inject constructor() {
 
     fun getEntryForTool(toolType: AiToolType): ModelRegistryEntry =
         entries.firstOrNull { it.toolType == toolType } ?: entries.first()
+
+    companion object {
+        const val FIRST_PARTY_SOURCE = "OptiLens first-party Kotlin implementation (core:imaging)"
+        /** No project licence file exists yet; the owner must confirm the licence. */
+        const val FIRST_PARTY_LICENSE = "OptiLens first-party code (project licence pending owner confirmation)"
+    }
 }

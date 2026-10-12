@@ -48,58 +48,7 @@ data class OptiProductDetails(
     val description: String,
     val formattedPrice: String,
     val hasFreeTrial: Boolean = false,
-) {
-    companion object {
-        /** Local fallback pricing models if Play Store details are temporarily unreachable. */
-        val DEFAULT_PRODUCTS = listOf(
-            OptiProductDetails(
-                id = OptiProductIds.PRO_ANNUAL,
-                category = ProductCategory.PRO_TIER,
-                billingType = ProductBillingType.SUBSCRIPTION,
-                title = "OptiLens Pro (Annual)",
-                description = "Full sensor power, 16-bit RAW, all AI tools, zero ads",
-                formattedPrice = "$29.99 / yr",
-                hasFreeTrial = true,
-            ),
-            OptiProductDetails(
-                id = OptiProductIds.PRO_LIFETIME,
-                category = ProductCategory.PRO_TIER,
-                billingType = ProductBillingType.ONE_TIME,
-                title = "OptiLens Pro Lifetime",
-                description = "Pay once, yours forever — zero ads, all current and future Pro features",
-                formattedPrice = "$69.99",
-                hasFreeTrial = false,
-            ),
-            OptiProductDetails(
-                id = OptiProductIds.PRO_MONTHLY,
-                category = ProductCategory.PRO_TIER,
-                billingType = ProductBillingType.SUBSCRIPTION,
-                title = "OptiLens Pro (Monthly)",
-                description = "Monthly flexibility with full Pro access",
-                formattedPrice = "$4.99 / mo",
-                hasFreeTrial = false,
-            ),
-            OptiProductDetails(
-                id = OptiProductIds.PACK_AI_TOOLS,
-                category = ProductCategory.MODULAR_PACK,
-                billingType = ProductBillingType.ONE_TIME,
-                title = "Advanced AI Tools Pack",
-                description = "Selective deblur, reflection removal, and neural upscaling",
-                formattedPrice = "$14.99",
-                hasFreeTrial = false,
-            ),
-            OptiProductDetails(
-                id = OptiProductIds.PACK_LOOKS,
-                category = ProductCategory.MODULAR_PACK,
-                billingType = ProductBillingType.ONE_TIME,
-                title = "Creative Film Looks Pack",
-                description = "Calibrated analog color science and cinema film profiles",
-                formattedPrice = "$9.99",
-                hasFreeTrial = false,
-            ),
-        )
-    }
-}
+)
 
 /**
  * User's verified entitlement snapshot.

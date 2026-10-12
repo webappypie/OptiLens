@@ -132,6 +132,8 @@ fun OptiLensNavigationShell(
 
     val gridEnabled by appSettings.gridEnabled.collectAsStateWithLifecycle(initialValue = true)
     val levelEnabled by appSettings.levelEnabled.collectAsStateWithLifecycle(initialValue = true)
+    val shutterSoundEnabled by appSettings.shutterSoundEnabled.collectAsStateWithLifecycle(initialValue = true)
+    val hapticFeedbackEnabled by appSettings.hapticFeedbackEnabled.collectAsStateWithLifecycle(initialValue = true)
 
     AppNavHost(
         modifier = modifier,
@@ -147,6 +149,8 @@ fun OptiLensNavigationShell(
                 onNavigateToAiTools = { navController.navigate(AppDestination.AiTools()) },
                 showGrid = gridEnabled,
                 showLevel = levelEnabled,
+                shutterSoundEnabled = shutterSoundEnabled,
+                shutterHapticEnabled = hapticFeedbackEnabled,
                 externalShutterTrigger = volumeKeyShutterTrigger,
             )
         },

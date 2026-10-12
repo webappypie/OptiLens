@@ -214,6 +214,7 @@ class AiToolsViewModelTest {
 
         viewModel.loadPhoto(testUri)
         advanceUntilIdle()
+        viewModel.applyEditForTesting(createDummyBitmap())
 
         viewModel.saveCopy()
         advanceUntilIdle()
@@ -222,6 +223,114 @@ class AiToolsViewModelTest {
         assertTrue(state.isSaved)
         assertEquals("content://media/external/images/media/ai_enhanced_123", state.savedUri)
         assertEquals(1, fakeLoader.saveCallCount)
+    }
+
+    @Test
+    fun `saveCopy is a no-op until the photo has been edited`() = runTest {
+        viewModel.loadPhoto("content://media/external/images/media/photo_456")
+        advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.value.canSave)
+        viewModel.saveCopy()
+        advanceUntilIdle()
+
+        assertEquals(0, fakeLoader.saveCallCount)
+        assertFalse(viewModel.uiState.value.isSaved)
+    }
+
+    @Test
+    fun `a new edit after saving makes the new result saveable again`() = runTest {
+        viewModel.loadPhoto("content://media/external/images/media/photo_456")
+        advanceUntilIdle()
+        viewModel.applyEditForTesting(createDummyBitmap())
+        viewModel.saveCopy()
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.isSaved)
+
+        viewModel.applyEditForTesting(createDummyBitmap())
+
+        val state = viewModel.uiState.value
+        assertFalse(state.isSaved)
+        assertNull(state.savedUri)
+        assertTrue(state.canSave)
+    }
+
+    @Test
+    fun `undo back to the original disables save`() = runTest {
+        viewModel.loadPhoto("content://media/external/images/media/photo_456")
+        advanceUntilIdle()
+        viewModel.applyEditForTesting(createDummyBitmap())
+        assertTrue(viewModel.uiState.value.hasEdits)
+
+        viewModel.undo()
+
+        assertFalse(viewModel.uiState.value.hasEdits)
+        assertFalse(viewModel.uiState.value.canSave)
+    }
+
+    @Test
+    fun `loading a different photo starts a fresh session`() = runTest {
+        viewModel.loadPhoto("content://media/external/images/media/first")
+        advanceUntilIdle()
+        viewModel.applyEditForTesting(createDummyBitmap())
+        assertTrue(viewModel.uiState.value.canUndo)
+
+        viewModel.loadPhoto("content://media/picker/0/second")
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals("content://media/picker/0/second", state.photoUri)
+        assertFalse(state.canUndo)
+        assertFalse(state.hasEdits)
+        assertFalse(state.isLoadingPhoto)
+    }
+
+    @Test
+    fun `navigation argument does not replace a photo the user already picked`() = runTest {
+        viewModel.loadPhoto("content://media/picker/0/picked")
+        advanceUntilIdle()
+
+        viewModel.loadInitialPhoto("content://media/external/images/media/from_nav")
+        advanceUntilIdle()
+
+        assertEquals("content://media/picker/0/picked", viewModel.uiState.value.photoUri)
+    }
+
+    @Test
+    fun `failed photo load shows an actionable message instead of spinning`() = runTest {
+        fakeLoader.loadedBitmap = null
+
+        viewModel.loadPhoto("content://media/external/images/media/missing")
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertFalse(state.isLoadingPhoto)
+        assertNull(state.originalBitmap)
+        assertNotNull(state.errorMessage)
+    }
+
+    @Test
+    fun `upscale beyond the memory budget is refused with a message`() = runTest {
+        viewModel.loadPhoto("content://media/external/images/media/photo_456")
+        advanceUntilIdle()
+        viewModel.selectTool(AiToolType.UPSCALE)
+
+        // The test bitmap reports no usable size, so no upscale factor fits the budget.
+        assertTrue(viewModel.uiState.value.allowedUpscaleFactors.isEmpty())
+        assertFalse(viewModel.uiState.value.canApply)
+        viewModel.applyCurrentTool()
+        advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.value.isProcessing)
+        assertNotNull(viewModel.uiState.value.errorMessage)
+    }
+
+    @Test
+    fun `unsupported upscale factors are ignored`() {
+        viewModel.updateUpscaleFactor(3)
+        assertEquals(2, viewModel.uiState.value.upscaleFactor)
+        viewModel.updateUpscaleFactor(4)
+        assertEquals(4, viewModel.uiState.value.upscaleFactor)
     }
 
     @Test
@@ -274,7 +383,7 @@ class AiToolsViewModelTest {
         override val unlockedPacks: StateFlow<Set<String>> = _unlockedPacks.asStateFlow()
 
         override val availableProducts: StateFlow<List<OptiProductDetails>> =
-            MutableStateFlow(OptiProductDetails.DEFAULT_PRODUCTS)
+            MutableStateFlow(emptyList())
 
         override val purchaseStatus: StateFlow<PurchaseStatus> =
             MutableStateFlow(PurchaseStatus.Idle)
@@ -289,6 +398,8 @@ class AiToolsViewModelTest {
             OptiResult.Success(_entitlements.value)
 
         override fun setPurchaseStatus(status: PurchaseStatus) {}
+
+        override fun updateAvailableProducts(products: List<OptiProductDetails>) {}
 
         override suspend fun updateEntitlements(entitlements: UserEntitlements) {
             _entitlements.value = entitlements

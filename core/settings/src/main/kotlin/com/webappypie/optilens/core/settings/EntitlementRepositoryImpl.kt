@@ -66,7 +66,8 @@ class EntitlementRepositoryImpl(
     override val unlockedPacks: StateFlow<Set<String>> = _entitlements.map { it.unlockedPacks }
         .stateIn(scope, SharingStarted.Eagerly, emptySet())
 
-    private val _availableProducts = MutableStateFlow(OptiProductDetails.DEFAULT_PRODUCTS)
+    // Empty until Google Play returns real product details; never pre-filled with invented prices.
+    private val _availableProducts = MutableStateFlow<List<OptiProductDetails>>(emptyList())
     override val availableProducts: StateFlow<List<OptiProductDetails>> = _availableProducts.asStateFlow()
 
     private val _purchaseStatus = MutableStateFlow<PurchaseStatus>(PurchaseStatus.Idle)
@@ -115,7 +116,7 @@ class EntitlementRepositoryImpl(
         }
     }
 
-    fun updateAvailableProducts(products: List<OptiProductDetails>) {
+    override fun updateAvailableProducts(products: List<OptiProductDetails>) {
         _availableProducts.value = products
     }
 

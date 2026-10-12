@@ -21,7 +21,8 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class ProUpgradeUiState(
-    val products: List<OptiProductDetails> = OptiProductDetails.DEFAULT_PRODUCTS,
+    /** Products returned by Google Play. Empty means purchases are unavailable right now. */
+    val products: List<OptiProductDetails> = emptyList(),
     val selectedPlanIndex: Int = 0, // 0 = Annual, 1 = Lifetime
     val isPro: Boolean = false,
     val isLifetime: Boolean = false,
@@ -33,13 +34,16 @@ data class ProUpgradeUiState(
     val successMessage: String? = null,
 ) {
     val annualProduct: OptiProductDetails?
-        get() = products.firstOrNull { it.id == OptiProductIds.PRO_ANNUAL } ?: products.firstOrNull()
+        get() = products.firstOrNull { it.id == OptiProductIds.PRO_ANNUAL }
 
     val lifetimeProduct: OptiProductDetails?
-        get() = products.firstOrNull { it.id == OptiProductIds.PRO_LIFETIME } ?: products.getOrNull(1)
+        get() = products.firstOrNull { it.id == OptiProductIds.PRO_LIFETIME }
 
+    val hasPurchasableProducts: Boolean get() = annualProduct != null || lifetimeProduct != null
+
+    /** The chosen plan, or the only available one when the chosen plan is not offered by Play. */
     val selectedProduct: OptiProductDetails?
-        get() = if (selectedPlanIndex == 0) annualProduct else lifetimeProduct
+        get() = if (selectedPlanIndex == 0) annualProduct ?: lifetimeProduct else lifetimeProduct ?: annualProduct
 }
 
 @HiltViewModel
@@ -68,7 +72,7 @@ class ProUpgradeViewModel @Inject constructor(
         val success = if (purchaseStatus is PurchaseStatus.Success) "Welcome to OptiLens Pro!" else internal.successMessage
 
         ProUpgradeUiState(
-            products = if (products.isNotEmpty()) products else OptiProductDetails.DEFAULT_PRODUCTS,
+            products = products,
             selectedPlanIndex = internal.selectedPlanIndex,
             isPro = entitlements.hasFullAccess,
             isLifetime = entitlements.isLifetime,

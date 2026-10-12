@@ -112,7 +112,8 @@ class PlayBillingManager @Inject constructor(
 
     override fun queryProductDetails(onDetailsReceived: (List<OptiProductDetails>) -> Unit) {
         if (_connectionState.value != BillingConnectionState.CONNECTED) {
-            onDetailsReceived(OptiProductDetails.DEFAULT_PRODUCTS)
+            entitlementRepository.updateAvailableProducts(emptyList())
+            onDetailsReceived(emptyList())
             return
         }
 
@@ -150,8 +151,9 @@ class PlayBillingManager @Inject constructor(
         ) { result, detailsList ->
             if (result.responseCode == BillingClient.BillingResponseCode.OK) {
                 detailsList.forEach { details ->
+                    // Only products with a real Play price are offered.
+                    val price = details.oneTimePurchaseOfferDetails?.formattedPrice ?: return@forEach
                     cachedProductDetails[details.productId] = details
-                    val price = details.oneTimePurchaseOfferDetails?.formattedPrice ?: "$69.99"
                     parsedDetails.add(
                         OptiProductDetails(
                             id = details.productId,
@@ -171,10 +173,10 @@ class PlayBillingManager @Inject constructor(
             ) { subsResult, subsDetailsList ->
                 if (subsResult.responseCode == BillingClient.BillingResponseCode.OK) {
                     subsDetailsList.forEach { details ->
-                        cachedProductDetails[details.productId] = details
                         val basePlan = details.subscriptionOfferDetails?.firstOrNull()
                         val price = basePlan?.pricingPhases?.pricingPhaseList?.lastOrNull()?.formattedPrice
-                            ?: if (details.productId == OptiProductIds.PRO_ANNUAL) "$29.99 / yr" else "$4.99 / mo"
+                            ?: return@forEach
+                        cachedProductDetails[details.productId] = details
                         val hasTrial = basePlan?.pricingPhases?.pricingPhaseList?.any { it.priceAmountMicros == 0L } == true
 
                         parsedDetails.add(
@@ -191,7 +193,8 @@ class PlayBillingManager @Inject constructor(
                     }
                 }
 
-                val finalProducts = if (parsedDetails.isNotEmpty()) parsedDetails else OptiProductDetails.DEFAULT_PRODUCTS
+                val finalProducts = parsedDetails.toList()
+                entitlementRepository.updateAvailableProducts(finalProducts)
                 onDetailsReceived(finalProducts)
             }
         }
@@ -310,44 +313,5 @@ class PlayBillingManager @Inject constructor(
                 onComplete(entitlementRepository.entitlements.value)
             }
         }
-    }
-}
-
-/**
- * Test and emulator fake implementation of [BillingManager].
- */
-class FakeBillingManager(
-    private val entitlementRepository: EntitlementRepository,
-) : BillingManager {
-
-    private val _connectionState = MutableStateFlow(BillingConnectionState.CONNECTED)
-    override val connectionState: StateFlow<BillingConnectionState> = _connectionState.asStateFlow()
-
-    override fun startConnection(onConnected: () -> Unit) {
-        _connectionState.value = BillingConnectionState.CONNECTED
-        onConnected()
-    }
-
-    override fun queryProductDetails(onDetailsReceived: (List<OptiProductDetails>) -> Unit) {
-        onDetailsReceived(OptiProductDetails.DEFAULT_PRODUCTS)
-    }
-
-    override fun launchBillingFlow(activity: Activity, productId: String) {
-        entitlementRepository.setPurchaseStatus(PurchaseStatus.Pending(productId))
-        val current = entitlementRepository.entitlements.value
-        val updated = when (productId) {
-            OptiProductIds.PRO_LIFETIME -> current.copy(isPro = true, isLifetime = true)
-            OptiProductIds.PRO_ANNUAL, OptiProductIds.PRO_MONTHLY -> current.copy(isPro = true, activeSubscriptionId = productId)
-            OptiProductIds.PACK_AI_TOOLS, OptiProductIds.PACK_LOOKS -> current.copy(unlockedPacks = current.unlockedPacks + productId)
-            else -> current
-        }
-        kotlinx.coroutines.runBlocking {
-            entitlementRepository.updateEntitlements(updated)
-            entitlementRepository.setPurchaseStatus(PurchaseStatus.Success(productId))
-        }
-    }
-
-    override fun restorePurchases(onComplete: (UserEntitlements) -> Unit) {
-        onComplete(entitlementRepository.entitlements.value)
     }
 }

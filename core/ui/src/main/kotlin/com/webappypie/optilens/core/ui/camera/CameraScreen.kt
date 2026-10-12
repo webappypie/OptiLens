@@ -3,6 +3,7 @@ package com.webappypie.optilens.core.ui.camera
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.MediaActionSound
 import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -76,6 +77,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -161,6 +163,8 @@ fun CameraScreen(
     onShutterClick: () -> Unit = {},
     showGrid: Boolean = true,
     showLevel: Boolean = true,
+    shutterSoundEnabled: Boolean = false,
+    shutterHapticEnabled: Boolean = false,
     externalShutterTrigger: Flow<Unit>? = null,
     viewModel: CameraViewModel = hiltViewModel(),
 ) {
@@ -175,10 +179,18 @@ fun CameraScreen(
     var currentMode by remember { mutableStateOf(CameraMode.PHOTO) }
     val captureRotation = rememberCaptureRotation()
 
+    // Platform shutter click, honouring the "Shutter Sound" setting.
+    val shutterSound = remember { MediaActionSound().apply { load(MediaActionSound.SHUTTER_CLICK) } }
+    DisposableEffect(shutterSound) { onDispose { shutterSound.release() } }
+    val currentSoundEnabled by rememberUpdatedState(shutterSoundEnabled)
+    val currentHapticEnabled by rememberUpdatedState(shutterHapticEnabled)
+
     // Single routing point for the on-screen shutter and hardware volume keys, using the
     // device's physical orientation so saved photos are upright.
     val dispatchShutter: () -> Unit = {
         onShutterClick()
+        if (currentHapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        if (currentSoundEnabled) shutterSound.play(MediaActionSound.SHUTTER_CLICK)
         val rotation = captureRotation.intValue
         when (currentMode) {
             CameraMode.NIGHT -> viewModel.takeNightPhoto(targetRotation = rotation)
@@ -666,7 +678,7 @@ fun CameraScreen(
                 if (onNavigateToAiTools != null) {
                     OptiIconButton(
                         icon = Icons.Default.AutoAwesome,
-                        contentDescription = "Open AI Tools",
+                        contentDescription = "Open editing tools",
                         variant = OptiIconButtonVariant.OVERLAY,
                         onClick = onNavigateToAiTools,
                     )
@@ -995,7 +1007,7 @@ fun TruthfulZoomSelector(
                     .padding(horizontal = 8.dp, vertical = 2.dp),
             ) {
                 Text(
-                    text = "AI Zoom ${String.format(java.util.Locale.US, "%.1fx", currentZoom)}",
+                    text = "Digital zoom ${String.format(java.util.Locale.US, "%.1fx", currentZoom)}",
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontSize = 10.sp,
                         fontWeight = FontWeight.SemiBold,

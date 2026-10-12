@@ -31,7 +31,6 @@ class ProductionImagingPipeline @Inject constructor(
     private val alignmentEngine: FrameAlignmentEngine,
     private val fusionEngine: MultiFrameFusionEngine,
     private val portraitEngine: com.webappypie.optilens.core.imaging.portrait.NativePortraitEngine = com.webappypie.optilens.core.imaging.portrait.NativePortraitEngine(),
-    private val aiEnhanceEngine: com.webappypie.optilens.core.imaging.enhance.NativeAiEnhanceEngine = com.webappypie.optilens.core.imaging.enhance.NativeAiEnhanceEngine(),
     private val superResEngine: com.webappypie.optilens.core.imaging.sr.NativeSuperResolutionEngine = com.webappypie.optilens.core.imaging.sr.NativeSuperResolutionEngine(),
     private val onDeviceEnhanceEngine: com.webappypie.optilens.core.imaging.enhance.OnDeviceEnhancementEngine? = null,
     private val dispatchers: AppDispatchers,
@@ -138,76 +137,49 @@ class ProductionImagingPipeline @Inject constructor(
             )
         }
 
-        // Handle AI_ENHANCE mode explicitly
+        // Handle AI_ENHANCE mode explicitly. Only real decoded input is processed; there is no
+        // synthetic fallback, so callers get an actionable error instead of a fake success.
         if (isAiEnhanceMode) {
-            logger.i(TAG, "Executing AI Enhance pipeline on ${request.inputUri}")
+            logger.i(TAG, "Executing on-device enhance pipeline")
+            val engine = onDeviceEnhanceEngine
+                ?: return@withContext OptiResult.Error(
+                    OptiError.ProcessingFailed(stage = "Enhance: on-device engine unavailable", cause = null)
+                )
             val inputFile = File(request.inputUri)
-            if (inputFile.exists() && onDeviceEnhanceEngine != null) {
-                val origBitmap = android.graphics.BitmapFactory.decodeFile(inputFile.absolutePath)
-                if (origBitmap != null) {
-                    val enhancedBitmap = onDeviceEnhanceEngine.enhance(
-                        bitmap = origBitmap,
-                        config = com.webappypie.optilens.core.imaging.enhance.EnhancementConfig.BALANCED,
-                        onProgress = { p -> onProgress?.invoke(p) }
-                    )
-                    val outFile = File(request.inputUri.replace(".jpg", "_enhanced.jpg"))
-                    FileOutputStream(outFile).use { fos ->
-                        enhancedBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, fos)
-                    }
-                    val duration = System.currentTimeMillis() - startTime
-                    return@withContext OptiResult.Success(
-                        ProcessingResult(
-                            outputUri = outFile.absolutePath,
-                            originalUri = if (request.keepOriginal) request.inputUri else null,
-                            modeUsed = ProcessingMode.AI_ENHANCE,
-                            processingDurationMs = duration,
-                            width = enhancedBitmap.width,
-                            height = enhancedBitmap.height,
-                            isHdrApplied = true,
-                            isNightModeApplied = false,
-                            isPortraitApplied = false,
-                            isAiEnhanceApplied = true,
-                            isFallbackUsed = false,
-                        )
-                    )
-                }
+            val origBitmap = if (inputFile.isFile) {
+                android.graphics.BitmapFactory.decodeFile(inputFile.absolutePath)
+            } else {
+                null
             }
+                ?: return@withContext OptiResult.Error(
+                    OptiError.ProcessingFailed(stage = "Enhance: input image could not be decoded", cause = null)
+                )
 
-            val config = request.aiEnhanceConfig ?: com.webappypie.optilens.core.imaging.enhance.AiEnhanceConfig()
-            val width = 4000
-            val height = 3000
-            val yPlane = ByteArray(width * height) { 100 }
-            val uPlane = ByteArray((width / 2) * (height / 2)) { 128.toByte() }
-            val vPlane = ByteArray((width / 2) * (height / 2)) { 128.toByte() }
-
-            val success = aiEnhanceEngine.processEnhance(
-                yPlane = yPlane,
-                uPlane = uPlane,
-                vPlane = vPlane,
-                width = width,
-                height = height,
-                yStride = width,
-                uvStride = width / 2,
-                config = config,
-                onStageChanged = { stage ->
-                    val fraction = stage.stageIndex.toFloat() / stage.totalStages.toFloat()
-                    onProgress?.invoke(fraction.coerceIn(0.1f, 1.0f))
-                }
+            val enhancedBitmap = engine.enhance(
+                bitmap = origBitmap,
+                config = com.webappypie.optilens.core.imaging.enhance.EnhancementConfig.BALANCED,
+                onProgress = { p -> onProgress?.invoke(p) }
             )
+            // Always a new sibling file, so the original can never be overwritten.
+            val outFile = File(inputFile.parentFile, "${inputFile.nameWithoutExtension}_enhanced.jpg")
+            FileOutputStream(outFile).use { fos ->
+                enhancedBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, fos)
+            }
             val duration = System.currentTimeMillis() - startTime
             return@withContext OptiResult.Success(
                 ProcessingResult(
-                    outputUri = request.inputUri,
+                    outputUri = outFile.absolutePath,
                     originalUri = if (request.keepOriginal) request.inputUri else null,
                     modeUsed = ProcessingMode.AI_ENHANCE,
                     processingDurationMs = duration,
-                    width = width,
-                    height = height,
+                    width = enhancedBitmap.width,
+                    height = enhancedBitmap.height,
+                    // Single-frame tone/colour adjustment; not multi-frame HDR.
                     isHdrApplied = false,
                     isNightModeApplied = false,
                     isPortraitApplied = false,
-                    isAiEnhanceApplied = success,
-                    isFallbackUsed = !success,
+                    isAiEnhanceApplied = true,
+                    isFallbackUsed = false,
                 )
             )
         }

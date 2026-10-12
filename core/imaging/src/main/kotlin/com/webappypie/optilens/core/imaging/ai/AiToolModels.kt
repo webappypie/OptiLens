@@ -62,6 +62,24 @@ data class UpscaleConfig(
 )
 
 /**
+ * Memory budget for Upscale. The output is one ARGB_8888 bitmap plus same-size working arrays,
+ * so it is capped to keep peak memory well under typical app heap limits.
+ */
+object UpscaleBudget {
+    /** 24 MP output = ~96 MB per ARGB_8888 buffer. */
+    const val MAX_OUTPUT_PIXELS: Long = 24_000_000L
+
+    val SUPPORTED_FACTORS = listOf(2, 4)
+
+    fun isAllowed(width: Int, height: Int, factor: Int): Boolean =
+        width > 0 && height > 0 && factor in SUPPORTED_FACTORS &&
+            width.toLong() * height.toLong() * factor * factor <= MAX_OUTPUT_PIXELS
+
+    fun allowedFactors(width: Int, height: Int): List<Int> =
+        SUPPORTED_FACTORS.filter { isAllowed(width, height, it) }
+}
+
+/**
  * Configuration options for old photo restoration.
  */
 data class RestorationConfig(
@@ -74,11 +92,11 @@ data class RestorationConfig(
  * Concrete processing stages emitted during AI execution.
  */
 enum class AiExecutionStage(val stageIndex: Int, val totalStages: Int, val displayName: String) {
-    PREPARING_TILES(1, 5, "Preparing memory-safe image tiles..."),
-    ANALYZING_IMAGE(2, 5, "Analyzing image structure & frequency content..."),
-    EXECUTING_AI_INFERENCE(3, 5, "Running computational AI transformation..."),
-    RECONSTRUCTING_HIGH_RES(4, 5, "Reconstructing high-fidelity image..."),
-    FINALIZING_BLENDING(5, 5, "Blending seams and normalizing dynamic range...");
+    PREPARING_TILES(1, 5, "Preparing image tiles..."),
+    ANALYZING_IMAGE(2, 5, "Analyzing the photo..."),
+    EXECUTING_AI_INFERENCE(3, 5, "Applying the edit..."),
+    RECONSTRUCTING_HIGH_RES(4, 5, "Building the full-size result..."),
+    FINALIZING_BLENDING(5, 5, "Finishing...");
 }
 
 /**

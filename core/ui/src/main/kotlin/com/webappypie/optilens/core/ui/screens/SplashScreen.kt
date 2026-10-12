@@ -3,6 +3,7 @@ package com.webappypie.optilens.core.ui.screens
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,76 +20,46 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.cos
+import kotlin.math.sin
+
+/** Total time the branded splash is shown before navigating to the camera. */
+internal const val SPLASH_DURATION_MS = 700L
 
 /**
- * Premium branded splash screen with animated logo, title, and subtitle.
+ * Brief branded splash: an aperture mark closes down while the wordmark and tagline fade in,
+ * then the app navigates straight to the camera. No progress indicator is shown because no
+ * startup work is being tracked here.
  *
- * Animation sequence:
- *  - 0ms:   Logo scales from 0.7f to 1.0f and fades in (300ms)
- *  - 200ms: "OptiLens" title fades in with letter spacing (300ms)
- *  - 450ms: "Enhanced by AI" subtitle slides up and fades in (300ms)
- *  - 1300ms: [onSplashComplete] is invoked to transition to Camera
+ * Timeline: 0 ms aperture + title start, 150 ms tagline, [SPLASH_DURATION_MS] navigate.
  */
 @Composable
 fun SplashScreen(
     onSplashComplete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val logoScale = remember { Animatable(0.7f) }
-    val logoAlpha = remember { Animatable(0f) }
+    val aperture = remember { Animatable(0f) }
     val titleAlpha = remember { Animatable(0f) }
     val subtitleAlpha = remember { Animatable(0f) }
-    val subtitleOffset = remember { Animatable(18f) }
+    val accent = MaterialTheme.colorScheme.primary
 
     LaunchedEffect(Unit) {
-        // Logo entrance
-        launch {
-            logoScale.animateTo(
-                targetValue = 1.0f,
-                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
-            )
-        }
-        launch {
-            logoAlpha.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(durationMillis = 320),
-            )
-        }
-
-        // Title after 200ms
-        delay(200)
-        launch {
-            titleAlpha.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(durationMillis = 300),
-            )
-        }
-
-        // Subtitle after 450ms
-        delay(250)
-        launch {
-            subtitleAlpha.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(durationMillis = 300),
-            )
-        }
-        launch {
-            subtitleOffset.animateTo(
-                targetValue = 0f,
-                animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
-            )
-        }
-
-        // Hold then navigate
-        delay(850)
+        launch { aperture.animateTo(1f, tween(durationMillis = 450, easing = FastOutSlowInEasing)) }
+        launch { titleAlpha.animateTo(1f, tween(durationMillis = 300)) }
+        delay(150)
+        launch { subtitleAlpha.animateTo(1f, tween(durationMillis = 300)) }
+        delay(SPLASH_DURATION_MS - 150)
         onSplashComplete()
     }
 
@@ -102,24 +73,16 @@ fun SplashScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            // App logo — uses the launcher icon as a simple branded circle
-            Box(
+            ApertureMark(
+                progress = aperture.value,
+                color = accent,
                 modifier = Modifier
-                    .size(96.dp)
-                    .scale(logoScale.value)
-                    .alpha(logoAlpha.value),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = "\uD83D\uDCF7",
-                    fontSize = 64.sp,
-                    textAlign = TextAlign.Center,
-                )
-            }
+                    .size(88.dp)
+                    .semantics { contentDescription = "OptiLens" },
+            )
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // App name
             Text(
                 text = "OptiLens",
                 fontSize = 36.sp,
@@ -131,16 +94,48 @@ fun SplashScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Tagline
             Text(
                 text = "Enhanced by AI",
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Light,
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                color = accent.copy(alpha = 0.85f),
                 letterSpacing = 3.sp,
-                modifier = Modifier
-                    .alpha(subtitleAlpha.value),
+                modifier = Modifier.alpha(subtitleAlpha.value),
             )
+        }
+    }
+}
+
+/**
+ * Six-blade aperture outline. [progress] 0→1 rotates the blades in and narrows the iris,
+ * like a lens stopping down.
+ */
+@Composable
+private fun ApertureMark(progress: Float, color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier.alpha(progress.coerceIn(0f, 1f))) {
+        val radius = size.minDimension / 2f
+        val stroke = radius * 0.08f
+        drawCircle(color = color, radius = radius - stroke / 2f, style = Stroke(width = stroke))
+
+        val blades = 6
+        val irisRadius = radius * (0.62f - 0.22f * progress)
+        rotate(degrees = 30f * (1f - progress)) {
+            for (i in 0 until blades) {
+                val a = Math.toRadians((i * 360.0 / blades))
+                val start = Offset(
+                    x = center.x + (irisRadius * cos(a)).toFloat(),
+                    y = center.y + (irisRadius * sin(a)).toFloat(),
+                )
+                // Each blade edge runs tangentially from the iris and ends exactly on the ring.
+                val tangent = a + Math.PI / 2.0
+                val ring = radius - stroke
+                val length = kotlin.math.sqrt((ring * ring - irisRadius * irisRadius).coerceAtLeast(0f))
+                val end = Offset(
+                    x = start.x + (length * cos(tangent)).toFloat(),
+                    y = start.y + (length * sin(tangent)).toFloat(),
+                )
+                drawLine(color = color, start = start, end = end, strokeWidth = stroke)
+            }
         }
     }
 }

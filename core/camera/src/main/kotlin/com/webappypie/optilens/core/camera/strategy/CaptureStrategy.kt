@@ -27,7 +27,7 @@ enum class CaptureUiHint(val message: String) {
     HDR_SUGGESTED("HDR recommended"),
     BACKLIGHT_DETECTED("Backlight detected"),
     DOCUMENT_DETECTED("Document detected"),
-    AI_ZOOM_ACTIVE("AI Zoom Active"),
+    AI_ZOOM_ACTIVE("Digital Zoom"),
     LENS_DIRTY_WARNING("Clean camera lens for clearer photos"),
     MOON_DETECTED("Moon detected — telephoto recommended"),
     WILDLIFE_DETECTED("Wildlife detected — fast shutter active"),

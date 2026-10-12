@@ -42,7 +42,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -61,6 +60,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.ui.text.style.TextAlign
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.webappypie.optilens.core.imaging.ai.AiExecutionStage
@@ -81,7 +86,18 @@ fun AiToolsScreen(
     val canvasSize = remember { androidx.compose.runtime.mutableStateOf(IntSize.Zero) }
 
     LaunchedEffect(photoUri) {
-        viewModel.loadPhoto(photoUri)
+        viewModel.loadInitialPhoto(photoUri)
+    }
+
+    // System Photo Picker: no storage/media permission needed.
+    val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) {
+            inpaintingStrokes.clear()
+            viewModel.loadPhoto(uri.toString())
+        }
+    }
+    val launchPicker = {
+        pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
     }
 
     Box(
@@ -118,17 +134,50 @@ fun AiToolsScreen(
             }
         } else {
             Box(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(32.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                if (uiState.errorMessage != null) {
-                    Text(
-                        text = uiState.errorMessage!!,
-                        color = Color.White,
-                        fontSize = 14.sp
-                    )
-                } else {
+                if (uiState.isLoadingPhoto) {
                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                } else {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Default.AddPhotoAlternate,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.8f),
+                            modifier = Modifier.size(48.dp),
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = uiState.errorMessage ?: "Choose a photo to edit",
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            textAlign = TextAlign.Center,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Deblur, Object Cleanup, Reflection Cleaner, Upscale and Photo Restore run on your device. Your original is never changed.",
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = 13.sp,
+                            textAlign = TextAlign.Center,
+                        )
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Button(
+                            onClick = launchPicker,
+                            modifier = Modifier.height(48.dp),
+                            shape = RoundedCornerShape(24.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                        ) {
+                            Text(
+                                text = if (uiState.errorMessage != null) "Choose another photo" else "Choose photo",
+                                color = Color.Black,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -156,15 +205,32 @@ fun AiToolsScreen(
             }
 
             Text(
-                text = "Advanced AI Tools",
+                text = "Editing Tools",
                 color = Color.White,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 16.sp,
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                // Change photo
+                if (uiState.originalBitmap != null) {
+                    IconButton(
+                        onClick = launchPicker,
+                        enabled = !uiState.isProcessing,
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.5f)),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AddPhotoAlternate,
+                            contentDescription = "Choose a different photo",
+                            tint = Color.White,
+                        )
+                    }
+                }
+
                 // Undo
-                IconButton(
+                if (uiState.originalBitmap != null) IconButton(
                     onClick = { viewModel.undo() },
                     enabled = uiState.canUndo,
                     modifier = Modifier
@@ -179,7 +245,7 @@ fun AiToolsScreen(
                 }
 
                 // Redo
-                IconButton(
+                if (uiState.originalBitmap != null) IconButton(
                     onClick = { viewModel.redo() },
                     enabled = uiState.canRedo,
                     modifier = Modifier
@@ -194,7 +260,7 @@ fun AiToolsScreen(
                 }
 
                 // Revert All
-                IconButton(
+                if (uiState.originalBitmap != null) IconButton(
                     onClick = {
                         inpaintingStrokes.clear()
                         viewModel.revertAll()
@@ -220,7 +286,7 @@ fun AiToolsScreen(
                                 putExtra(Intent.EXTRA_STREAM, Uri.parse(uiState.savedUri))
                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             }
-                            context.startActivity(Intent.createChooser(sendIntent, "Share AI Enhanced Photo"))
+                            context.startActivity(Intent.createChooser(sendIntent, "Share edited photo"))
                         },
                         modifier = Modifier
                             .clip(CircleShape)
@@ -247,6 +313,38 @@ fun AiToolsScreen(
                 message = uiState.disclosureMessage,
                 visible = uiState.disclosureMessage != null,
             )
+        }
+
+        // 3b. Error banner (tap to dismiss)
+        if (uiState.originalBitmap != null && uiState.errorMessage != null) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 64.dp, start = 16.dp, end = 16.dp)
+                    .clickable { viewModel.clearMessages() },
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.errorContainer,
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = uiState.errorMessage!!,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        fontSize = 13.sp,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Dismiss message",
+                        tint = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
         }
 
         // 4. Processing Overlay
@@ -290,8 +388,8 @@ fun AiToolsScreen(
             }
         }
 
-        // 5. Bottom Control Sheet
-        Surface(
+        // 5. Bottom Control Sheet (only meaningful once a photo is loaded)
+        if (uiState.originalBitmap != null) Surface(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
@@ -429,19 +527,28 @@ fun AiToolsScreen(
                                 fontSize = 12.sp,
                             )
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                FilterChip(
-                                    selected = uiState.upscaleFactor == 2,
-                                    onClick = { viewModel.updateUpscaleFactor(2) },
-                                    label = { Text("2x Upscale") },
-                                    shape = RoundedCornerShape(12.dp),
-                                )
-                                FilterChip(
-                                    selected = uiState.upscaleFactor == 4,
-                                    onClick = { viewModel.updateUpscaleFactor(4) },
-                                    label = { Text("4x Upscale") },
-                                    shape = RoundedCornerShape(12.dp),
-                                )
+                                listOf(2, 4).forEach { factor ->
+                                    FilterChip(
+                                        selected = uiState.upscaleFactor == factor,
+                                        onClick = { viewModel.updateUpscaleFactor(factor) },
+                                        enabled = factor in uiState.allowedUpscaleFactors,
+                                        label = { Text("${factor}x") },
+                                        shape = RoundedCornerShape(12.dp),
+                                    )
+                                }
                             }
+                        }
+                        if (uiState.upscaleFactor !in uiState.allowedUpscaleFactors) {
+                            Text(
+                                text = if (uiState.allowedUpscaleFactors.isEmpty()) {
+                                    "This photo is already large. Upscale is limited to 24 MP output on this device."
+                                } else {
+                                    "${uiState.upscaleFactor}x would exceed the 24 MP output limit. Choose ${uiState.allowedUpscaleFactors.joinToString(" or ") { "${it}x" }}."
+                                },
+                                color = Color.White.copy(alpha = 0.7f),
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(top = 4.dp),
+                            )
                         }
                     }
                     AiToolType.RESTORATION -> {
@@ -487,7 +594,7 @@ fun AiToolsScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Unlock AI Tools Pack",
+                            text = "Unlock Editing Tools",
                             color = Color.Black,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
@@ -519,7 +626,7 @@ fun AiToolsScreen(
                                     viewModel.applyCurrentTool(null)
                                 }
                             },
-                            enabled = !uiState.isProcessing,
+                            enabled = uiState.canApply,
                             modifier = Modifier
                                 .weight(1f)
                                 .height(48.dp),
@@ -545,7 +652,7 @@ fun AiToolsScreen(
 
                         Button(
                             onClick = { viewModel.saveCopy() },
-                            enabled = uiState.currentBitmap != null && !uiState.isSaved && !uiState.isProcessing,
+                            enabled = uiState.canSave,
                             modifier = Modifier
                                 .weight(0.8f)
                                 .height(48.dp),

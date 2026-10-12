@@ -1,22 +1,9 @@
 package com.webappypie.optilens.core.ui.review
 
-import android.app.Application
-import android.content.ContentValues
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.net.Uri
-import android.os.Build
-import android.os.Environment
-import android.provider.MediaStore
-import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.webappypie.optilens.core.common.monetization.EntitlementRepository
-import com.webappypie.optilens.core.imaging.cloud.CloudOperation
-import com.webappypie.optilens.core.imaging.cloud.HybridEnhancementCoordinator
-import com.webappypie.optilens.core.imaging.enhance.AiEnhanceConfig
-import com.webappypie.optilens.core.imaging.enhance.AiEnhanceStage
 import com.webappypie.optilens.core.imaging.enhance.EnhancementConfig
-import com.webappypie.optilens.core.imaging.enhance.NativeAiEnhanceEngine
+import com.webappypie.optilens.core.imaging.enhance.OnDeviceEnhancementEngine
 import com.webappypie.optilens.core.logging.AppLogger
 import com.webappypie.optilens.core.settings.AppSettings
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -28,7 +15,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 /**
@@ -39,13 +25,9 @@ data class PhotoReviewUiState(
     val originalBitmap: Bitmap? = null,
     val enhancedBitmap: Bitmap? = null,
     val isEnhancing: Boolean = false,
-    val currentStage: AiEnhanceStage? = null,
-    val statusText: String? = null,
+    /** Real progress fraction reported by the enhancement engine (0..1). */
+    val enhanceProgress: Float = 0f,
     val isEnhanced: Boolean = false,
-    val isCloudEnhanced: Boolean = false,
-    val enhancementMethod: String? = null,
-    val isPro: Boolean = false,
-    val remainingCloudQuota: Int = 20,
     val isSaved: Boolean = false,
     val savedUri: String? = null,
     val keepOriginal: Boolean = true,
@@ -54,14 +36,16 @@ data class PhotoReviewUiState(
     val errorMessage: String? = null,
 )
 
+/**
+ * Review of a captured or picked photo with one-tap on-device enhancement
+ * ([OnDeviceEnhancementEngine]: tone, colour and detail adjustment; no cloud processing).
+ */
 @HiltViewModel
 class PhotoReviewViewModel @Inject constructor(
     private val photoBitmapLoader: PhotoBitmapLoader,
     private val appSettings: AppSettings,
     private val logger: AppLogger,
-    private val aiEnhanceEngine: NativeAiEnhanceEngine,
-    private val hybridCoordinator: HybridEnhancementCoordinator? = null,
-    private val entitlementRepository: EntitlementRepository? = null,
+    private val enhancementEngine: OnDeviceEnhancementEngine,
 ) : androidx.lifecycle.ViewModel() {
 
     internal var ioDispatcher: CoroutineDispatcher = Dispatchers.IO
@@ -71,9 +55,9 @@ class PhotoReviewViewModel @Inject constructor(
         photoBitmapLoader: PhotoBitmapLoader,
         appSettings: AppSettings,
         logger: AppLogger,
-        aiEnhanceEngine: NativeAiEnhanceEngine,
+        enhancementEngine: OnDeviceEnhancementEngine,
         ioDispatcher: CoroutineDispatcher,
-    ) : this(photoBitmapLoader, appSettings, logger, aiEnhanceEngine, null, null) {
+    ) : this(photoBitmapLoader, appSettings, logger, enhancementEngine) {
         this.ioDispatcher = ioDispatcher
     }
 
@@ -84,13 +68,6 @@ class PhotoReviewViewModel @Inject constructor(
         viewModelScope.launch {
             appSettings.keepOriginalEnabled.collect { keep ->
                 _uiState.update { it.copy(keepOriginal = keep) }
-            }
-        }
-        entitlementRepository?.let { repo ->
-            viewModelScope.launch {
-                repo.entitlements.collect { entitlements ->
-                    _uiState.update { it.copy(isPro = entitlements.hasFullAccess) }
-                }
             }
         }
     }
@@ -105,148 +82,51 @@ class PhotoReviewViewModel @Inject constructor(
                 if (bitmap != null) {
                     _uiState.update { it.copy(originalBitmap = bitmap) }
                 } else {
-                    _uiState.update { it.copy(errorMessage = "Failed to load image from URI") }
+                    _uiState.update { it.copy(errorMessage = "This photo couldn't be opened.") }
                 }
             } catch (e: Exception) {
                 logger.e("PhotoReviewViewModel", "Error loading photo", e)
-                _uiState.update { it.copy(errorMessage = e.message ?: "Failed to load photo") }
+                _uiState.update { it.copy(errorMessage = "This photo couldn't be opened.") }
             }
         }
     }
 
-    fun enhance(requestCloud: Boolean = false) {
+    fun enhance() {
         val original = _uiState.value.originalBitmap ?: return
         if (_uiState.value.isEnhancing) return
 
-        _uiState.update {
-            it.copy(
-                isEnhancing = true,
-                errorMessage = null,
-                statusText = if (requestCloud) "Processing with Premium Cloud AI..." else "Enhancing with On-Device Neural Engine...",
-            )
-        }
+        _uiState.update { it.copy(isEnhancing = true, enhanceProgress = 0f, errorMessage = null) }
 
-        viewModelScope.launch(Dispatchers.Default) {
+        viewModelScope.launch {
             try {
-                if (hybridCoordinator != null) {
-                    val result = hybridCoordinator.process(
-                        bitmap = original,
-                        isPro = _uiState.value.isPro,
-                        requestCloud = requestCloud,
-                        operation = CloudOperation.HDR_ENHANCE,
-                        config = EnhancementConfig.BALANCED,
-                        onProgress = { _, status ->
-                            _uiState.update { it.copy(statusText = status) }
-                        }
-                    )
-
-                    _uiState.update {
-                        it.copy(
-                            enhancedBitmap = result.bitmap,
-                            isEnhanced = true,
-                            isEnhancing = false,
-                            isCloudEnhanced = result.isCloudEnhanced,
-                            enhancementMethod = result.operationUsed,
-                            remainingCloudQuota = result.remainingMonthlyQuota,
-                            splitFraction = 0.50f,
-                            statusText = null,
-                        )
-                    }
-                } else {
-                    // Planar YUV fallback for standalone tests
-                    val width = original.width
-                    val height = original.height
-
-                    val pixels = IntArray(width * height)
-                    original.getPixels(pixels, 0, width, 0, 0, width, height)
-
-                    val yPlane = ByteArray(width * height)
-                    val uvWidth = width / 2
-                    val uvHeight = height / 2
-                    val uPlane = ByteArray(uvWidth * uvHeight)
-                    val vPlane = ByteArray(uvWidth * uvHeight)
-
-                    for (y in 0 until height) {
-                        val row = y * width
-                        val uvRow = (y / 2) * uvWidth
-                        for (x in 0 until width) {
-                            val color = pixels[row + x]
-                            val r = (color shr 16) and 0xFF
-                            val g = (color shr 8) and 0xFF
-                            val b = color and 0xFF
-
-                            val yVal = (0.299f * r + 0.587f * g + 0.114f * b).toInt().coerceIn(0, 255)
-                            yPlane[row + x] = yVal.toByte()
-
-                            if (x % 2 == 0 && y % 2 == 0) {
-                                val uvIndex = uvRow + (x / 2)
-                                val uVal = ((-0.169f * r - 0.331f * g + 0.500f * b) + 128f).toInt().coerceIn(0, 255)
-                                val vVal = ((0.500f * r - 0.419f * g - 0.081f * b) + 128f).toInt().coerceIn(0, 255)
-                                uPlane[uvIndex] = uVal.toByte()
-                                vPlane[uvIndex] = vVal.toByte()
-                            }
-                        }
-                    }
-
-                    val success = aiEnhanceEngine.processEnhance(
-                        yPlane = yPlane,
-                        uPlane = uPlane,
-                        vPlane = vPlane,
-                        width = width,
-                        height = height,
-                        yStride = width,
-                        uvStride = uvWidth,
-                        config = AiEnhanceConfig(strength = 1.0f),
-                        onStageChanged = { stage ->
-                            _uiState.update { it.copy(currentStage = stage) }
-                        }
-                    )
-
-                    if (success) {
-                        val enhancedPixels = IntArray(width * height)
-                        for (y in 0 until height) {
-                            val row = y * width
-                            val uvRow = (y / 2) * uvWidth
-                            for (x in 0 until width) {
-                                val yVal = (yPlane[row + x].toInt() and 0xFF).toFloat()
-                                val uvIndex = uvRow + (x / 2)
-                                val uVal = (uPlane[uvIndex].toInt() and 0xFF).toFloat() - 128f
-                                val vVal = (vPlane[uvIndex].toInt() and 0xFF).toFloat() - 128f
-
-                                val r = (yVal + 1.402f * vVal).toInt().coerceIn(0, 255)
-                                val g = (yVal - 0.344136f * uVal - 0.714136f * vVal).toInt().coerceIn(0, 255)
-                                val b = (yVal + 1.772f * uVal).toInt().coerceIn(0, 255)
-
-                                enhancedPixels[row + x] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
-                            }
-                        }
-
-                        val enhancedBitmap = Bitmap.createBitmap(enhancedPixels, width, height, Bitmap.Config.ARGB_8888)
-                        _uiState.update {
-                            it.copy(
-                                enhancedBitmap = enhancedBitmap,
-                                isEnhanced = true,
-                                isEnhancing = false,
-                                splitFraction = 0.50f,
-                                statusText = null,
-                            )
-                        }
-                    } else {
-                        _uiState.update {
-                            it.copy(
-                                isEnhancing = false,
-                                errorMessage = "AI Enhancement failed to converge"
-                            )
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                logger.e("PhotoReviewViewModel", "Error during AI enhance", e)
+                val enhanced = enhancementEngine.enhance(
+                    bitmap = original,
+                    config = EnhancementConfig.BALANCED,
+                    onProgress = { p -> _uiState.update { it.copy(enhanceProgress = p.coerceIn(0f, 1f)) } },
+                )
                 _uiState.update {
-                    it.copy(isEnhancing = false, errorMessage = e.message ?: "Enhancement error")
+                    it.copy(
+                        enhancedBitmap = enhanced,
+                        isEnhanced = true,
+                        isEnhancing = false,
+                        enhanceProgress = 1f,
+                        isSaved = false,
+                        savedUri = null,
+                        splitFraction = 0.50f,
+                    )
                 }
+            } catch (e: OutOfMemoryError) {
+                logger.e("PhotoReviewViewModel", "Out of memory during enhance", e)
+                _uiState.update { it.copy(isEnhancing = false, errorMessage = "Not enough memory to enhance this photo.") }
+            } catch (e: Exception) {
+                logger.e("PhotoReviewViewModel", "Error during enhance", e)
+                _uiState.update { it.copy(isEnhancing = false, errorMessage = "Enhancement failed. Please try again.") }
             }
         }
+    }
+
+    fun clearError() {
+        _uiState.update { it.copy(errorMessage = null) }
     }
 
     fun revert() {
@@ -257,6 +137,7 @@ class PhotoReviewViewModel @Inject constructor(
                 enhancedBitmap = null,
                 isEnhanced = false,
                 isSaved = false,
+                savedUri = null,
             )
         }
 
@@ -287,11 +168,11 @@ class PhotoReviewViewModel @Inject constructor(
                         it.copy(isSaved = true, savedUri = savedUri)
                     }
                 } else {
-                    _uiState.update { it.copy(errorMessage = "Failed to save enhanced image") }
+                    _uiState.update { it.copy(errorMessage = "The enhanced copy couldn't be saved.") }
                 }
             } catch (e: Exception) {
                 logger.e("PhotoReviewViewModel", "Error saving enhanced photo", e)
-                _uiState.update { it.copy(errorMessage = "Failed to save: ${e.message}") }
+                _uiState.update { it.copy(errorMessage = "The enhanced copy couldn't be saved.") }
             }
         }
     }
