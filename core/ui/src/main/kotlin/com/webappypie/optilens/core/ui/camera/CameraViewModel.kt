@@ -72,10 +72,17 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 import kotlin.math.abs
 
-enum class CameraAspectRatio(val ratio: Float, val label: String) {
-    RATIO_4_3(3f / 4f, "4:3"),
-    RATIO_16_9(9f / 16f, "16:9"),
-    RATIO_1_1(1f / 1f, "1:1");
+/**
+ * Viewfinder/capture aspect ratio. Each value is requested from the sensor, so the saved photo
+ * matches the framing shown (1:1 was removed: it only cropped the preview, never the photo).
+ */
+enum class CameraAspectRatio(
+    val ratio: Float,
+    val label: String,
+    val capture: com.webappypie.optilens.core.camera.model.CaptureAspectRatio,
+) {
+    RATIO_4_3(3f / 4f, "4:3", com.webappypie.optilens.core.camera.model.CaptureAspectRatio.RATIO_4_3),
+    RATIO_16_9(9f / 16f, "16:9", com.webappypie.optilens.core.camera.model.CaptureAspectRatio.RATIO_16_9),
 }
 
 enum class TimerState(val seconds: Int) {
@@ -167,6 +174,8 @@ class CameraViewModel @Inject constructor(
     private val documentOcrEngine: DocumentOcrEngine = DocumentOcrEngine(),
     private val moonModeEngine: MoonModeEngine = MoonModeEngine(),
     private val wildlifeModeEngine: WildlifeModeEngine = WildlifeModeEngine(),
+    private val startupMetricsTracker: com.webappypie.optilens.core.common.performance.StartupMetricsTracker =
+        com.webappypie.optilens.core.common.performance.StartupMetricsTracker(),
 ) : ViewModel() {
 
     val availableCameraModes: List<CameraMode> by lazy {
@@ -572,10 +581,19 @@ class CameraViewModel @Inject constructor(
     fun toggleAspectRatio() {
         val next = when (_internalState.value.aspectRatio) {
             CameraAspectRatio.RATIO_4_3 -> CameraAspectRatio.RATIO_16_9
-            CameraAspectRatio.RATIO_16_9 -> CameraAspectRatio.RATIO_1_1
-            CameraAspectRatio.RATIO_1_1 -> CameraAspectRatio.RATIO_4_3
+            CameraAspectRatio.RATIO_16_9 -> CameraAspectRatio.RATIO_4_3
         }
-        _internalState.update { it.copy(aspectRatio = next) }
+        viewModelScope.launch {
+            when (val result = cameraController.setCaptureAspectRatio(next.capture)) {
+                is OptiResult.Error -> _internalState.update { it.copy(errorMessage = result.error.displayMessage) }
+                else -> _internalState.update { it.copy(aspectRatio = next) }
+            }
+        }
+    }
+
+    /** Called once the viewfinder shows its first live frame; feeds real startup metrics. */
+    fun onPreviewStreaming() {
+        if (!startupMetricsTracker.metrics.value.isCameraReady) startupMetricsTracker.recordCameraFirstFrame()
     }
 
     fun toggleTimer() {
@@ -1279,10 +1297,15 @@ class CameraViewModel @Inject constructor(
 
     companion object {
         /**
-         * Modes with a working capture path. VIDEO is excluded: there is no video recording
-         * pipeline, so exposing it would be a dead control that silently takes a still photo.
+         * Modes whose capture differs from PHOTO in a real way. Excluded until implemented
+         * (PRD: modes only where real supported paths exist):
+         * - VIDEO: no recording pipeline.
+         * - PORTRAIT: no depth/bokeh is applied; the aperture selector changed nothing.
+         * - FOOD: computed white-balance/colour values were never applied.
+         * - DOCUMENT: no edge detection/crop; the colour-mode selector was never applied.
          */
-        val IMPLEMENTED_MODES: Set<CameraMode> = CameraMode.entries.toSet() - CameraMode.VIDEO
+        val IMPLEMENTED_MODES: Set<CameraMode> = CameraMode.entries.toSet() -
+            setOf(CameraMode.VIDEO, CameraMode.PORTRAIT, CameraMode.FOOD, CameraMode.DOCUMENT)
     }
 }
 

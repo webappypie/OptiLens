@@ -2,6 +2,8 @@ package com.webappypie.optilens.core.camera.model
 
 import kotlinx.serialization.Serializable
 import kotlin.math.abs
+import kotlin.math.round
+import kotlin.math.sqrt
 
 /**
  * Representation of a quick-zoom stop derived from actual hardware optics.
@@ -22,65 +24,92 @@ data class ZoomStop(
     val physicalSensorId: String? = null,
 ) {
     companion object {
+        /** Diagonal of a 36 x 24 mm full-frame sensor, used for 35 mm-equivalent focal length. */
+        private const val FULL_FRAME_DIAGONAL_MM = 43.2666f
+
+        /** Candidate digital-crop stops offered when no lens backs them. */
+        private val DIGITAL_STOPS = listOf(2.0f, 5.0f, 10.0f)
+
         /**
-         * Derive truthful quick-zoom stops from a [CameraDeviceProfile].
+         * 35 mm-equivalent focal length, or null when focal length or sensor size is unknown.
+         * Raw focal lengths are not comparable across sensors of different sizes.
+         */
+        fun equivalentFocalLengthMm(focalMm: Float, sensorWidthMm: Float, sensorHeightMm: Float): Float? {
+            if (focalMm <= 0f || sensorWidthMm <= 0f || sensorHeightMm <= 0f) return null
+            val diagonal = sqrt(sensorWidthMm * sensorWidthMm + sensorHeightMm * sensorHeightMm)
+            return focalMm * FULL_FRAME_DIAGONAL_MM / diagonal
+        }
+
+        fun formatLabel(ratio: Float): String {
+            val tenths = round(ratio * 10f) / 10f
+            return if (abs(tenths - round(tenths)) < 0.05f) "${round(tenths).toInt()}x" else "${tenths}x"
+        }
+
+        /**
+         * Derive truthful quick-zoom stops for the camera that is actually bound.
          *
-         * Inspects physical sub-sensor focal lengths against the primary sensor's
-         * focal length to determine which multipliers are genuinely optical.
+         * - 1x is the bound camera's own lens.
+         * - A sub-1x or tele stop is offered only when the bound (logical) camera can reach it via
+         *   zoom ratio, and is optical only when one of ITS physical sensors has a matching
+         *   35 mm-equivalent focal length. Lenses the OS does not expose to this app are never shown.
+         * - Remaining stops (2x/5x/10x within the zoom range) are digital crops.
          */
         fun deriveFromProfile(profile: CameraDeviceProfile?): List<ZoomStop> {
             if (profile == null) {
-                return listOf(
-                    ZoomStop(ratio = 1.0f, label = "1x", isOptical = true),
+                return listOf(ZoomStop(ratio = 1.0f, label = "1x", isOptical = true))
+            }
+
+            val mainEq = equivalentFocalLengthMm(
+                focalMm = profile.focalLengthsMm.firstOrNull() ?: 0f,
+                sensorWidthMm = profile.sensorInfo.physicalWidthMm,
+                sensorHeightMm = profile.sensorInfo.physicalHeightMm,
+            )
+
+            // Physical lenses of this logical camera, as ratios relative to the main lens.
+            val physicalRatios: List<Pair<Float, String>> = if (mainEq == null) {
+                emptyList()
+            } else {
+                profile.physicalSensors.mapNotNull { phys ->
+                    val eq = equivalentFocalLengthMm(
+                        phys.focalLengthMm,
+                        phys.sensorPhysicalWidthMm,
+                        phys.sensorPhysicalHeightMm,
+                    ) ?: return@mapNotNull null
+                    (eq / mainEq) to phys.id
+                }
+            }
+
+            fun opticalMatch(ratio: Float, tolerance: Float): Pair<Float, String>? =
+                physicalRatios.firstOrNull { abs(it.first - ratio) <= tolerance }
+
+            val stops = mutableListOf<ZoomStop>()
+
+            // Ultrawide: only reachable when the bound camera's zoom range goes below 1x.
+            if (profile.minZoom < 0.95f) {
+                val match = opticalMatch(profile.minZoom, tolerance = 0.15f)
+                stops += ZoomStop(
+                    ratio = profile.minZoom,
+                    label = formatLabel(profile.minZoom),
+                    isOptical = match != null,
+                    physicalSensorId = match?.second,
                 )
             }
 
-            val primaryFocalMm = profile.focalLengthsMm.firstOrNull() ?: 4.5f
-            val stops = mutableListOf<ZoomStop>()
+            stops += ZoomStop(ratio = 1.0f, label = "1x", isOptical = true)
 
-            // 1. Check physical sub-sensors for genuine optical stops
-            val physicalSensors = profile.physicalSensors
-            val opticalRatios = mutableMapOf<Float, String>()
-
-            for (phys in physicalSensors) {
-                if (phys.focalLengthMm > 0f && primaryFocalMm > 0f) {
-                    val rawRatio = phys.focalLengthMm / primaryFocalMm
-                    // Round to nearest tenth for clean matching (e.g. 0.5x, 0.6x, 3.0x, 5.0x)
-                    val roundedRatio = (kotlin.math.round(rawRatio * 10f) / 10f)
-                    opticalRatios[roundedRatio] = phys.id
+            // Telephoto lenses that belong to this logical camera and lie within its zoom range.
+            physicalRatios
+                .filter { (ratio, _) -> ratio >= 1.5f && ratio <= profile.maxZoom + 0.01f }
+                .forEach { (ratio, id) ->
+                    val rounded = round(ratio * 10f) / 10f
+                    stops += ZoomStop(ratio = rounded, label = formatLabel(rounded), isOptical = true, physicalSensorId = id)
                 }
-            }
 
-            // Ultrawide stop (e.g. 0.5x or 0.6x)
-            if (profile.minZoom < 0.95f) {
-                val uwRatio = profile.minZoom
-                val isOptical = opticalRatios.keys.any { abs(it - uwRatio) < 0.15f }
-                val physId = opticalRatios.entries.firstOrNull { abs(it.key - uwRatio) < 0.15f }?.value
-                val label = if (uwRatio < 1.0f) String.format(java.util.Locale.US, "%.1fx", uwRatio) else "${uwRatio.toInt()}x"
-                stops.add(ZoomStop(ratio = uwRatio, label = label, isOptical = isOptical, physicalSensorId = physId))
-            }
-
-            // Primary 1x is always optical on the main camera
-            stops.add(ZoomStop(ratio = 1.0f, label = "1x", isOptical = true, physicalSensorId = null))
-
-            // Standard common intermediate stops up to maxZoom
-            val candidateMultipliers = listOf(2.0f, 3.0f, 5.0f, 10.0f)
-            for (mult in candidateMultipliers) {
-                if (mult <= profile.maxZoom) {
-                    // Check if any physical sensor corresponds to this multiplier within 15%
-                    val matchingOptical = opticalRatios.entries.firstOrNull { abs(it.key - mult) < 0.25f }
-                    val isOptical = matchingOptical != null
-                    val label = "${mult.toInt()}x"
-                    stops.add(
-                        ZoomStop(
-                            ratio = mult,
-                            label = label,
-                            isOptical = isOptical,
-                            physicalSensorId = matchingOptical?.value,
-                        )
-                    )
-                }
-            }
+            // Digital crops, skipping any that coincide with an optical stop.
+            DIGITAL_STOPS
+                .filter { it <= profile.maxZoom + 0.01f }
+                .filter { candidate -> stops.none { abs(it.ratio - candidate) < 0.3f } }
+                .forEach { stops += ZoomStop(ratio = it, label = formatLabel(it), isOptical = false) }
 
             return stops.distinctBy { it.ratio }.sortedBy { it.ratio }
         }

@@ -106,11 +106,13 @@ class CameraControllerTest {
             lensFacing = LensFacing.BACK,
             hardwareLevel = CameraHardwareLevel.LEVEL_3,
             focalLengthsMm = listOf(4.5f),
+            // Optical ratios are compared as 35 mm-equivalent focal lengths, so sensor sizes are required.
+            sensorInfo = com.webappypie.optilens.core.camera.model.SensorArrayInfo(physicalWidthMm = 6.4f, physicalHeightMm = 4.8f),
             minZoom = 0.6f,
             maxZoom = 10.0f,
             physicalSensors = listOf(
-                PhysicalSensorInfo(id = "2", focalLengthMm = 2.2f, lensFacing = LensFacing.BACK), // ~0.6x UW
-                PhysicalSensorInfo(id = "3", focalLengthMm = 22.5f, lensFacing = LensFacing.BACK), // 5x Tele
+                PhysicalSensorInfo(id = "2", focalLengthMm = 2.2f, sensorPhysicalWidthMm = 5.0f, sensorPhysicalHeightMm = 3.75f, lensFacing = LensFacing.BACK), // ~0.6x UW
+                PhysicalSensorInfo(id = "3", focalLengthMm = 22.5f, sensorPhysicalWidthMm = 6.4f, sensorPhysicalHeightMm = 4.8f, lensFacing = LensFacing.BACK), // 5x Tele
             ),
         )
 

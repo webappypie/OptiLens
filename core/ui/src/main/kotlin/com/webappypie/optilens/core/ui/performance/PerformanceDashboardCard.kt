@@ -142,16 +142,20 @@ fun PerformanceDashboardCard(
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     MetricItem(
-                        label = "Cold Start Draw",
-                        value = startup?.let { "${it.appStartupLatencyMs} ms" } ?: "--",
+                        label = "First Frame Drawn",
+                        value = durationOrNotMeasured(startup?.appStartupLatencyMs),
                     )
                     MetricItem(
                         label = "Camera Ready",
-                        value = startup?.let { "${it.cameraReadyLatencyMs} ms" } ?: "--",
+                        value = durationOrNotMeasured(startup?.cameraReadyLatencyMs),
                     )
                     MetricItem(
-                        label = "App Init",
-                        value = startup?.let { "${it.appOnCreateTimeMs} ms" } ?: "--",
+                        label = "Process → App Init",
+                        value = durationOrNotMeasured(
+                            startup?.let {
+                                if (it.processStartTimeMs > 0L && it.appOnCreateTimeMs > 0L) it.appOnCreateTimeMs - it.processStartTimeMs else 0L
+                            }
+                        ),
                     )
                 }
             }
@@ -173,15 +177,15 @@ fun PerformanceDashboardCard(
                 ) {
                     MetricItem(
                         label = "Jank Rate",
-                        value = "%.1f%%".format(frames.jankRatePercent),
+                        value = if (frames.totalFrames > 0) "%.1f%%".format(frames.jankRatePercent) else NOT_MEASURED,
                     )
                     MetricItem(
                         label = "Severe Jank (>33ms)",
-                        value = "${frames.severeJankFrames}",
+                        value = if (frames.totalFrames > 0) "${frames.severeJankFrames}" else NOT_MEASURED,
                     )
                     MetricItem(
                         label = "p90 Frame Time",
-                        value = "%.1f ms".format(frames.p90FrameDurationMs),
+                        value = if (frames.totalFrames > 0) "%.1f ms".format(frames.p90FrameDurationMs) else NOT_MEASURED,
                     )
                 }
             }
@@ -207,7 +211,7 @@ fun PerformanceDashboardCard(
                     )
                     MetricItem(
                         label = "Native Heap",
-                        value = "%.1f MB".format(mem.nativeHeapAllocatedMb),
+                        value = if (mem.nativeHeapAllocatedMb > 0f) "%.1f MB".format(mem.nativeHeapAllocatedMb) else NOT_MEASURED,
                     )
                     MetricItem(
                         label = "Peak Heap",
@@ -281,3 +285,9 @@ private fun MetricItem(
         )
     }
 }
+
+/** Shown instead of 0 for metrics that have not been recorded, so zeros are never presented as data. */
+private const val NOT_MEASURED = "Not measured"
+
+private fun durationOrNotMeasured(ms: Long?): String =
+    if (ms != null && ms > 0L) "$ms ms" else NOT_MEASURED

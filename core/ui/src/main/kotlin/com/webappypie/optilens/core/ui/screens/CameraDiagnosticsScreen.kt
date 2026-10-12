@@ -314,7 +314,11 @@ private fun CameraDetailsSection(camera: CameraDeviceProfile) {
             SpecRow("Pixel Array", "${camera.sensorInfo.pixelArrayWidth} x ${camera.sensorInfo.pixelArrayHeight}")
             SpecRow("Physical Sensor Size", "${camera.sensorInfo.physicalWidthMm} x ${camera.sensorInfo.physicalHeightMm} mm")
             SpecRow("Sensor Orientation", "${camera.sensorInfo.orientationDegrees}° (${camera.sensorInfo.timestampSource})")
-            SpecRow("Optical Zoom Multipliers", camera.computeAvailableZoomRatios().joinToString("x, ") + "x")
+            SpecRow(
+                "Zoom Stops",
+                com.webappypie.optilens.core.camera.model.ZoomStop.deriveFromProfile(camera)
+                    .joinToString(", ") { "${it.label} ${if (it.isOptical) "optical" else "digital"}" },
+            )
             SpecRow("Zoom Ratio Range", "${camera.minZoom}x to ${camera.maxZoom}x")
 
             HorizontalDivider()

@@ -17,7 +17,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.compose.rememberNavController
+import com.webappypie.optilens.core.common.performance.StartupMetricsTracker
 import com.webappypie.optilens.core.logging.AppLogger
+import androidx.core.view.OneShotPreDrawListener
 import com.webappypie.optilens.core.navigation.AppDestination
 import com.webappypie.optilens.core.navigation.AppNavHost
 import com.webappypie.optilens.core.navigation.NavigationCommand
@@ -52,6 +54,12 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var logger: AppLogger
 
+    @Inject
+    lateinit var startupMetrics: StartupMetricsTracker
+
+    @Inject
+    lateinit var cameraController: com.webappypie.optilens.core.camera.CameraController
+
     private var isVolumeKeyShutterEnabled = false
     private val _volumeKeyShutterTrigger = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val volumeKeyShutterTrigger: Flow<Unit> = _volumeKeyShutterTrigger.asSharedFlow()
@@ -63,6 +71,12 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        startupMetrics.recordActivityCreate()
+        // Overlap CameraX initialisation with the splash animation.
+        cameraController.prewarm()
+        if (!startupMetrics.metrics.value.isStartupComplete) {
+            OneShotPreDrawListener.add(window.decorView) { startupMetrics.recordFirstDraw() }
+        }
         logger.d(TAG, "MainActivity created")
 
         lifecycleScope.launch {

@@ -53,9 +53,6 @@ import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.FlashAuto
 import androidx.compose.material.icons.filled.FlashOff
 import androidx.compose.material.icons.filled.FlashOn
-import androidx.compose.material.icons.filled.HdrAuto
-import androidx.compose.material.icons.filled.HdrOff
-import androidx.compose.material.icons.filled.HdrOn
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Leaderboard
 import androidx.compose.material.icons.filled.PhotoLibrary
@@ -133,7 +130,6 @@ import com.webappypie.optilens.core.ui.theme.OptiLensTheme
 import kotlinx.coroutines.flow.Flow
 import kotlin.math.roundToInt
 
-enum class HdrState { AUTO, ON, OFF }
 
 /**
  * Production Camera Screen for OptiLens.
@@ -204,7 +200,6 @@ fun CameraScreen(
             else -> viewModel.takePhotoWithTimer(targetRotation = rotation)
         }
     }
-    var hdrState by remember { mutableStateOf(HdrState.AUTO) }
     var previewViewRef by remember { mutableStateOf<PreviewView?>(null) }
 
     // Start/stop horizon sensor with lifecycle & visibility
@@ -339,16 +334,21 @@ fun CameraScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(animatedAspect)
-                    .clip(RoundedCornerShape(if (uiState.aspectRatio == CameraAspectRatio.RATIO_1_1) 12.dp else 0.dp))
+                    .clip(RoundedCornerShape(0.dp))
                     .background(Color(0xFF0A0C10)),
             ) {
                 // Live CameraX Preview
                 AndroidView(
                     factory = { ctx ->
                         PreviewView(ctx).apply {
-                            scaleType = PreviewView.ScaleType.FILL_CENTER
+                            // FIT_CENTER inside the aspect frame: the viewfinder shows the full
+                            // sensor frame that will be captured, without hidden cropping.
+                            scaleType = PreviewView.ScaleType.FIT_CENTER
                             implementationMode = PreviewView.ImplementationMode.COMPATIBLE
                             previewViewRef = this
+                            previewStreamState.observe(lifecycleOwner) { state ->
+                                if (state == PreviewView.StreamState.STREAMING) viewModel.onPreviewStreaming()
+                            }
                             viewModel.bindPreview(lifecycleOwner, this.surfaceProvider)
                         }
                     },
@@ -491,7 +491,7 @@ fun CameraScreen(
             // Pet Mode Status Badge
             if (currentMode == CameraMode.PET) {
                 SpecializedModeBadge(
-                    text = if (uiState.isProcessingPetShot) "Freezing action..." else "Pet: 1/250s+ Shutter",
+                    text = if (uiState.isProcessingPetShot) "Freezing action..." else "Pet: fast shutter, light permitting",
                     isProcessing = uiState.isProcessingPetShot,
                     icon = Icons.Default.Pets,
                     modifier = Modifier
@@ -527,7 +527,7 @@ fun CameraScreen(
             // Moon Mode Status Badge
             if (currentMode == CameraMode.MOON) {
                 val moonText = when {
-                    uiState.isProcessingMoonShot -> "Stacking real photons..."
+                    uiState.isProcessingMoonShot -> "Capturing..."
                     uiState.moonDetectionState.isMoonDetected -> "Moon: ${uiState.moonDetectionState.stabilityCue.message}"
                     else -> "Moon Assist: Spot Exposure"
                 }
@@ -648,23 +648,8 @@ fun CameraScreen(
                     onClick = { viewModel.toggleTimer() },
                 )
 
-                // HDR Toggle
-                OptiIconButton(
-                    icon = when (hdrState) {
-                        HdrState.AUTO -> Icons.Default.HdrAuto
-                        HdrState.ON   -> Icons.Default.HdrOn
-                        HdrState.OFF  -> Icons.Default.HdrOff
-                    },
-                    contentDescription = "HDR mode: ${hdrState.name}",
-                    variant = if (hdrState == HdrState.ON) OptiIconButtonVariant.OVERLAY_ACTIVE else OptiIconButtonVariant.OVERLAY,
-                    onClick = {
-                        hdrState = when (hdrState) {
-                            HdrState.AUTO -> HdrState.ON
-                            HdrState.ON   -> HdrState.OFF
-                            HdrState.OFF  -> HdrState.AUTO
-                        }
-                    },
-                )
+                // HDR toggle removed: it only changed local UI state. It returns with the real
+                // multi-frame HDR capture path (roadmap Phases 05-07).
 
                 // Live Histogram Toggle
                 OptiIconButton(
@@ -734,15 +719,9 @@ fun CameraScreen(
             }
 
             // Truthful Zoom Selector Bar (derives optical vs digital crop)
-            val activeStops = if (uiState.zoomStops.isNotEmpty()) {
-                uiState.zoomStops
-            } else {
-                listOf(
-                    ZoomStop(ratio = 0.6f, label = "0.6x", isOptical = true),
-                    ZoomStop(ratio = 1.0f, label = "1x", isOptical = true),
-                    ZoomStop(ratio = 2.0f, label = "2x", isOptical = false),
-                    ZoomStop(ratio = 5.0f, label = "5x", isOptical = true),
-                )
+            // Never invent lenses: before discovery completes only the bound lens (1x) is known.
+            val activeStops = uiState.zoomStops.ifEmpty {
+                listOf(ZoomStop(ratio = 1.0f, label = "1x", isOptical = true))
             }
 
             TruthfulZoomSelector(

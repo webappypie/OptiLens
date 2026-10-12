@@ -288,6 +288,18 @@ interface CameraController {
     /** Switch between front and rear camera. */
     suspend fun flipCamera(): OptiResult<Unit>
 
+    /**
+     * Requests [aspect] from the sensor for preview AND still capture, so the saved photo has
+     * the framing shown in the viewfinder. Rebinds the camera when the value changes.
+     */
+    suspend fun setCaptureAspectRatio(aspect: com.webappypie.optilens.core.camera.model.CaptureAspectRatio): OptiResult<Unit>
+
+    /**
+     * Starts CameraX initialisation in the background (no camera is opened), so it overlaps the
+     * splash instead of starting only when the viewfinder is shown. Safe to call repeatedly.
+     */
+    fun prewarm()
+
     /** Release all active camera and executor resources. */
     fun release()
 

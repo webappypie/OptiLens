@@ -1,8 +1,12 @@
 package com.webappypie.optilens.core.camera
 
 import android.content.Context
+import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CaptureRequest
+import android.hardware.camera2.CaptureResult
+import android.hardware.camera2.TotalCaptureResult
 import androidx.camera.camera2.interop.Camera2CameraControl
+import androidx.camera.camera2.interop.Camera2Interop
 import androidx.camera.camera2.interop.CaptureRequestOptions
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.Camera
@@ -16,6 +20,8 @@ import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.MeteringPoint
 import androidx.camera.core.Preview
+import androidx.camera.core.resolutionselector.AspectRatioStrategy
+import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
@@ -82,6 +88,7 @@ import com.webappypie.optilens.core.common.result.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -257,11 +264,7 @@ class CameraXController @Inject constructor(
         // Observe detected hardware capability profile to derive truthful zoom stops and Pro limits
         scope.launch {
             capabilityRepository.capabilityProfile.filterNotNull().collectLatest { profile ->
-                val activeCamera = if (_isFrontCamera) profile.primaryFrontCamera else profile.primaryBackCamera
-                activeCameraProfile = activeCamera
-                updateHardwareProfileCapabilities(activeCamera)
-                recomputeNightPlan()
-                recomputePortraitPlan()
+                refreshActiveProfile(profile)
             }
         }
 
@@ -308,6 +311,62 @@ class CameraXController @Inject constructor(
             preference = portraitPolicyPreference,
         )
         _portraitExecutionPlan.value = plan
+    }
+
+    /** Selects the profile of the camera that is (or will be) bound and re-derives limits from it. */
+    private fun refreshActiveProfile(
+        profile: com.webappypie.optilens.core.camera.model.CameraCapabilityProfile? = capabilityRepository.capabilityProfile.value,
+    ) {
+        profile ?: return
+        val activeCamera = if (_isFrontCamera) profile.primaryFrontCamera else profile.primaryBackCamera
+        activeCameraProfile = activeCamera
+        updateHardwareProfileCapabilities(activeCamera)
+        recomputeNightPlan()
+        recomputePortraitPlan()
+    }
+
+    /** Latest exposure chosen by auto-exposure on the preview stream (for shutter/ISO priority). */
+    @Volatile
+    private var meteredExposure: ExposurePriority.AutoExposure? = null
+
+    private val meteringCallback = object : CameraCaptureSession.CaptureCallback() {
+        override fun onCaptureCompleted(
+            session: CameraCaptureSession,
+            request: CaptureRequest,
+            result: TotalCaptureResult,
+        ) {
+            // Only auto-exposed frames are a valid metering baseline.
+            if (result.get(CaptureResult.CONTROL_AE_MODE) == CaptureResult.CONTROL_AE_MODE_OFF) return
+            val iso = result.get(CaptureResult.SENSOR_SENSITIVITY) ?: return
+            val time = result.get(CaptureResult.SENSOR_EXPOSURE_TIME) ?: return
+            val boost = result.get(CaptureResult.CONTROL_POST_RAW_SENSITIVITY_BOOST) ?: 100
+            meteredExposure = ExposurePriority.AutoExposure(iso, time, boost)
+        }
+    }
+
+    private var captureAspectRatio = com.webappypie.optilens.core.camera.model.CaptureAspectRatio.RATIO_4_3
+
+    /** Device range for CONTROL_POST_RAW_SENSITIVITY_BOOST of the bound camera, if supported. */
+    private var postRawBoostRange: ClosedRange<Int>? = null
+
+    private fun resolutionSelectorFor(aspect: com.webappypie.optilens.core.camera.model.CaptureAspectRatio): ResolutionSelector =
+        ResolutionSelector.Builder()
+            .setAspectRatioStrategy(
+                when (aspect) {
+                    com.webappypie.optilens.core.camera.model.CaptureAspectRatio.RATIO_16_9 ->
+                        AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY
+                    com.webappypie.optilens.core.camera.model.CaptureAspectRatio.RATIO_4_3 ->
+                        AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY
+                }
+            )
+            .build()
+
+    override suspend fun setCaptureAspectRatio(
+        aspect: com.webappypie.optilens.core.camera.model.CaptureAspectRatio,
+    ): OptiResult<Unit> = withContext(dispatchers.main) {
+        if (aspect == captureAspectRatio) return@withContext OptiResult.Success(Unit)
+        captureAspectRatio = aspect
+        if (currentLifecycleOwner != null && currentSurfaceProvider != null) startPreview() else OptiResult.Success(Unit)
     }
 
     private fun updateHardwareProfileCapabilities(cameraProfile: CameraDeviceProfile?) {
@@ -388,13 +447,16 @@ class CameraXController @Inject constructor(
             // Unbind previous use cases safely before re-binding
             provider.unbindAll()
 
-            // 1. Build Preview Use Case
-            val preview = Preview.Builder().build()
+            // 1. Build Preview Use Case (with a metering callback for shutter/ISO priority)
+            val previewBuilder = Preview.Builder().setResolutionSelector(resolutionSelectorFor(captureAspectRatio))
+            Camera2Interop.Extender(previewBuilder).setSessionCaptureCallback(meteringCallback)
+            val preview = previewBuilder.build()
             preview.setSurfaceProvider(surfaceProvider)
             previewUseCase = preview
 
             // 2. Build ImageCapture Use Case
             val captureBuilder = ImageCapture.Builder()
+                .setResolutionSelector(resolutionSelectorFor(captureAspectRatio))
                 .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
                 .setFlashMode(flashModeToCameraX(_flashMode.value))
 
@@ -468,6 +530,25 @@ class CameraXController @Inject constructor(
             )
             camera = boundCamera
 
+            // Limits and zoom stops must describe the camera just bound (also after a flip),
+            // and discovery must run at least once per install (it was previously only run
+            // from the diagnostics screen, leaving zoom stops and Pro ranges at defaults).
+            postRawBoostRange = try {
+                androidx.camera.camera2.interop.Camera2CameraInfo.from(boundCamera.cameraInfo)
+                    .getCameraCharacteristic(android.hardware.camera2.CameraCharacteristics.CONTROL_POST_RAW_SENSITIVITY_BOOST_RANGE)
+                    ?.let { it.lower..it.upper }
+            } catch (e: Exception) {
+                null
+            }
+            refreshActiveProfile()
+            scope.launch(dispatchers.io) {
+                try {
+                    capabilityRepository.getOrDiscoverCapabilities()
+                } catch (e: Exception) {
+                    logger.w(TAG, "Capability discovery failed: ${e.message}")
+                }
+            }
+
             // Re-apply preview low-light boost if active
             if (_isPreviewBoostActive.value && android.os.Build.VERSION.SDK_INT >= 35) {
                 try {
@@ -535,6 +616,8 @@ class CameraXController @Inject constructor(
             control.setExposureCompensationIndex(index)
             _exposureState.value = _exposureState.value.copy(index = index)
             _proState.value = _proState.value.copy(evIndex = index)
+            // With AE off, EV compensation only takes effect through the derived manual pair.
+            if (_proState.value.isAnyManualActive) awaitOptionsApplied(applyCamera2CaptureOptions())
             OptiResult.Success(Unit)
         } catch (e: Exception) {
             logger.w(TAG, "Failed setting exposure compensation: ${e.message}")
@@ -545,27 +628,27 @@ class CameraXController @Inject constructor(
     override suspend fun setIso(iso: Int?): OptiResult<Unit> = withContext(dispatchers.main) {
         _proState.value = _proState.value.copy(iso = iso)
         _lensMetadata.value = _lensMetadata.value.copy(currentIso = iso)
-        applyCamera2CaptureOptions()
+        awaitOptionsApplied(applyCamera2CaptureOptions())
         OptiResult.Success(Unit)
     }
 
     override suspend fun setShutterSpeed(nanos: Long?): OptiResult<Unit> = withContext(dispatchers.main) {
         _proState.value = _proState.value.copy(shutterSpeedNanos = nanos)
         _lensMetadata.value = _lensMetadata.value.copy(currentShutterSpeedNanos = nanos)
-        applyCamera2CaptureOptions()
+        awaitOptionsApplied(applyCamera2CaptureOptions())
         OptiResult.Success(Unit)
     }
 
     override suspend fun setFocusDistance(distanceDiopters: Float?): OptiResult<Unit> = withContext(dispatchers.main) {
         _proState.value = _proState.value.copy(focusDistanceDiopters = distanceDiopters)
         _lensMetadata.value = _lensMetadata.value.copy(currentFocusDistanceDiopters = distanceDiopters)
-        applyCamera2CaptureOptions()
+        awaitOptionsApplied(applyCamera2CaptureOptions())
         OptiResult.Success(Unit)
     }
 
     override suspend fun setWhiteBalance(mode: WhiteBalanceMode): OptiResult<Unit> = withContext(dispatchers.main) {
         _proState.value = _proState.value.copy(whiteBalanceMode = mode)
-        applyCamera2CaptureOptions()
+        awaitOptionsApplied(applyCamera2CaptureOptions())
         OptiResult.Success(Unit)
     }
 
@@ -642,24 +725,86 @@ class CameraXController @Inject constructor(
         }
     }
 
-    private fun applyCamera2CaptureOptions() {
-        val cam = camera ?: return
+    /** Complete manual exposure for [pro], or null when AE should stay on. */
+    private fun resolveManualExposure(pro: ProCameraState): ExposurePriority.ManualExposure? {
+        val iso = pro.iso
+        val time = pro.shutterSpeedNanos
+        if (iso != null && time != null) return ExposurePriority.ManualExposure(iso, time, postRawBoost = 100)
+        if (iso == null && time == null) return null
+        val metered = meteredExposure?.takeIf { it.isValid } ?: return null
+        val ev = ExposurePriority.evScale(pro.evIndex, pro.evStep)
+        return if (time != null) {
+            // Pro mode honours the user's shutter exactly; scene modes (Pet/Moon/Wildlife) cap
+            // total gain at 4x the analog maximum and lengthen the shutter instead.
+            val gainCap = if (_activeCameraMode.value == com.webappypie.optilens.core.camera.model.CameraMode.PRO) {
+                null
+            } else {
+                pro.isoRange?.endInclusive?.let { it * SCENE_MODE_MAX_BOOST_FACTOR }
+            }
+            val manual = ExposurePriority.forShutter(
+                metered, time, pro.isoRange, postRawBoostRange, ev,
+                maxTotalGain = gainCap,
+                slowestShutterNs = if (gainCap != null) SCENE_MODE_SLOWEST_SHUTTER_NS else null,
+            )
+            // Too dark for a faster-than-handheld shutter: manual exposure would only bypass the
+            // HAL's low-light processing (device-verified: noisier, tinted, no motion benefit),
+            // so scene modes keep auto exposure ("light permitting").
+            if (gainCap != null && manual.exposureTimeNs >= SCENE_MODE_SLOWEST_SHUTTER_NS) {
+                logger.d(TAG, "Scene-mode fast shutter skipped: insufficient light")
+                null
+            } else {
+                manual
+            }
+        } else {
+            ExposurePriority.forIso(metered, iso!!, pro.shutterSpeedRangeNanos, ev)
+        }
+    }
+
+    /**
+     * Suspends until CameraX reports the new capture-request options are in effect on the
+     * repeating request (bounded). Capturing before that can produce a frame that was exposed
+     * with the old/transitional settings (observed: near-black 1/250 s Pet shots).
+     */
+    private suspend fun awaitOptionsApplied(future: com.google.common.util.concurrent.ListenableFuture<*>?) {
+        future ?: return
+        withTimeoutOrNull(OPTIONS_APPLY_TIMEOUT_MS) {
+            suspendCancellableCoroutine<Unit> { cont ->
+                future.addListener({ if (cont.isActive) cont.resume(Unit) }, ContextCompat.getMainExecutor(context))
+            }
+        } ?: logger.w(TAG, "Capture options not confirmed within ${OPTIONS_APPLY_TIMEOUT_MS}ms")
+    }
+
+    private fun applyCamera2CaptureOptions(): com.google.common.util.concurrent.ListenableFuture<*>? {
+        val cam = camera ?: return null
         val pro = _proState.value
         val camera2Control = Camera2CameraControl.from(cam.cameraControl)
 
         if (!pro.isAnyManualActive) {
-            camera2Control.clearCaptureRequestOptions()
-            return
+            return camera2Control.clearCaptureRequestOptions()
         }
 
         val builder = CaptureRequestOptions.Builder()
 
-        // 1. Manual ISO / Shutter
-        if (pro.iso != null || pro.shutterSpeedNanos != null) {
+        // 1. Manual ISO / Shutter. Camera2 needs BOTH with AE off; when only one is set, derive
+        // the other from the last auto-exposure metering (shutter / ISO priority).
+        val manual = resolveManualExposure(pro)
+        if (manual == null && pro.focusDistanceDiopters == null && pro.whiteBalanceMode == WhiteBalanceMode.AUTO) {
+            // Nothing manual will actually be applied: clear interop options so the capture uses
+            // CameraX/HAL defaults, identical to Photo mode (overriding them changed the HAL's
+            // still-capture tuning on device).
+            return camera2Control.clearCaptureRequestOptions()
+        }
+        if (manual != null) {
             builder.setCaptureRequestOption(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
-            pro.iso?.let { builder.setCaptureRequestOption(CaptureRequest.SENSOR_SENSITIVITY, it) }
-            pro.shutterSpeedNanos?.let { builder.setCaptureRequestOption(CaptureRequest.SENSOR_EXPOSURE_TIME, it) }
+            builder.setCaptureRequestOption(CaptureRequest.SENSOR_SENSITIVITY, manual.iso)
+            builder.setCaptureRequestOption(CaptureRequest.SENSOR_EXPOSURE_TIME, manual.exposureTimeNs)
+            if (postRawBoostRange != null) {
+                builder.setCaptureRequestOption(CaptureRequest.CONTROL_POST_RAW_SENSITIVITY_BOOST, manual.postRawBoost)
+            }
         } else {
+            if (pro.iso != null || pro.shutterSpeedNanos != null) {
+                logger.w(TAG, "No auto-exposure metering yet; keeping AE on instead of an undefined manual pair")
+            }
             builder.setCaptureRequestOption(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
         }
 
@@ -678,7 +823,7 @@ class CameraXController @Inject constructor(
             builder.setCaptureRequestOption(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
         }
 
-        camera2Control.setCaptureRequestOptions(builder.build())
+        return camera2Control.setCaptureRequestOptions(builder.build())
     }
 
     override suspend fun setFlashMode(mode: FlashMode): OptiResult<Unit> = withContext(dispatchers.main) {
@@ -1022,6 +1167,16 @@ class CameraXController @Inject constructor(
         }
     }
 
+    override fun prewarm() {
+        scope.launch {
+            try {
+                getCameraProvider()
+            } catch (e: Exception) {
+                logger.w(TAG, "CameraX prewarm failed: ${e.message}")
+            }
+        }
+    }
+
     override fun unbind() {
         try {
             activeZoomObserver?.let { obs ->
@@ -1121,5 +1276,8 @@ class CameraXController @Inject constructor(
 
     companion object {
         private const val TAG = "CameraXController"
+        private const val OPTIONS_APPLY_TIMEOUT_MS = 1_000L
+        private const val SCENE_MODE_MAX_BOOST_FACTOR = 4.0
+        private const val SCENE_MODE_SLOWEST_SHUTTER_NS = 16_666_667L // 1/60 s
     }
 }

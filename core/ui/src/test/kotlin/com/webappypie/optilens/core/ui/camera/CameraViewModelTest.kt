@@ -114,17 +114,18 @@ class CameraViewModelTest {
     }
 
     @Test
-    fun `toggle aspect ratio cycles through 4-3, 16-9, 1-1`() = runTest {
+    fun `toggle aspect ratio switches capture between 4-3 and 16-9`() = runTest {
         viewModel.uiState.test {
             assertEquals(CameraAspectRatio.RATIO_4_3, awaitItem().aspectRatio)
 
             viewModel.toggleAspectRatio()
             testScheduler.advanceUntilIdle()
             assertEquals(CameraAspectRatio.RATIO_16_9, awaitItem().aspectRatio)
-
-            viewModel.toggleAspectRatio()
-            testScheduler.advanceUntilIdle()
-            assertEquals(CameraAspectRatio.RATIO_1_1, awaitItem().aspectRatio)
+            // The sensor is asked for the same ratio, so the photo matches the viewfinder.
+            assertEquals(
+                com.webappypie.optilens.core.camera.model.CaptureAspectRatio.RATIO_16_9,
+                cameraController.captureAspectRatio,
+            )
 
             viewModel.toggleAspectRatio()
             testScheduler.advanceUntilIdle()

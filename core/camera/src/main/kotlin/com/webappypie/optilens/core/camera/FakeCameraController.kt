@@ -469,6 +469,16 @@ class FakeCameraController @Inject constructor() : CameraController {
 
     override fun unbind() {}
 
+    override fun prewarm() {}
+
+    var captureAspectRatio = com.webappypie.optilens.core.camera.model.CaptureAspectRatio.RATIO_4_3
+        private set
+
+    override suspend fun setCaptureAspectRatio(aspect: com.webappypie.optilens.core.camera.model.CaptureAspectRatio): OptiResult<Unit> {
+        captureAspectRatio = aspect
+        return OptiResult.Success(Unit)
+    }
+
     private fun stopPreviewSync() {
         _sessionState.value = CameraSessionState.IDLE
         isPreviewActive = false
