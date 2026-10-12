@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -149,72 +151,106 @@ fun OptiLensNavigationShell(
     val shutterSoundEnabled by appSettings.shutterSoundEnabled.collectAsStateWithLifecycle(initialValue = true)
     val hapticFeedbackEnabled by appSettings.hapticFeedbackEnabled.collectAsStateWithLifecycle(initialValue = true)
 
-    AppNavHost(
-        modifier = modifier,
-        navController = navController,
-        splashScreen = { onSplashComplete ->
-            SplashScreen(onSplashComplete = onSplashComplete)
-        },
-        cameraScreen = {
-            CameraScreen(
-                onNavigateToSettings = { navController.navigate(AppDestination.Settings) },
-                onNavigateToGallery  = { navController.navigate(AppDestination.Gallery) },
-                onNavigateToPhotoReview = { uri -> navController.navigate(AppDestination.PhotoDetail(uri)) },
-                onNavigateToAiTools = { navController.navigate(AppDestination.AiTools()) },
-                onNavigateToCaptureReview = { uri ->
-                    navController.navigate(AppDestination.PhotoDetail(uri, fromCapture = true)) {
-                        launchSingleTop = true
-                    }
-                },
-                showGrid = gridEnabled,
-                showLevel = levelEnabled,
-                shutterSoundEnabled = shutterSoundEnabled,
-                shutterHapticEnabled = hapticFeedbackEnabled,
-                externalShutterTrigger = volumeKeyShutterTrigger,
+    // With camera permission already granted (every launch after the first), the splash is
+    // drawn over the camera screen so the preview binds while the splash animates, instead of
+    // only after it. Without permission, the original splash → camera flow is kept so the
+    // system permission dialog never appears on top of the splash.
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val cameraGranted = androidx.compose.runtime.remember {
+        androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+    }
+    var showSplashOverlay by androidx.compose.runtime.saveable.rememberSaveable {
+        androidx.compose.runtime.mutableStateOf(cameraGranted)
+    }
+
+    androidx.compose.foundation.layout.Box(modifier = modifier) {
+        AppNavHost(
+            modifier = Modifier.fillMaxSize(),
+            navController = navController,
+            startDestination = if (cameraGranted) AppDestination.Camera else AppDestination.Splash,
+            splashScreen = { onSplashComplete ->
+                SplashScreen(onSplashComplete = onSplashComplete)
+            },
+            cameraScreen = {
+                CameraScreen(
+                    onNavigateToSettings = { navController.navigate(AppDestination.Settings) },
+                    onNavigateToGallery  = { navController.navigate(AppDestination.Gallery) },
+                    onNavigateToPhotoReview = { uri -> navController.navigate(AppDestination.PhotoDetail(uri)) },
+                    onNavigateToAiTools = { navController.navigate(AppDestination.AiTools()) },
+                    onNavigateToCaptureReview = { uri ->
+                        navController.navigate(AppDestination.PhotoDetail(uri, fromCapture = true)) {
+                            launchSingleTop = true
+                        }
+                    },
+                    showGrid = gridEnabled,
+                    showLevel = levelEnabled,
+                    shutterSoundEnabled = shutterSoundEnabled,
+                    shutterHapticEnabled = hapticFeedbackEnabled,
+                    externalShutterTrigger = volumeKeyShutterTrigger,
+                )
+            },
+            photoDetailScreen = { detail ->
+                PhotoReviewScreen(
+                    photoUri = detail.photoUri,
+                    fromCapture = detail.fromCapture,
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToAiTools = { uri ->
+                        navController.navigate(AppDestination.AiTools(photoUri = uri))
+                    },
+                )
+            },
+            galleryScreen = {
+                GalleryScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToCamera = { navController.popBackStack() },
+                    onNavigateToPhotoDetail = { uri -> navController.navigate(AppDestination.PhotoDetail(uri)) },
+                )
+            },
+            settingsScreen = {
+                SettingsScreen(
+                    appSettings = appSettings,
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToPro = { navController.navigate(AppDestination.ProUpgrade) },
+                    onNavigateToDiagnostics = { navController.navigate(AppDestination.CameraDiagnostics) },
+                )
+            },
+            aiToolsScreen = { destination ->
+                AiToolsScreen(
+                    photoUri = destination.photoUri,
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToUpgrade = { navController.navigate(AppDestination.ProUpgrade) },
+                )
+            },
+            proUpgradeScreen = {
+                ProUpgradeScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                )
+            },
+            cameraDiagnosticsScreen = {
+                CameraDiagnosticsScreen(
+                    viewModel = hiltViewModel(),
+                    onNavigateBack = { navController.popBackStack() },
+                )
+            },
+        )
+
+        androidx.compose.animation.AnimatedVisibility(
+            visible = showSplashOverlay,
+            enter = androidx.compose.animation.EnterTransition.None,
+            exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(200)),
+        ) {
+            SplashScreen(
+                onSplashComplete = { showSplashOverlay = false },
+                modifier = Modifier
+                    .fillMaxSize()
+                    // Swallow touches so nothing reaches the camera underneath while it is visible.
+                    .pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) awaitPointerEvent().changes.forEach { it.consume() }
+                        }
+                    },
             )
-        },
-        photoDetailScreen = { detail ->
-            PhotoReviewScreen(
-                photoUri = detail.photoUri,
-                fromCapture = detail.fromCapture,
-                onNavigateBack = { navController.popBackStack() },
-                onNavigateToAiTools = { uri ->
-                    navController.navigate(AppDestination.AiTools(photoUri = uri))
-                },
-            )
-        },
-        galleryScreen = {
-            GalleryScreen(
-                onNavigateBack = { navController.popBackStack() },
-                onNavigateToCamera = { navController.popBackStack() },
-                onNavigateToPhotoDetail = { uri -> navController.navigate(AppDestination.PhotoDetail(uri)) },
-            )
-        },
-        settingsScreen = {
-            SettingsScreen(
-                appSettings = appSettings,
-                onNavigateBack = { navController.popBackStack() },
-                onNavigateToPro = { navController.navigate(AppDestination.ProUpgrade) },
-                onNavigateToDiagnostics = { navController.navigate(AppDestination.CameraDiagnostics) },
-            )
-        },
-        aiToolsScreen = { destination ->
-            AiToolsScreen(
-                photoUri = destination.photoUri,
-                onNavigateBack = { navController.popBackStack() },
-                onNavigateToUpgrade = { navController.navigate(AppDestination.ProUpgrade) },
-            )
-        },
-        proUpgradeScreen = {
-            ProUpgradeScreen(
-                onNavigateBack = { navController.popBackStack() },
-            )
-        },
-        cameraDiagnosticsScreen = {
-            CameraDiagnosticsScreen(
-                viewModel = hiltViewModel(),
-                onNavigateBack = { navController.popBackStack() },
-            )
-        },
-    )
+        }
+    }
 }

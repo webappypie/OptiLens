@@ -203,3 +203,15 @@ Owner instruction: proceed without testing. Only compile checks (`:core:camera`,
 | HDR toggle persisted (`AppSettings.hdrEnabled`, DataStore key `hdr_enabled`, default off) | The toggle used to reset on every launch |
 
 To verify: take Night/HDR shots → preview shows the note → Enhance changes them only mildly; HDR toggle survives an app restart; run `testDebugUnitTest lintDebug`.
+
+# Run 6 — splash overlaps camera start (2026-10-13) — NOT TESTED
+
+Owner instruction: proceed without testing. Only `:app:compileDebugKotlin` was run; **no unit tests, no lint, no device run**.
+
+| Change | Why |
+|---|---|
+| When camera permission is already granted (every launch after the first), the app starts directly on the Camera destination and draws the existing splash as an overlay on top (fades out in 200 ms, swallows touches while visible). Without permission, the original Splash → Camera navigation is unchanged, so the system permission dialog never appears over the splash | Previously the camera began binding only after the 0.7 s splash finished; now the preview binds while the splash animates. Expected time-to-camera saving up to ≈0.7 s; **not measured** |
+
+Audit note (no change): `AdProvider`/`GoogleMobileAdProvider` is not injected anywhere, so the Mobile Ads SDK is not initialised at startup and interstitial code is unused; the gallery `AdView` initialises the SDK lazily on first load.
+
+To verify: cold start with permission granted (splash shows, then a live preview with no delay or flicker; taps during splash do nothing); first install without permission (old flow, permission dialog after the splash); rotation/process restore don't show the splash again; `testDebugUnitTest lintDebug`; compare Diagnostics "camera ready" against the Phase 03–04 figures (≈3.6 s).
