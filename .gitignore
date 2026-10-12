@@ -59,6 +59,9 @@ google-services-debug.json
 secrets.properties
 credentials.properties
 firebase.properties
+GoogleService-Info.plist
+# Owner-provided WAPCentral guide contains the X-App-Key — never commit
+WAPCentral_*_Integration_Guide.md
 
 # --- OS files ---
 .DS_Store
