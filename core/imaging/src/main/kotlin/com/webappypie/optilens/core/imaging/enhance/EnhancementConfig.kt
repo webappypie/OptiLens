@@ -31,5 +31,14 @@ data class EnhancementConfig(
 ) {
     companion object {
         val BALANCED = EnhancementConfig()
+
+        /** For photos OptiLens already merged and tone-mapped at capture (Night, HDR). */
+        val ALREADY_TONE_MAPPED = EnhancementConfig(
+            exposureCorrection = 0.3f,
+            maxExposureLiftStops = 0.5f,
+            shadowRecovery = 0.3f,
+            localContrast = 0.2f,
+            lumaNoiseReduction = 0.3f,
+        )
     }
 }

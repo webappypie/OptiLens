@@ -50,6 +50,8 @@ class MediaStoreSaver @Inject constructor(
         expectedWidth: Int = 0,
         expectedHeight: Int = 0,
         mirrorHorizontal: Boolean = false,
+        /** EXIF Software value; processed captures describe what was applied (e.g. a Night merge). */
+        software: String = DEFAULT_SOFTWARE,
     ): OptiResult<CapturedPhoto> = withContext(dispatchers.io) {
         val timestamp = System.currentTimeMillis()
         val timeString = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(Date(timestamp))
@@ -120,7 +122,7 @@ class MediaStoreSaver @Inject constructor(
                             degreesToExifOrientation(orientationDegrees).toString()
                         )
                         exif.setAttribute(ExifInterface.TAG_MAKE, "OptiLens")
-                        exif.setAttribute(ExifInterface.TAG_SOFTWARE, "OptiLens Pro Engine 1.0")
+                        exif.setAttribute(ExifInterface.TAG_SOFTWARE, software)
                         val dateFormatted = SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US).format(Date(timestamp))
                         exif.setAttribute(ExifInterface.TAG_DATETIME, dateFormatted)
                         exif.setAttribute(ExifInterface.TAG_DATETIME_ORIGINAL, dateFormatted)
@@ -359,6 +361,7 @@ class MediaStoreSaver @Inject constructor(
     }
 
     companion object {
+        const val DEFAULT_SOFTWARE = "OptiLens Pro Engine 1.0"
         private const val TAG = "MediaStoreSaver"
 
         /**

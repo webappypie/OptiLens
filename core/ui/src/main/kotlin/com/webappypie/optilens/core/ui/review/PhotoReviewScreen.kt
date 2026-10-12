@@ -297,6 +297,7 @@ fun PhotoReviewScreen(
                         PanelState.IDLE -> IdlePanel(
                             enabled = original != null && !uiState.isDiscarding,
                             fromCapture = fromCapture,
+                            captureProcessing = uiState.captureProcessing,
                             onEnhance = viewModel::enhance,
                             onEditTools = { onNavigateToAiTools(photoUri) },
                             onRetake = { confirmRetake = true },
@@ -348,11 +349,24 @@ private enum class PanelState { IDLE, PROCESSING, RESULT }
 private fun IdlePanel(
     enabled: Boolean,
     fromCapture: Boolean,
+    captureProcessing: String?,
     onEnhance: () -> Unit,
     onEditTools: () -> Unit,
     onRetake: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (captureProcessing != null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Check, contentDescription = null, tint = SuccessGreen, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = "$captureProcessing on capture",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
         Button(
             onClick = onEnhance,
             enabled = enabled,

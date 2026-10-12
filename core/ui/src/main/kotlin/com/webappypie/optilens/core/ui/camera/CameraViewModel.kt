@@ -239,6 +239,9 @@ class CameraViewModel @Inject constructor(
                 settings.reviewAfterCaptureEnabled.collect { reviewAfterCaptureEnabled = it }
             }
             viewModelScope.launch {
+                settings.hdrEnabled.collect { enabled -> _internalState.update { it.copy(isHdrEnabled = enabled) } }
+            }
+            viewModelScope.launch {
                 settings.mirrorFrontCameraSelfie.collect { mirror ->
                     _internalState.update { it.copy(mirrorFrontCameraSelfie = mirror) }
                 }
@@ -601,7 +604,9 @@ class CameraViewModel @Inject constructor(
     }
 
     fun toggleHdr() {
-        _internalState.update { it.copy(isHdrEnabled = !it.isHdrEnabled) }
+        val next = !_internalState.value.isHdrEnabled
+        _internalState.update { it.copy(isHdrEnabled = next) }
+        appSettings?.let { settings -> viewModelScope.launch { settings.setHdrEnabled(next) } }
     }
 
     /**
@@ -634,7 +639,7 @@ class CameraViewModel @Inject constructor(
                 when (val result = cameraController.acquireBurst(HDR_FRAMES, listOf(0), targetRotation)) {
                     is OptiResult.Success -> {
                         _internalState.update { it.copy(isProcessingNightShot = true) }
-                        result.data.use { burst -> mergeAndSaveBurst(burst, listOf(0), shouldMirror, toneMap = true) }
+                        result.data.use { burst -> mergeAndSaveBurst(burst, listOf(0), shouldMirror, toneMap = true, label = "HDR") }
                     }
                     is OptiResult.Error -> _internalState.update { it.copy(errorMessage = result.error.displayMessage) }
                     else -> Unit
@@ -875,7 +880,7 @@ class CameraViewModel @Inject constructor(
                             countdownJob.cancel()
                             _internalState.update { it.copy(holdSteadyRemainingSec = null, isProcessingNightShot = true) }
                             result.data.use { burst ->
-                                mergeAndSaveBurst(burst, offsets, shouldMirror, toneMap = true)
+                                mergeAndSaveBurst(burst, offsets, shouldMirror, toneMap = true, label = "Night")
                             }
                         }
                         is OptiResult.Error -> _internalState.update { it.copy(errorMessage = result.error.displayMessage) }
@@ -900,7 +905,13 @@ class CameraViewModel @Inject constructor(
      * and saves it. If merging is unavailable, fails, the device is thermally throttled, or the
      * job is cancelled, the steadiest real frame is saved instead so the shot is never lost.
      */
-    private suspend fun mergeAndSaveBurst(burst: BurstResult, evOffsets: List<Int>, mirror: Boolean, toneMap: Boolean) {
+    private suspend fun mergeAndSaveBurst(
+        burst: BurstResult,
+        evOffsets: List<Int>,
+        mirror: Boolean,
+        toneMap: Boolean,
+        label: String,
+    ) {
         val processor = burstPhotoProcessor
         // When the phone is already hot, skip the multi-second merge (it would heat it further).
         val tooHot = uiState.value.thermalState >= com.webappypie.optilens.core.camera.thermal.DeviceThermalState.SEVERE
@@ -915,6 +926,7 @@ class CameraViewModel @Inject constructor(
                     width = processed.width,
                     height = processed.height,
                     mirrorHorizontal = mirror,
+                    processingNote = processingNote(label, processed.merge.framesMerged, toneMap),
                 )
                 if (saved !is OptiResult.Error) return
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -1254,7 +1266,7 @@ class CameraViewModel @Inject constructor(
                         // lift the black sky around the moon.
                         _internalState.update { it.copy(isProcessingNightShot = true) }
                         burstResult.data.use { burst ->
-                            mergeAndSaveBurst(burst, listOf(config.evOffset), mirror = false, toneMap = false)
+                            mergeAndSaveBurst(burst, listOf(config.evOffset), mirror = false, toneMap = false, label = "Moon")
                         }
                     }
                     is OptiResult.Error -> {
@@ -1422,6 +1434,11 @@ class CameraViewModel @Inject constructor(
     )
 
     companion object {
+        /** EXIF Software for merged shots, e.g. "OptiLens Night · 4-frame merge, tone-mapped". */
+        fun processingNote(label: String, frames: Int, toneMapped: Boolean): String =
+            "$PROCESSING_PREFIX$label · $frames-frame merge" + if (toneMapped) ", tone-mapped" else ""
+
+        const val PROCESSING_PREFIX = "OptiLens "
         const val HDR_FRAMES = 4
         const val HDR_EV_OFFSET = -0.7f
         const val HDR_AE_SETTLE_MS = 400L

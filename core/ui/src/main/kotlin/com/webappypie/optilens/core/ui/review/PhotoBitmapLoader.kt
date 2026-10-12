@@ -27,6 +27,12 @@ interface PhotoBitmapLoader {
 
     /** Writes [bitmap] as a new JPEG in DCIM/OptiLens. The original photo is never modified. */
     suspend fun saveEnhancedBitmap(bitmap: Bitmap, originalUri: String, keepOriginal: Boolean): String?
+
+    /**
+     * The capture processing OptiLens recorded in the photo's EXIF Software tag (e.g.
+     * "OptiLens Night · 4-frame merge, tone-mapped"), or null for ordinary photos.
+     */
+    suspend fun readCaptureProcessing(uriString: String): String? = null
 }
 
 /** Pure sizing/orientation maths for [DefaultPhotoBitmapLoader], kept free of Android types. */
@@ -130,6 +136,21 @@ class DefaultPhotoBitmapLoader @Inject constructor(
         val result = Bitmap.createBitmap(source, 0, 0, source.width, source.height, matrix, true)
         if (result !== source) source.recycle()
         return result
+    }
+
+    override suspend fun readCaptureProcessing(uriString: String): String? = withContext(Dispatchers.IO) {
+        try {
+            val software = if (uriString.startsWith("content://")) {
+                context.contentResolver.openInputStream(Uri.parse(uriString))?.use {
+                    ExifInterface(it).getAttribute(ExifInterface.TAG_SOFTWARE)
+                }
+            } else {
+                File(uriString).takeIf { it.isFile }?.let { ExifInterface(it.absolutePath).getAttribute(ExifInterface.TAG_SOFTWARE) }
+            }
+            software?.takeIf { it.startsWith("OptiLens ") && it.contains("-frame merge") }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     override suspend fun saveEnhancedBitmap(

@@ -1064,6 +1064,7 @@ class CameraXController @Inject constructor(
         width: Int,
         height: Int,
         mirrorHorizontal: Boolean,
+        processingNote: String?,
     ): OptiResult<CapturedPhoto> {
         val saved = mediaStoreSaver.saveJpeg(
             jpegBytes = jpegBytes,
@@ -1071,6 +1072,7 @@ class CameraXController @Inject constructor(
             expectedWidth = width,
             expectedHeight = height,
             mirrorHorizontal = mirrorHorizontal,
+            software = processingNote ?: com.webappypie.optilens.core.camera.storage.MediaStoreSaver.DEFAULT_SOFTWARE,
         )
         if (saved is OptiResult.Success) {
             _lastCapturedPhoto.value = saved.data

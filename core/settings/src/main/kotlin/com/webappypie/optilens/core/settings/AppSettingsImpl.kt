@@ -34,6 +34,7 @@ class AppSettingsImpl @Inject constructor(
         val HAPTIC_FEEDBACK         = booleanPreferencesKey("haptic_feedback")
         val VOLUME_KEY_SHUTTER      = booleanPreferencesKey("volume_key_shutter")
         val REVIEW_AFTER_CAPTURE    = booleanPreferencesKey("review_after_capture")
+        val HDR_ENABLED             = booleanPreferencesKey("hdr_enabled")
         val COLOR_PROFILE           = stringPreferencesKey("color_profile")
         val KEEP_ORIGINAL           = booleanPreferencesKey("keep_original")
         val LOCATION_TAGGING        = booleanPreferencesKey("location_tagging")
@@ -100,6 +101,11 @@ class AppSettingsImpl @Inject constructor(
     override val reviewAfterCaptureEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.REVIEW_AFTER_CAPTURE] ?: true }
     override suspend fun setReviewAfterCaptureEnabled(enabled: Boolean) {
         dataStore.edit { it[Keys.REVIEW_AFTER_CAPTURE] = enabled }
+    }
+
+    override val hdrEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.HDR_ENABLED] ?: false }
+    override suspend fun setHdrEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.HDR_ENABLED] = enabled }
     }
 
     // ── Processing ────────────────────────────────────────────────────────

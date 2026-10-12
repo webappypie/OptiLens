@@ -190,3 +190,16 @@ Owner instruction: proceed without testing. Only a compile check (`:core:camera:
 | `Camera2BurstAcquisitionEngine`: when every frame of a burst has the same exposure (Night, HDR), all `takePicture` requests are issued at once (in order, `CoroutineStart.UNDISPATCHED`) and collected in sequence, so CameraX can pipeline captures instead of waiting for each JPEG to be delivered and copied before starting the next. EV-bracketed bursts stay sequential. Frames that finish after a timeout are kept as a partial burst; on failure/cancel they are released to the pool as before. The log line now says `pipelined`/`sequential` | Shorter burst capture (and "hold steady" time) for Night/HDR; size of the gain is unmeasured | **Untested.** To verify: Night/HDR capture on device (frame count, no pool exhaustion, timeout/partial path), plus `testDebugUnitTest` (the fake burst engine doesn't exercise this path) |
 
 Risk: pipelining depends on CameraX queueing several in-flight in-memory captures on this HAL. If a device rejects or drops queued requests, the existing fallback (single frame / partial burst) applies, but this has not been observed.
+
+# Run 5 — processed-capture awareness, HDR setting (2026-10-13) — NOT TESTED
+
+Owner instruction: proceed without testing. Only compile checks (`:core:camera`, `:core:settings`, `:core:imaging`, `:core:ui`, `:app` `compileDebugKotlin`) were run; **no unit tests, no lint, no device run**.
+
+| Change | Why |
+|---|---|
+| Night/HDR/Moon merges are saved with EXIF Software `OptiLens <Mode> · <n>-frame merge[, tone-mapped]` (`CameraController.saveProcessedJpeg(processingNote)`, `MediaStoreSaver.saveJpeg(software)`; other photos keep "OptiLens Pro Engine 1.0") | Records what was actually done at capture |
+| Preview reads it (`PhotoBitmapLoader.readCaptureProcessing`) and shows e.g. "✓ Night · 4-frame merge, tone-mapped on capture" | Honest information; the user knows the shot is already processed |
+| Enhance on a tone-mapped capture uses `EnhancementConfig.ALREADY_TONE_MAPPED` (exposure correction 0.3, max lift 0.5 EV, shadow recovery 0.3, clarity 0.2, luma denoise 0.3) | On device, Enhance on a Night shot brightened it a second time (+0.8 EV) |
+| HDR toggle persisted (`AppSettings.hdrEnabled`, DataStore key `hdr_enabled`, default off) | The toggle used to reset on every launch |
+
+To verify: take Night/HDR shots → preview shows the note → Enhance changes them only mildly; HDR toggle survives an app restart; run `testDebugUnitTest lintDebug`.

@@ -423,6 +423,7 @@ class FakeCameraController @Inject constructor() : CameraController {
         width: Int,
         height: Int,
         mirrorHorizontal: Boolean,
+        processingNote: String?,
     ): OptiResult<CapturedPhoto> {
         savedProcessedJpegs += jpegBytes
         val photo = CapturedPhoto(

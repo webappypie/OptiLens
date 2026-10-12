@@ -296,6 +296,8 @@ interface CameraController {
         width: Int,
         height: Int,
         mirrorHorizontal: Boolean = false,
+        /** Stored as EXIF Software, e.g. "OptiLens Night · 4-frame merge" (read back by the preview). */
+        processingNote: String? = null,
     ): OptiResult<CapturedPhoto>
 
     /**

@@ -42,6 +42,10 @@ interface AppSettings {
     val reviewAfterCaptureEnabled: Flow<Boolean> get() = kotlinx.coroutines.flow.flowOf(true)
     suspend fun setReviewAfterCaptureEnabled(enabled: Boolean) {}
 
+    /** Photo-mode multi-frame HDR toggle, remembered across launches. Default: false. */
+    val hdrEnabled: Flow<Boolean> get() = kotlinx.coroutines.flow.flowOf(false)
+    suspend fun setHdrEnabled(enabled: Boolean) {}
+
     // ── Processing ───────────────────────────────────────────
     /** Active color profile. Default: [ColorProfile.BALANCED]. */
     val colorProfile: Flow<ColorProfile>

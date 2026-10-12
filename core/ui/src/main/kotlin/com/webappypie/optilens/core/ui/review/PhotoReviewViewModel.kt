@@ -32,6 +32,8 @@ enum class ReviewViewMode { ORIGINAL, ENHANCED, COMPARE }
  */
 data class PhotoReviewUiState(
     val photoUri: String = "",
+    /** What OptiLens already did at capture (e.g. "Night · 4-frame merge, tone-mapped"), if anything. */
+    val captureProcessing: String? = null,
     val originalBitmap: Bitmap? = null,
     val enhancedBitmap: Bitmap? = null,
     val isEnhancing: Boolean = false,
@@ -105,8 +107,10 @@ class PhotoReviewViewModel @Inject constructor(
         viewModelScope.launch(ioDispatcher) {
             try {
                 val bitmap = photoBitmapLoader.loadBitmap(uriString)
+                val processing = runCatching { photoBitmapLoader.readCaptureProcessing(uriString) }.getOrNull()
+                    ?.removePrefix("OptiLens ")
                 if (bitmap != null) {
-                    _uiState.update { it.copy(originalBitmap = bitmap) }
+                    _uiState.update { it.copy(originalBitmap = bitmap, captureProcessing = processing) }
                 } else {
                     _uiState.update { it.copy(errorMessage = "This photo couldn't be opened.") }
                 }
@@ -128,7 +132,13 @@ class PhotoReviewViewModel @Inject constructor(
             try {
                 val result = enhancementEngine.enhanceWithReport(
                     bitmap = original,
-                    config = EnhancementConfig.BALANCED,
+                    // Night/HDR captures are already tone-mapped: enhance gently so shadows and
+                    // exposure are not lifted twice.
+                    config = if (state.captureProcessing?.contains("tone-mapped") == true) {
+                        EnhancementConfig.ALREADY_TONE_MAPPED
+                    } else {
+                        EnhancementConfig.BALANCED
+                    },
                     onProgress = { p ->
                         // Progress arrives from worker threads; only ever move forward.
                         _uiState.update { s ->
