@@ -81,6 +81,7 @@ fun SettingsScreen(
     val shutterSoundEnabled by appSettings.shutterSoundEnabled.collectAsStateWithLifecycle(initialValue = true)
     val hapticFeedbackEnabled by appSettings.hapticFeedbackEnabled.collectAsStateWithLifecycle(initialValue = true)
     val volumeKeyShutterEnabled by appSettings.volumeKeyShutterEnabled.collectAsStateWithLifecycle(initialValue = false)
+    val reviewAfterCaptureEnabled by appSettings.reviewAfterCaptureEnabled.collectAsStateWithLifecycle(initialValue = true)
     val isPro by appSettings.isPro.collectAsStateWithLifecycle(initialValue = false)
 
     val context = LocalContext.current
@@ -253,6 +254,15 @@ fun SettingsScreen(
                 checked = volumeKeyShutterEnabled,
                 onCheckedChange = { checked ->
                     coroutineScope.launch { appSettings.setVolumeKeyShutterEnabled(checked) }
+                },
+            )
+
+            OptiSettingsToggleRow(
+                title = "Preview After Capture",
+                subtitle = "Open the photo with Enhance and compare right after each shot",
+                checked = reviewAfterCaptureEnabled,
+                onCheckedChange = { checked ->
+                    coroutineScope.launch { appSettings.setReviewAfterCaptureEnabled(checked) }
                 },
             )
 

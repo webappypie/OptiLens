@@ -140,7 +140,8 @@ class DefaultPhotoBitmapLoader @Inject constructor(
         val resolver = context.contentResolver
         var uri: Uri? = null
         try {
-            val filename = "OptiLens_AI_${System.currentTimeMillis()}.jpg"
+            // "enhanced" in the name is what the gallery uses to label edited copies.
+            val filename = "OptiLens_Enhanced_${System.currentTimeMillis()}.jpg"
             val contentValues = ContentValues().apply {
                 put(MediaStore.Images.Media.DISPLAY_NAME, filename)
                 put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
@@ -154,9 +155,10 @@ class DefaultPhotoBitmapLoader @Inject constructor(
                 ?: return@withContext null
 
             val written = resolver.openOutputStream(uri)?.use { stream ->
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 96, stream)
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 95, stream)
             } ?: false
             check(written) { "JPEG encode failed" }
+            copyCaptureMetadata(originalUri, uri)
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 contentValues.clear()
@@ -165,10 +167,64 @@ class DefaultPhotoBitmapLoader @Inject constructor(
             }
 
             uri.toString()
+        } catch (_: OutOfMemoryError) {
+            uri?.let { runCatching { resolver.delete(it, null, null) } }
+            null
         } catch (_: Exception) {
             // Remove the half-written pending entry so no broken file appears in the gallery.
             uri?.let { runCatching { resolver.delete(it, null, null) } }
             null
         }
+    }
+
+    /**
+     * Copies capture metadata (time, camera, exposure) from the original into the saved copy.
+     * Orientation is set to normal because the pixels were already rotated upright. Location
+     * tags are copied only if the original has them. Best effort: a failure keeps the photo.
+     */
+    private fun copyCaptureMetadata(originalUri: String, targetUri: Uri) {
+        try {
+            val source = if (originalUri.startsWith("content://")) {
+                context.contentResolver.openInputStream(Uri.parse(originalUri))?.use { ExifInterface(it) }
+            } else {
+                File(originalUri).takeIf { it.isFile }?.let { ExifInterface(it.absolutePath) }
+            } ?: return
+            context.contentResolver.openFileDescriptor(targetUri, "rw")?.use { pfd ->
+                val target = ExifInterface(pfd.fileDescriptor)
+                for (tag in COPIED_EXIF_TAGS) {
+                    source.getAttribute(tag)?.let { target.setAttribute(tag, it) }
+                }
+                target.setAttribute(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL.toString())
+                target.setAttribute(ExifInterface.TAG_SOFTWARE, "OptiLens (on-device enhance)")
+                target.saveAttributes()
+            }
+        } catch (_: Exception) {
+            // Metadata is optional; the enhanced pixels are already saved.
+        }
+    }
+
+    private companion object {
+        val COPIED_EXIF_TAGS = listOf(
+            ExifInterface.TAG_DATETIME_ORIGINAL,
+            ExifInterface.TAG_DATETIME_DIGITIZED,
+            ExifInterface.TAG_OFFSET_TIME_ORIGINAL,
+            ExifInterface.TAG_SUBSEC_TIME_ORIGINAL,
+            ExifInterface.TAG_MAKE,
+            ExifInterface.TAG_MODEL,
+            ExifInterface.TAG_EXPOSURE_TIME,
+            ExifInterface.TAG_F_NUMBER,
+            ExifInterface.TAG_ISO_SPEED_RATINGS,
+            ExifInterface.TAG_FOCAL_LENGTH,
+            ExifInterface.TAG_FOCAL_LENGTH_IN_35MM_FILM,
+            ExifInterface.TAG_EXPOSURE_BIAS_VALUE,
+            ExifInterface.TAG_WHITE_BALANCE,
+            ExifInterface.TAG_FLASH,
+            ExifInterface.TAG_GPS_LATITUDE,
+            ExifInterface.TAG_GPS_LATITUDE_REF,
+            ExifInterface.TAG_GPS_LONGITUDE,
+            ExifInterface.TAG_GPS_LONGITUDE_REF,
+            ExifInterface.TAG_GPS_ALTITUDE,
+            ExifInterface.TAG_GPS_ALTITUDE_REF,
+        )
     }
 }

@@ -201,6 +201,15 @@ class CameraViewModel @Inject constructor(
     private val _opticalHapticFlow = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val opticalHapticFlow: SharedFlow<Unit> = _opticalHapticFlow.asSharedFlow()
 
+    /**
+     * One-shot requests to open the capture preview (photo URI). Emitted once per single-shot
+     * capture when "Preview After Capture" is on; burst/Best Shot flows use their own sheet.
+     */
+    private val _captureReviewRequests = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val captureReviewRequests: SharedFlow<String> = _captureReviewRequests.asSharedFlow()
+    private var captureReviewArmed = false
+    private var reviewAfterCaptureEnabled = true
+
     private var previousZoom = 1.0f
     private var activeZoomStops: List<ZoomStop> = emptyList()
 
@@ -210,7 +219,21 @@ class CameraViewModel @Inject constructor(
                 activeZoomStops = stops
             }
         }
+        viewModelScope.launch {
+            cameraController.lastCapturedPhoto.collect { photo ->
+                if (photo == null || !captureReviewArmed) return@collect
+                captureReviewArmed = false
+                // RAW-only captures cannot be previewed or enhanced; the JPEG companion can.
+                val previewUri = if (photo.isRaw) photo.companionUri else photo.uri
+                if (reviewAfterCaptureEnabled && previewUri != null) {
+                    _captureReviewRequests.tryEmit(previewUri)
+                }
+            }
+        }
         appSettings?.let { settings ->
+            viewModelScope.launch {
+                settings.reviewAfterCaptureEnabled.collect { reviewAfterCaptureEnabled = it }
+            }
             viewModelScope.launch {
                 settings.mirrorFrontCameraSelfie.collect { mirror ->
                     _internalState.update { it.copy(mirrorFrontCameraSelfie = mirror) }
@@ -678,6 +701,7 @@ class CameraViewModel @Inject constructor(
 
     fun takePhoto(targetRotation: Int = 0) {
         if (_internalState.value.isCapturing) return
+        captureReviewArmed = true
 
         _internalState.update { it.copy(isCapturing = true, isShutterBlinking = true) }
         viewModelScope.launch {
@@ -708,6 +732,7 @@ class CameraViewModel @Inject constructor(
 
     fun takeBurstPhoto(frameCount: Int? = null, targetRotation: Int = 0) {
         if (_internalState.value.isBurstCapturing || _internalState.value.isCapturing) return
+        captureReviewArmed = false
 
         _internalState.update { it.copy(isBurstCapturing = true, isShutterBlinking = true) }
         viewModelScope.launch {
@@ -747,6 +772,7 @@ class CameraViewModel @Inject constructor(
 
     fun takeNightPhoto(targetRotation: Int = 0) {
         if (_internalState.value.isCapturing || _internalState.value.isBurstCapturing) return
+        captureReviewArmed = true
 
         val plan = uiState.value.nightExecutionPlan
         val expectedDurationMs = plan?.exposurePlan?.expectedCaptureDurationMs ?: 1200L
@@ -834,6 +860,7 @@ class CameraViewModel @Inject constructor(
 
     fun takePortraitPhoto(targetRotation: Int = 0) {
         if (_internalState.value.isCapturing) return
+        captureReviewArmed = true
 
         _internalState.update {
             it.copy(
@@ -881,6 +908,7 @@ class CameraViewModel @Inject constructor(
 
     fun takeBestShotPhoto(targetRotation: Int = 0) {
         if (_internalState.value.isCapturing || _internalState.value.isBurstCapturing) return
+        captureReviewArmed = false
 
         _internalState.update {
             it.copy(
@@ -969,6 +997,7 @@ class CameraViewModel @Inject constructor(
 
     fun takePetPhoto(targetRotation: Int = 0) {
         if (_internalState.value.isCapturing) return
+        captureReviewArmed = true
 
         _internalState.update {
             it.copy(
@@ -1009,6 +1038,7 @@ class CameraViewModel @Inject constructor(
 
     fun takeFoodPhoto(targetRotation: Int = 0) {
         if (_internalState.value.isCapturing) return
+        captureReviewArmed = true
 
         _internalState.update {
             it.copy(
@@ -1092,6 +1122,7 @@ class CameraViewModel @Inject constructor(
 
     fun takeMoonPhoto(targetRotation: Int = 0) {
         if (_internalState.value.isCapturing || _internalState.value.isBurstCapturing) return
+        captureReviewArmed = true
 
         _internalState.update {
             it.copy(
@@ -1157,6 +1188,7 @@ class CameraViewModel @Inject constructor(
 
     fun takeWildlifePhoto(targetRotation: Int = 0) {
         if (_internalState.value.isCapturing || _internalState.value.isBurstCapturing) return
+        captureReviewArmed = false
 
         _internalState.update {
             it.copy(

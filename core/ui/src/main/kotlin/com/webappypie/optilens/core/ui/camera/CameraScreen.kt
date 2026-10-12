@@ -156,6 +156,8 @@ fun CameraScreen(
     onNavigateToPhotoReview: ((String) -> Unit)? = null,
     onNavigateToAiTools: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    /** Opens the preview/enhance screen right after a single-shot capture. */
+    onNavigateToCaptureReview: ((String) -> Unit)? = null,
     onShutterClick: () -> Unit = {},
     showGrid: Boolean = true,
     showLevel: Boolean = true,
@@ -206,6 +208,11 @@ fun CameraScreen(
     DisposableEffect(showLevel) {
         if (showLevel) horizonSensor.start()
         onDispose { horizonSensor.stop() }
+    }
+
+    val currentOnCaptureReview by rememberUpdatedState(onNavigateToCaptureReview)
+    LaunchedEffect(Unit) {
+        viewModel.captureReviewRequests.collect { uri -> currentOnCaptureReview?.invoke(uri) }
     }
 
     // Haptic feedback when crossing physical optical zoom stops

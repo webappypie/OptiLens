@@ -32,6 +32,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -70,7 +71,9 @@ fun BeforeAfterSplitViewer(
     isHoldingToCompare: Boolean,
     onHoldingToCompareChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    viewMode: ReviewViewMode = ReviewViewMode.COMPARE,
 ) {
+    val comparing = enhancedBitmap != null && !isHoldingToCompare && viewMode == ReviewViewMode.COMPARE
     var scale by remember { mutableFloatStateOf(1f) }
     var panOffset by remember { mutableStateOf(Offset.Zero) }
     var containerWidth by remember { mutableFloatStateOf(0f) }
@@ -87,15 +90,15 @@ fun BeforeAfterSplitViewer(
                 containerWidth = it.width.toFloat()
                 containerHeight = it.height.toFloat()
             }
-            .pointerInput(Unit) {
-                // Long-press gesture for "Hold to Compare"
+            .pointerInput(enhancedBitmap, viewMode) {
+                // Long-press gesture for "Hold to Compare" (keyed so it sees the current bitmap)
                 detectTapGestures(
                     onDoubleTap = { tapOffset ->
                         scale = if (scale > 1.2f) 1f else 2.5f
                         panOffset = if (scale == 1f) Offset.Zero else -tapOffset * (scale - 1f) / scale
                     },
                     onPress = {
-                        if (enhancedBitmap != null) {
+                        if (enhancedBitmap != null && viewMode != ReviewViewMode.ORIGINAL) {
                             onHoldingToCompareChanged(true)
                             tryAwaitRelease()
                             onHoldingToCompareChanged(false)
@@ -168,7 +171,13 @@ fun BeforeAfterSplitViewer(
                 val dstRect = Rect(drawLeft, drawTop, drawLeft + drawW, drawTop + drawH)
                 val srcSize = IntSize(originalBitmap.width, originalBitmap.height)
 
-                if (enhancedImageBitmap == null || isHoldingToCompare) {
+                if (viewMode == ReviewViewMode.ENHANCED && enhancedImageBitmap != null && !isHoldingToCompare) {
+                    drawImage(
+                        image = enhancedImageBitmap,
+                        dstSize = IntSize(drawW.roundToInt(), drawH.roundToInt()),
+                        dstOffset = androidx.compose.ui.unit.IntOffset(drawLeft.roundToInt(), drawTop.roundToInt())
+                    )
+                } else if (enhancedImageBitmap == null || isHoldingToCompare || viewMode == ReviewViewMode.ORIGINAL) {
                     // Render 100% Original
                     drawImage(
                         image = originalImageBitmap,
@@ -197,20 +206,23 @@ fun BeforeAfterSplitViewer(
                     // 3. Draw Split divider line
                     drawLine(
                         color = Color.White.copy(alpha = 0.9f),
-                        start = Offset(splitPx, 0f),
-                        end = Offset(splitPx, canvasHeight),
+                        start = Offset(splitPx, drawTop),
+                        end = Offset(splitPx, drawTop + drawH),
                         strokeWidth = 2.dp.toPx()
                     )
                 }
             }
 
             // Split slider draggable handle
-            if (enhancedBitmap != null && !isHoldingToCompare && scale <= 1.05f) {
+            if (comparing && scale <= 1.05f) {
                 val handleSize = 44.dp
                 val handleSizePx = with(LocalDensity.current) { handleSize.toPx() }
 
                 Box(
                     modifier = Modifier
+                        // The parent centres its children; anchor the handle to the top-left so
+                        // the offset is in container coordinates.
+                        .align(Alignment.TopStart)
                         .offset {
                             IntOffset(
                                 x = (splitPx - handleSizePx / 2f).roundToInt(),
@@ -230,11 +242,10 @@ fun BeforeAfterSplitViewer(
                         ),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        text = "◀ ▶",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.Black
+                    androidx.compose.material3.Icon(
+                        imageVector = androidx.compose.material.icons.Icons.Filled.SwapHoriz,
+                        contentDescription = "Drag to compare",
+                        tint = Color.Black,
                     )
                 }
             }
@@ -242,7 +253,7 @@ fun BeforeAfterSplitViewer(
 
         // Floating Badges: BEFORE / AFTER
         AnimatedVisibility(
-            visible = enhancedBitmap != null && !isHoldingToCompare,
+            visible = comparing,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier
@@ -268,7 +279,7 @@ fun BeforeAfterSplitViewer(
         }
 
         AnimatedVisibility(
-            visible = enhancedBitmap != null && !isHoldingToCompare,
+            visible = comparing,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier

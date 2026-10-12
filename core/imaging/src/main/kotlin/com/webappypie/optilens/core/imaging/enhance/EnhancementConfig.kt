@@ -1,46 +1,35 @@
 package com.webappypie.optilens.core.imaging.enhance
 
 /**
- * Fine-grained configuration parameters for the on-device computational photography pipeline.
+ * Strengths for the single-image on-device enhancement pipeline ([LocalEnhancementPipeline]).
  *
- * Defaults tuned to achieve a "premium computational-photography look" that remains natural:
- * - Clean, lifted shadows without gray haze
- * - Preserved highlight roll-off without blown highlights
- * - Vibrant memory colors (blues, greens, warm highlights) with protected, natural skin tones
- * - Rich local contrast and texture sharpness with halo-free edges
+ * Every value is a ceiling: the pipeline measures the photo first (exposure, colour cast,
+ * dynamic range, noise level) and applies only as much of each correction as the
+ * measurement justifies. A well-exposed, clean photo is changed very little.
  */
 data class EnhancementConfig(
-    val hdrStrength: Float = 0.65f,
-    val shadowLift: Float = 0.40f,
-    val highlightRecovery: Float = 0.50f,
-    val localContrast: Float = 0.35f,
-    val detailSharpening: Float = 0.35f,
-    val denoiseStrength: Float = 0.40f,
-    val vibrance: Float = 0.25f,
+    /** Fraction (0..1) of the measured exposure error that is corrected. */
+    val exposureCorrection: Float = 0.65f,
+    /** Upper bound for brightening, in stops. */
+    val maxExposureLiftStops: Float = 1.5f,
+    /** 0..1: how strongly deep shadows are compressed towards the mid-tones. */
+    val shadowRecovery: Float = 0.8f,
+    /** 0..1: mid-scale local contrast ("clarity") added on top of the tone mapping. */
+    val localContrast: Float = 0.30f,
+    /** 0..1: fraction of a measured colour cast that is neutralised (large casts are corrected less). */
+    val whiteBalance: Float = 0.6f,
+    /** 0..1: chroma (colour blotch) noise reduction. */
+    val chromaNoiseReduction: Float = 0.85f,
+    /** 0..1: luminance noise reduction (only runs when noise is actually measured). */
+    val lumaNoiseReduction: Float = 0.6f,
+    /** 0..1: fine-detail sharpening with noise coring and overshoot clamping (no halos). */
+    val sharpening: Float = 0.35f,
+    /** 0..1: saturation boost for muted colours. */
+    val vibrance: Float = 0.15f,
+    /** Reduces vibrance on skin-coloured pixels. */
     val preserveSkinTones: Boolean = true,
-    val zoomSuperResStrength: Float = 0.50f,
-    val isZoomedCapture: Boolean = false,
-    val zoomRatio: Float = 1.0f,
 ) {
     companion object {
         val BALANCED = EnhancementConfig()
-        val HIGH_DYNAMIC_RANGE = EnhancementConfig(
-            hdrStrength = 0.85f,
-            shadowLift = 0.55f,
-            highlightRecovery = 0.70f,
-            localContrast = 0.40f,
-        )
-        val LOW_LIGHT = EnhancementConfig(
-            hdrStrength = 0.75f,
-            shadowLift = 0.60f,
-            denoiseStrength = 0.65f,
-            detailSharpening = 0.30f,
-        )
-        val ZOOM_ENHANCE = EnhancementConfig(
-            isZoomedCapture = true,
-            zoomSuperResStrength = 0.70f,
-            detailSharpening = 0.45f,
-            denoiseStrength = 0.45f,
-        )
     }
 }

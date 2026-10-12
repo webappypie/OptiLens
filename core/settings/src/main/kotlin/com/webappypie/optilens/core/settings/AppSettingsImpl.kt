@@ -33,6 +33,7 @@ class AppSettingsImpl @Inject constructor(
         val SHUTTER_SOUND           = booleanPreferencesKey("shutter_sound")
         val HAPTIC_FEEDBACK         = booleanPreferencesKey("haptic_feedback")
         val VOLUME_KEY_SHUTTER      = booleanPreferencesKey("volume_key_shutter")
+        val REVIEW_AFTER_CAPTURE    = booleanPreferencesKey("review_after_capture")
         val COLOR_PROFILE           = stringPreferencesKey("color_profile")
         val KEEP_ORIGINAL           = booleanPreferencesKey("keep_original")
         val LOCATION_TAGGING        = booleanPreferencesKey("location_tagging")
@@ -94,6 +95,11 @@ class AppSettingsImpl @Inject constructor(
     override val volumeKeyShutterEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.VOLUME_KEY_SHUTTER] ?: false }
     override suspend fun setVolumeKeyShutterEnabled(enabled: Boolean) {
         dataStore.edit { it[Keys.VOLUME_KEY_SHUTTER] = enabled }
+    }
+
+    override val reviewAfterCaptureEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.REVIEW_AFTER_CAPTURE] ?: true }
+    override suspend fun setReviewAfterCaptureEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.REVIEW_AFTER_CAPTURE] = enabled }
     }
 
     // ── Processing ────────────────────────────────────────────────────────

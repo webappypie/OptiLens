@@ -38,6 +38,10 @@ interface AppSettings {
     val volumeKeyShutterEnabled: Flow<Boolean>
     suspend fun setVolumeKeyShutterEnabled(enabled: Boolean)
 
+    /** Whether the preview/enhance screen opens right after a photo is captured. Default: true. */
+    val reviewAfterCaptureEnabled: Flow<Boolean> get() = kotlinx.coroutines.flow.flowOf(true)
+    suspend fun setReviewAfterCaptureEnabled(enabled: Boolean) {}
+
     // ── Processing ───────────────────────────────────────────
     /** Active color profile. Default: [ColorProfile.BALANCED]. */
     val colorProfile: Flow<ColorProfile>

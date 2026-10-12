@@ -132,6 +132,101 @@ class PhotoReviewViewModelTest {
         assertTrue(fakeSettings.keptOutcomes.contains(true))
     }
 
+    @Test
+    fun `saving twice while a save is running writes one file`() = runTest {
+        viewModel.loadPhoto("content://media/test/orig.jpg")
+        testDispatcher.scheduler.advanceUntilIdle()
+        viewModel.setEnhancedStateForTesting(createDummyBitmap())
+        viewModel.saveEnhanced()
+        viewModel.saveEnhanced()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(1, fakeLoader.saveCallCount)
+        assertEquals("Enhanced copy saved to Gallery", viewModel.uiState.value.message)
+    }
+
+    @Test
+    fun `failed save reports an error and allows retry`() = runTest {
+        fakeLoader.savedUriResult = null
+        viewModel.loadPhoto("content://media/test/orig.jpg")
+        testDispatcher.scheduler.advanceUntilIdle()
+        viewModel.setEnhancedStateForTesting(createDummyBitmap())
+        viewModel.saveEnhanced()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertFalse(viewModel.uiState.value.isSaved)
+        assertFalse(viewModel.uiState.value.isSaving)
+        assertNotNull(viewModel.uiState.value.errorMessage)
+
+        fakeLoader.savedUriResult = "content://media/external/images/media/9"
+        viewModel.saveEnhanced()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.isSaved)
+    }
+
+    @Test
+    fun `enhanced views are unavailable before enhancement`() {
+        viewModel.setViewMode(ReviewViewMode.COMPARE)
+        assertEquals(ReviewViewMode.ORIGINAL, viewModel.uiState.value.viewMode)
+        viewModel.setEnhancedStateForTesting(null)
+        viewModel.setViewMode(ReviewViewMode.ENHANCED)
+        assertEquals(ReviewViewMode.ENHANCED, viewModel.uiState.value.viewMode)
+    }
+
+    @Test
+    fun `cancel clears processing state`() {
+        viewModel.cancelEnhance()
+        assertFalse(viewModel.uiState.value.isEnhancing)
+        assertEquals(0f, viewModel.uiState.value.enhanceProgress, 0f)
+    }
+
+    @Test
+    fun `retake deletes the captured photo and closes`() = runTest {
+        val repo = FakeGalleryRepository()
+        val vm = PhotoReviewViewModel(fakeLoader, fakeSettings, NoOpLogger(), enhancementEngine, testDispatcher, repo)
+        vm.loadPhoto("content://media/external/images/media/5")
+        testDispatcher.scheduler.advanceUntilIdle()
+        vm.discardCapturedPhoto()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(listOf("content://media/external/images/media/5"), repo.deleted)
+        assertTrue(vm.uiState.value.isDiscarded)
+    }
+
+    @Test
+    fun `notes describe only what was measured`() {
+        val report = com.webappypie.optilens.core.imaging.enhance.EnhancementReport(
+            width = 10, height = 10, exposureStops = 0.8f, shadowCompression = 0.8f,
+            whiteBalanceGainR = 0.95f, whiteBalanceGainG = 1f, whiteBalanceGainB = 1.04f,
+            shadowNoiseSigma = 0.01f, lumaDenoiseRadius = 1, clippedHighlightFraction = 0.05f,
+            analysisMs = 1, renderMs = 1,
+        )
+        val notes = PhotoReviewViewModel.describe(report)
+        assertEquals(
+            listOf(
+                "Brightened by 0.8 EV", "Shadows lifted", "Colour cast reduced", "Noise reduced",
+                "5% of the photo was already pure white; that detail can't be recovered",
+            ),
+            notes,
+        )
+        val untouched = report.copy(
+            exposureStops = 0f, shadowCompression = 1f, whiteBalanceGainR = 1f, whiteBalanceGainB = 1f,
+            lumaDenoiseRadius = 0, clippedHighlightFraction = 0f,
+        )
+        assertTrue(PhotoReviewViewModel.describe(untouched).isEmpty())
+    }
+
+    private class FakeGalleryRepository : com.webappypie.optilens.core.camera.storage.GalleryRepository {
+        val deleted = mutableListOf<String>()
+        override fun observeMedia(): Flow<List<com.webappypie.optilens.core.camera.storage.MediaItem>> =
+            kotlinx.coroutines.flow.flowOf(emptyList())
+        override suspend fun loadMedia(): List<com.webappypie.optilens.core.camera.storage.MediaItem> = emptyList()
+        override suspend fun deleteMedia(uriString: String): com.webappypie.optilens.core.common.result.OptiResult<android.app.PendingIntent?> {
+            deleted += uriString
+            return com.webappypie.optilens.core.common.result.OptiResult.Success(null)
+        }
+        override suspend fun toggleFavorite(uriString: String) =
+            com.webappypie.optilens.core.common.result.OptiResult.Success(false)
+        override suspend fun extractExifMetadata(uriString: String): com.webappypie.optilens.core.camera.storage.MediaExifSummary? = null
+    }
+
     companion object {
         fun createDummyBitmap(): Bitmap {
             val field = sun.misc.Unsafe::class.java.getDeclaredField("theUnsafe")

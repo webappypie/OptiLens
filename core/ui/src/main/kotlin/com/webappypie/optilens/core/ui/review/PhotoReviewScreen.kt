@@ -1,15 +1,28 @@
 package com.webappypie.optilens.core.ui.review
 
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,40 +37,62 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.PhoneAndroid
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.webappypie.optilens.core.imaging.enhance.AiEnhanceStage
+
+private val Accent = Color(0xFFFFB74D)
+private val OnAccent = Color(0xFF2B1C00)
+private val PanelColor = Color(0xFF121418)
+private val ChipColor = Color(0xFF1E2128)
+private val MutedText = Color(0xFFA9B0BD)
+private val SuccessGreen = Color(0xFF34D399)
 
 /**
- * Capture review screen featuring One-Tap AI Enhance and interactive
- * Before/After split comparison.
+ * Photo preview with one-tap on-device enhancement, Original / Enhanced / Compare views,
+ * save-as-copy and (right after capture) Retake. Works offline; nothing is uploaded.
  */
 @Composable
 fun PhotoReviewScreen(
@@ -65,13 +100,39 @@ fun PhotoReviewScreen(
     onNavigateBack: () -> Unit,
     onNavigateToAiTools: (String) -> Unit = {},
     modifier: Modifier = Modifier,
+    fromCapture: Boolean = false,
     viewModel: PhotoReviewViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+    var confirmRetake by rememberSaveable { mutableStateOf(false) }
+    var confirmLeave by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(photoUri) {
         viewModel.loadPhoto(photoUri)
+    }
+    LaunchedEffect(uiState.message) {
+        uiState.message?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearMessage()
+        }
+    }
+    LaunchedEffect(uiState.isDiscarded) {
+        if (uiState.isDiscarded) onNavigateBack()
+    }
+    val deleteConsentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult(),
+    ) { result -> viewModel.onDeleteConsentResult(result.resultCode == Activity.RESULT_OK) }
+    LaunchedEffect(uiState.pendingDeleteIntent) {
+        uiState.pendingDeleteIntent?.let {
+            deleteConsentLauncher.launch(IntentSenderRequest.Builder(it).build())
+        }
+    }
+
+    val hasUnsavedEnhancement = uiState.isEnhanced && !uiState.isSaved
+    BackHandler(enabled = hasUnsavedEnhancement || uiState.isEnhancing) {
+        if (uiState.isEnhancing) viewModel.cancelEnhance() else confirmLeave = true
     }
 
     Box(
@@ -79,261 +140,452 @@ fun PhotoReviewScreen(
             .fillMaxSize()
             .background(Color.Black),
     ) {
-        // Center: Interactive Before/After Split Viewer
-        if (uiState.originalBitmap != null) {
+        val original = uiState.originalBitmap
+        if (original != null) {
             BeforeAfterSplitViewer(
-                originalBitmap = uiState.originalBitmap!!,
+                originalBitmap = original,
                 enhancedBitmap = uiState.enhancedBitmap,
                 splitFraction = uiState.splitFraction,
                 onSplitFractionChanged = viewModel::setSplitFraction,
                 isHoldingToCompare = uiState.isHoldingToCompare,
                 onHoldingToCompareChanged = viewModel::setHoldingToCompare,
+                viewMode = uiState.viewMode,
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 if (uiState.errorMessage != null) {
-                    Text(
-                        text = uiState.errorMessage!!,
-                        color = Color.White,
-                        fontSize = 14.sp
-                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Outlined.ErrorOutline, contentDescription = null, tint = MutedText, modifier = Modifier.size(40.dp))
+                        Spacer(Modifier.height(12.dp))
+                        Text(uiState.errorMessage!!, color = Color.White, fontSize = 15.sp)
+                        Spacer(Modifier.height(16.dp))
+                        OutlinedButton(onClick = onNavigateBack) { Text("Go back", color = Color.White) }
+                    }
                 } else {
-                    CircularProgressIndicator(color = Color.White)
+                    CircularProgressIndicator(color = Accent, strokeWidth = 3.dp)
                 }
             }
         }
 
-        // Top App Bar
-        Row(
+        // Top bar over a soft scrim so controls stay legible on bright photos.
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(horizontal = 8.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
+                .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.65f), Color.Transparent))),
         ) {
-            IconButton(
-                onClick = onNavigateBack,
+            Row(
                 modifier = Modifier
-                    .clip(CircleShape)
-                    .background(Color.Black.copy(alpha = 0.5f)),
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    tint = Color.White,
+                RoundIconButton(
+                    icon = if (fromCapture) Icons.Default.Close else Icons.AutoMirrored.Filled.ArrowBack,
+                    description = if (fromCapture) "Close preview" else "Back",
+                    onClick = {
+                        when {
+                            uiState.isEnhancing -> viewModel.cancelEnhance()
+                            hasUnsavedEnhancement -> confirmLeave = true
+                            else -> onNavigateBack()
+                        }
+                    },
+                )
+                Text(
+                    text = when {
+                        uiState.isEnhancing -> "Enhancing…"
+                        uiState.isEnhanced -> "Enhanced"
+                        fromCapture -> "Preview"
+                        else -> "Photo"
+                    },
+                    color = Color.White,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 17.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f),
+                )
+                RoundIconButton(
+                    icon = Icons.Default.Share,
+                    description = if (uiState.savedUri != null) "Share enhanced photo" else "Share photo",
+                    enabled = uiState.photoUri.isNotBlank() && original != null,
+                    onClick = {
+                        val shareUri = uiState.savedUri ?: uiState.photoUri
+                        val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "image/jpeg"
+                            putExtra(Intent.EXTRA_STREAM, Uri.parse(shareUri))
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(Intent.createChooser(sendIntent, "Share photo"))
+                    },
+                )
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth(),
+        ) {
+            SnackbarHost(snackbarHostState, modifier = Modifier.align(Alignment.CenterHorizontally))
+
+            AnimatedVisibility(
+                visible = uiState.isEnhanced && !uiState.isEnhancing,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+            ) {
+                ViewModeSelector(
+                    selected = uiState.viewMode,
+                    onSelect = viewModel::setViewMode,
+                    modifier = Modifier.padding(bottom = 12.dp),
                 )
             }
 
-            Text(
-                text = if (uiState.isEnhanced) "Enhanced" else "Review",
-                color = Color.White,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 16.sp,
-            )
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (uiState.isEnhanced) {
-                    IconButton(
-                        onClick = { viewModel.revert() },
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.5f)),
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Undo,
-                            contentDescription = "Revert",
-                            tint = Color.White,
-                        )
-                    }
-                }
-
-                IconButton(
-                    onClick = {
-                        val shareUriString = uiState.savedUri ?: uiState.photoUri
-                        val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                            type = "image/jpeg"
-                            putExtra(Intent.EXTRA_STREAM, Uri.parse(shareUriString))
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        }
-                        context.startActivity(Intent.createChooser(sendIntent, "Share Photo"))
-                    },
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.5f)),
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Share,
-                        contentDescription = "Share",
-                        tint = Color.White,
-                    )
-                }
-            }
-        }
-
-        // Bottom Action Panel
-        Surface(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(16.dp),
-            shape = RoundedCornerShape(24.dp),
-            color = Color.Black.copy(alpha = 0.75f),
-            tonalElevation = 8.dp,
-        ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                    .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                    .background(PanelColor.copy(alpha = 0.94f))
+                    .navigationBarsPadding()
+                    .padding(horizontal = 20.dp, vertical = 18.dp),
             ) {
-                if (uiState.errorMessage != null && uiState.originalBitmap != null) {
-                    Text(
-                        text = uiState.errorMessage!!,
-                        color = MaterialTheme.colorScheme.error,
-                        fontSize = 13.sp,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { viewModel.clearError() }
-                            .padding(bottom = 10.dp),
-                    )
-                }
-                if (uiState.isEnhancing) {
-                    val progress = uiState.enhanceProgress
-
-                    Text(
-                        text = "Enhancing on your device...",
-                        color = Color.White,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    LinearProgressIndicator(
-                        progress = { progress },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(6.dp)
-                            .clip(CircleShape),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = Color.White.copy(alpha = 0.2f),
-                    )
-                } else if (!uiState.isEnhanced) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            Button(
-                                onClick = { viewModel.enhance() },
-                                enabled = uiState.originalBitmap != null,
-                                modifier = Modifier
-                                    .weight(1.1f)
-                                    .height(50.dp),
-                                shape = RoundedCornerShape(25.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.primary,
-                                ),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.AutoAwesome,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                    tint = Color.Black,
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Enhance",
-                                    color = Color.Black,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                            }
-
-                            OutlinedButton(
-                                onClick = { onNavigateToAiTools(photoUri) },
-                                modifier = Modifier
-                                    .weight(0.9f)
-                                    .height(50.dp),
-                                shape = RoundedCornerShape(25.dp),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Tune,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                    tint = Color.White,
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Edit Tools",
-                                    color = Color.White,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                            }
-                        }
-                    }
-                } else {
-                    // Enhanced mode actions: Revert and Save Copy
-                    Text(
-                        text = "Enhanced on device • Drag to compare",
-                        color = MaterialTheme.colorScheme.primary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-
+                uiState.errorMessage?.takeIf { original != null }?.let { error ->
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0x33F87171))
+                            .clickable(onClickLabel = "Dismiss") { viewModel.clearError() }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        OutlinedButton(
-                            onClick = { viewModel.revert() },
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(48.dp),
-                            shape = RoundedCornerShape(24.dp),
-                        ) {
-                            Text(text = "Revert", color = Color.White)
-                        }
+                        Icon(Icons.Outlined.ErrorOutline, contentDescription = null, tint = Color(0xFFF87171), modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(error, color = Color.White, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        Icon(Icons.Default.Close, contentDescription = "Dismiss", tint = MutedText, modifier = Modifier.size(16.dp))
+                    }
+                    Spacer(Modifier.height(12.dp))
+                }
 
-                        Button(
-                            onClick = { viewModel.saveEnhanced() },
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(48.dp),
-                            shape = RoundedCornerShape(24.dp),
-                            enabled = !uiState.isSaved,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (uiState.isSaved) Color(0xFF2E7D32) else MaterialTheme.colorScheme.primary,
-                            ),
-                        ) {
-                            if (uiState.isSaved) {
-                                Icon(
-                                    imageVector = Icons.Default.Check,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(text = "Saved", fontWeight = FontWeight.Bold)
-                            } else {
-                                // A new file is always written; the original is never replaced.
-                                Text(
-                                    text = "Save Copy",
-                                    fontWeight = FontWeight.Bold,
-                                )
-                            }
-                        }
+                val panel = when {
+                    uiState.isEnhancing -> PanelState.PROCESSING
+                    uiState.isEnhanced -> PanelState.RESULT
+                    else -> PanelState.IDLE
+                }
+                AnimatedContent(
+                    targetState = panel,
+                    transitionSpec = {
+                        (fadeIn() + slideInVertically { it / 6 }) togetherWith (fadeOut() + slideOutVertically { it / 6 })
+                    },
+                    label = "reviewPanel",
+                ) { state ->
+                    when (state) {
+                        PanelState.PROCESSING -> ProcessingPanel(
+                            progress = uiState.enhanceProgress,
+                            onCancel = viewModel::cancelEnhance,
+                        )
+                        PanelState.RESULT -> ResultPanel(
+                            notes = uiState.enhancementNotes,
+                            isSaving = uiState.isSaving,
+                            isSaved = uiState.isSaved,
+                            fromCapture = fromCapture,
+                            onRevert = viewModel::revert,
+                            onSave = viewModel::saveEnhanced,
+                            onDone = onNavigateBack,
+                        )
+                        PanelState.IDLE -> IdlePanel(
+                            enabled = original != null && !uiState.isDiscarding,
+                            fromCapture = fromCapture,
+                            onEnhance = viewModel::enhance,
+                            onEditTools = { onNavigateToAiTools(photoUri) },
+                            onRetake = { confirmRetake = true },
+                        )
                     }
                 }
             }
         }
+    }
+
+    if (confirmRetake) {
+        AlertDialog(
+            onDismissRequest = { confirmRetake = false },
+            title = { Text("Retake photo?") },
+            text = { Text("This photo will be deleted from your gallery.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmRetake = false
+                    viewModel.discardCapturedPhoto()
+                }) { Text("Delete & retake") }
+            },
+            dismissButton = { TextButton(onClick = { confirmRetake = false }) { Text("Keep") } },
+        )
+    }
+    if (confirmLeave) {
+        AlertDialog(
+            onDismissRequest = { confirmLeave = false },
+            title = { Text("Discard enhanced version?") },
+            text = { Text("Your original photo is kept. The enhanced version hasn't been saved.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmLeave = false
+                    viewModel.saveEnhanced()
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    confirmLeave = false
+                    onNavigateBack()
+                }) { Text("Discard") }
+            },
+        )
+    }
+}
+
+private enum class PanelState { IDLE, PROCESSING, RESULT }
+
+@Composable
+private fun IdlePanel(
+    enabled: Boolean,
+    fromCapture: Boolean,
+    onEnhance: () -> Unit,
+    onEditTools: () -> Unit,
+    onRetake: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Button(
+            onClick = onEnhance,
+            enabled = enabled,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
+            shape = RoundedCornerShape(28.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = OnAccent),
+        ) {
+            Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Enhance Photo", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (fromCapture) {
+                SecondaryAction(Icons.Default.CameraAlt, "Retake", enabled, onRetake, Modifier.weight(1f))
+            }
+            SecondaryAction(Icons.Default.Tune, "Edit Tools", enabled, onEditTools, Modifier.weight(1f))
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.PhoneAndroid, contentDescription = null, tint = MutedText, modifier = Modifier.size(14.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Processed on this device · works offline", color = MutedText, fontSize = 12.sp, modifier = Modifier.weight(1f))
+        }
+        ComingSoonRow()
+    }
+}
+
+/** The future cloud feature, shown as clearly unavailable — not a button. */
+@Composable
+private fun ComingSoonRow() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(ChipColor)
+            .semantics { contentDescription = "Enhance Photo by AI, coming soon, not available yet" }
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Default.CloudQueue, contentDescription = null, tint = MutedText, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(10.dp))
+        Text("Enhance Photo by AI", color = MutedText, fontSize = 13.sp, modifier = Modifier.weight(1f))
+        Text(
+            "COMING SOON",
+            color = MutedText,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.8.sp,
+            modifier = Modifier
+                .border(1.dp, MutedText.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                .padding(horizontal = 8.dp, vertical = 3.dp),
+        )
+    }
+}
+
+@Composable
+private fun ProcessingPanel(progress: Float, onCancel: () -> Unit) {
+    val animated by animateFloatAsState(targetValue = progress, label = "enhanceProgress")
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Enhancing on your device", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = if (progress < 0.15f) "Analysing exposure, colour and noise" else "Tone, colour, noise and detail · ${(progress * 100).toInt()}%",
+                    color = MutedText,
+                    fontSize = 12.sp,
+                )
+            }
+            TextButton(onClick = onCancel) { Text("Cancel", color = Color.White) }
+        }
+        LinearProgressIndicator(
+            progress = { animated },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(CircleShape),
+            color = Accent,
+            trackColor = Color.White.copy(alpha = 0.15f),
+            drawStopIndicator = {},
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ResultPanel(
+    notes: List<String>,
+    isSaving: Boolean,
+    isSaved: Boolean,
+    fromCapture: Boolean,
+    onRevert: () -> Unit,
+    onSave: () -> Unit,
+    onDone: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            text = "Drag the slider or hold the photo to compare",
+            color = MutedText,
+            fontSize = 12.sp,
+        )
+        if (notes.isNotEmpty()) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                notes.forEach { note ->
+                    Text(
+                        text = note,
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(ChipColor)
+                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                    )
+                }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (isSaved) {
+                SecondaryAction(
+                    icon = if (fromCapture) Icons.Default.CameraAlt else Icons.AutoMirrored.Filled.ArrowBack,
+                    label = if (fromCapture) "Camera" else "Done",
+                    enabled = true,
+                    onClick = onDone,
+                    modifier = Modifier.weight(1f),
+                )
+            } else {
+                SecondaryAction(Icons.Default.Close, "Revert", !isSaving, onRevert, Modifier.weight(0.75f))
+            }
+            Button(
+                onClick = onSave,
+                enabled = !isSaving && !isSaved,
+                modifier = Modifier
+                    .weight(1.25f)
+                    .height(52.dp),
+                shape = RoundedCornerShape(26.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Accent,
+                    contentColor = OnAccent,
+                    disabledContainerColor = if (isSaved) SuccessGreen.copy(alpha = 0.2f) else Accent.copy(alpha = 0.4f),
+                    disabledContentColor = if (isSaved) SuccessGreen else OnAccent,
+                ),
+            ) {
+                when {
+                    isSaving -> CircularProgressIndicator(color = OnAccent, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                    isSaved -> {
+                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Saved", fontWeight = FontWeight.Bold)
+                    }
+                    else -> {
+                        Icon(Icons.Outlined.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        // A new file is always written; the original is never replaced.
+                        Text("Save Enhanced Photo", fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, softWrap = false)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ViewModeSelector(
+    selected: ReviewViewMode,
+    onSelect: (ReviewViewMode) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .clip(CircleShape)
+            .background(Color.Black.copy(alpha = 0.6f))
+            .padding(4.dp),
+    ) {
+        listOf(
+            ReviewViewMode.ORIGINAL to "Original",
+            ReviewViewMode.ENHANCED to "Enhanced",
+            ReviewViewMode.COMPARE to "Compare",
+        ).forEach { (mode, label) ->
+            val isSelected = mode == selected
+            Text(
+                text = label,
+                color = if (isSelected) OnAccent else Color.White,
+                fontSize = 13.sp,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(if (isSelected) Accent else Color.Transparent)
+                    .clickable(role = Role.Tab, onClickLabel = "Show $label") { onSelect(mode) }
+                    .padding(horizontal = 16.dp, vertical = 9.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SecondaryAction(
+    icon: ImageVector,
+    label: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    OutlinedButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.height(52.dp),
+        shape = RoundedCornerShape(26.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
+    ) {
+        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(label, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+    }
+}
+
+@Composable
+private fun RoundIconButton(
+    icon: ImageVector,
+    description: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+) {
+    IconButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier
+            .size(48.dp)
+            .clip(CircleShape)
+            .background(Color.Black.copy(alpha = 0.45f)),
+    ) {
+        Icon(icon, contentDescription = description, tint = if (enabled) Color.White else MutedText)
     }
 }

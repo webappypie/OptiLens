@@ -486,4 +486,24 @@ class CameraViewModelTest {
             cancelAndIgnoreRemainingEvents()
         }
     }
+
+    @Test
+    fun `single shot capture requests the preview once`() = runTest(testDispatcher) {
+        viewModel.captureReviewRequests.test {
+            viewModel.takePhoto()
+            testDispatcher.scheduler.advanceUntilIdle()
+            val uri = awaitItem()
+            assertTrue(uri.startsWith("content://media/external/images/media/fake_photo_"))
+            expectNoEvents()
+        }
+    }
+
+    @Test
+    fun `burst capture does not request the preview`() = runTest(testDispatcher) {
+        viewModel.captureReviewRequests.test {
+            viewModel.takeBurstPhoto(frameCount = 2)
+            testDispatcher.scheduler.advanceUntilIdle()
+            expectNoEvents()
+        }
+    }
 }

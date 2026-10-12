@@ -118,7 +118,8 @@ private fun resolveHintDisplay(
     if (strategy.uiHint == CaptureUiHint.HDR_SUGGESTED || strategy.uiHint == CaptureUiHint.BACKLIGHT_DETECTED) {
         return HintDisplay(
             icon = Icons.Default.HdrOn,
-            text = if (strategy.uiHint == CaptureUiHint.BACKLIGHT_DETECTED) "Backlight" else "HDR",
+            // Describes the scene only: there is no HDR capture mode to suggest yet.
+            text = if (strategy.uiHint == CaptureUiHint.BACKLIGHT_DETECTED) "Backlight" else "High contrast",
             accentColor = Color(0xFFE5C07B),
         )
     }

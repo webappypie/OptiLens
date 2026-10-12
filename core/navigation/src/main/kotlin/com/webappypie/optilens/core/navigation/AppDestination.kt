@@ -41,9 +41,10 @@ sealed interface AppDestination {
     /**
      * Photo detail / AI enhancement result viewer.
      * @param photoUri Content URI of the photo to display.
+     * @param fromCapture True when opened automatically right after capture (enables Retake).
      */
     @Serializable
-    data class PhotoDetail(val photoUri: String) : AppDestination
+    data class PhotoDetail(val photoUri: String, val fromCapture: Boolean = false) : AppDestination
 
     // ── Pro / Onboarding ──────────────────────────────────────────────
 

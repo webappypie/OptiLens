@@ -161,6 +161,11 @@ fun OptiLensNavigationShell(
                 onNavigateToGallery  = { navController.navigate(AppDestination.Gallery) },
                 onNavigateToPhotoReview = { uri -> navController.navigate(AppDestination.PhotoDetail(uri)) },
                 onNavigateToAiTools = { navController.navigate(AppDestination.AiTools()) },
+                onNavigateToCaptureReview = { uri ->
+                    navController.navigate(AppDestination.PhotoDetail(uri, fromCapture = true)) {
+                        launchSingleTop = true
+                    }
+                },
                 showGrid = gridEnabled,
                 showLevel = levelEnabled,
                 shutterSoundEnabled = shutterSoundEnabled,
@@ -171,6 +176,7 @@ fun OptiLensNavigationShell(
         photoDetailScreen = { detail ->
             PhotoReviewScreen(
                 photoUri = detail.photoUri,
+                fromCapture = detail.fromCapture,
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToAiTools = { uri ->
                     navController.navigate(AppDestination.AiTools(photoUri = uri))
