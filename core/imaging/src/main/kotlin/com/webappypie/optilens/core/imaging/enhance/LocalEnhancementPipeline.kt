@@ -64,6 +64,14 @@ data class EnhancementReport(
     val lumaDenoiseRadius: Int,
     /** Fraction of the frame whose pixels were already clipped white in the input (not recoverable). */
     val clippedHighlightFraction: Float,
+    /** Scene type the analysis measured. */
+    val scene: EnhancementScene = EnhancementScene.GENERAL,
+    /** Haze removal strength actually applied (0 = none). */
+    val dehazeStrength: Float = 0f,
+    /** Maximum darkening of bright, unclipped areas in stops (0 = none). */
+    val highlightRecoveryStops: Float = 0f,
+    /** Number of faces whose skin texture was protected. */
+    val facesProtected: Int = 0,
     val analysisMs: Long,
     val renderMs: Long,
 )
@@ -93,10 +101,23 @@ data class EnhancementReport(
  * 6. **Sharpening** of fine detail with noise coring and clamping to the local 3×3 min/max
  *    (no overshoot → no halos), then vibrance with skin protection and gamut-safe encode.
  *
+ * Scene adaptation (measured, never guessed from labels):
+ * - **Portrait** (faces passed in [EnhancementHints]): faces are metered for exposure; clarity,
+ *   sharpening and luma denoise are reduced on a soft face mask so skin texture and identity are
+ *   kept; no haze removal.
+ * - **Landscape / distant scenes**: atmospheric haze is measured with the dark-channel prior in
+ *   linear light and removed with the scattering model `J = (I − A(1 − t)) / t`, transmission
+ *   floored at [MIN_TRANSMISSION] and refined edge-aware; bright, neutral sky is protected.
+ * - **Low light**: less sharpening and stronger noise reduction (exposure lift already shrinks
+ *   with measured noise).
+ * - **High contrast / mixed light**: bright, unclipped areas are compressed in the base layer
+ *   (highlight recovery) while shadows are lifted; already-clipped pixels stay white.
+ *
  * Full-resolution work runs in 64-row strips in parallel; memory is O(width × strip).
  */
 class LocalEnhancementPipeline(
     private val config: EnhancementConfig = EnhancementConfig.BALANCED,
+    private val hints: EnhancementHints = EnhancementHints.NONE,
 ) {
 
     suspend fun process(
@@ -123,6 +144,10 @@ class LocalEnhancementPipeline(
             shadowNoiseSigma = plan.sigmaShadow,
             lumaDenoiseRadius = plan.denoiseRadius,
             clippedHighlightFraction = plan.clippedFraction,
+            scene = plan.scene,
+            dehazeStrength = plan.dehaze,
+            highlightRecoveryStops = plan.highlightStops,
+            facesProtected = plan.faceCount,
             analysisMs = (t1 - t0) / 1_000_000,
             renderMs = (t2 - t1) / 1_000_000,
         )
@@ -134,7 +159,7 @@ class LocalEnhancementPipeline(
         val f: Int,
         val lw: Int,
         val lh: Int,
-        /** Per low-res cell: Ab, Bb, Am, Bm, Acr, Bcr, Acg, Bcg. */
+        /** Per low-res cell: Ab, Bb, Am, Bm, Acr, Bcr, Acg, Bcg, At, Bt (transmission), face mask. */
         val grids: FloatArray,
         val gainR: Float,
         val gainG: Float,
@@ -152,6 +177,14 @@ class LocalEnhancementPipeline(
         val sharpenAmount: Float,
         val vibrance: Float,
         val clippedFraction: Float,
+        val scene: EnhancementScene,
+        /** Airlight (linear, white-balanced) and applied haze strength; dehaze == 0 disables it. */
+        val airR: Float,
+        val airG: Float,
+        val airB: Float,
+        val dehaze: Float,
+        val highlightStops: Float,
+        val faceCount: Int,
     )
 
     private suspend fun analyze(source: ArgbRowSource, workers: Int): Plan = coroutineScope {
@@ -251,14 +284,55 @@ class LocalEnhancementPipeline(
             }
         }
 
+        // Faces: soft elliptical mask per low-res cell (slightly enlarged to cover hairline and jaw).
+        val faces = if (config.protectFaces) hints.faces.filter { it.area >= MIN_FACE_AREA } else emptyList()
+        val faceMask = FloatArray(n)
+        for (face in faces) {
+            val cx = (face.left + face.right) * 0.5f * w / f
+            val cy = (face.top + face.bottom) * 0.5f * h / f
+            val rx = max(1f, (face.right - face.left) * 0.5f * w / f * 1.15f)
+            val ry = max(1f, (face.bottom - face.top) * 0.5f * h / f * 1.3f)
+            val x0 = max(0, floor(cx - rx).toInt())
+            val x1 = min(lw - 1, ceil(cx + rx).toInt())
+            val y0 = max(0, floor(cy - ry).toInt())
+            val y1 = min(lh - 1, ceil(cy + ry).toInt())
+            for (j in y0..y1) for (i in x0..x1) {
+                val dx = (i + 0.5f - cx) / rx
+                val dy = (j + 0.5f - cy) / ry
+                val m = 1f - smoothstep(0.6f, 1f, dx * dx + dy * dy)
+                if (m > faceMask[j * lw + i]) faceMask[j * lw + i] = m
+            }
+        }
+        val faceArea = faces.sumOf { it.area.toDouble() }.toFloat()
+        val isPortrait = faceArea >= PORTRAIT_FACE_AREA
+
+        // White-balanced linear low-res image and its pre-dehaze log-luminance (the dehaze guide).
+        val wr = FloatArray(n) { lr[it] * gainR }
+        val wg = FloatArray(n) { lg[it] * gainG }
+        val wb = FloatArray(n) { lb[it] * gainB }
+        val lPre = FloatArray(n) { log2(KR * wr[it] + KG * wg[it] + KB * wb[it] + EPS) }
+
+        val haze = if (config.dehaze > 0f && !isPortrait) estimateHaze(wr, wg, wb, lPre, lw, lh) else null
+        val transA = haze?.first ?: FloatArray(n)
+        val transB = haze?.second ?: FloatArray(n) { 1f }
+        val hazeInfo = haze?.third
+        if (hazeInfo != null) {
+            for (i in 0 until n) {
+                val t = (transA[i] * lPre[i] + transB[i]).coerceIn(MIN_TRANSMISSION, 1f)
+                wr[i] = max(0f, (wr[i] - hazeInfo[0] * (1f - t)) / t)
+                wg[i] = max(0f, (wg[i] - hazeInfo[1] * (1f - t)) / t)
+                wb[i] = max(0f, (wb[i] - hazeInfo[2] * (1f - t)) / t)
+            }
+        }
+
         // Log-luminance and chromaticity at low resolution.
         val llow = FloatArray(n)
         val crLow = FloatArray(n)
         val cgLow = FloatArray(n)
         for (i in 0 until n) {
-            val r = lr[i] * gainR
-            val g = lg[i] * gainG
-            val b = lb[i] * gainB
+            val r = wr[i]
+            val g = wg[i]
+            val b = wb[i]
             val y = KR * r + KG * g + KB * b
             llow[i] = log2(y + EPS)
             val s = r + g + b
@@ -288,17 +362,40 @@ class LocalEnhancementPipeline(
             grids[o + 5] = chR.second[i]
             grids[o + 6] = chG.first[i]
             grids[o + 7] = chG.second[i]
+            grids[o + 8] = transA[i]
+            grids[o + 9] = transB[i]
+            grids[o + 10] = faceMask[i]
         }
 
         // Tone statistics on the base layer.
         val baseLow = FloatArray(n) { base.first[it] * llow[it] + base.second[it] }
+        // Face exposure (before sorting): mean base level where the face mask is strong.
+        var faceSum = 0f
+        var faceN = 0
+        for (i in 0 until n) if (faceMask[i] > 0.5f) { faceSum += baseLow[i]; faceN++ }
+        // Bright-but-unclipped share of the frame: candidates for highlight recovery.
+        var brightN = 0
+        for (i in 0 until n) if (baseLow[i] > -1.4f && baseLow[i] < -0.05f) brightN++
         baseLow.sort()
         val p05 = quantileSorted(baseLow, 0.05f)
         val p50 = quantileSorted(baseLow, 0.50f)
         val p95 = quantileSorted(baseLow, 0.95f)
 
+        val scene = when {
+            isPortrait -> EnhancementScene.PORTRAIT
+            p50 < LOW_LIGHT_MEDIAN_STOPS || p95 < -4f -> EnhancementScene.LOW_LIGHT
+            hazeInfo != null -> EnhancementScene.LANDSCAPE
+            p95 - p05 > HIGH_CONTRAST_RANGE_STOPS -> EnhancementScene.HIGH_CONTRAST
+            else -> EnhancementScene.GENERAL
+        }
+
         val anchor = min(p50, -0.5f)
-        val delta = TARGET_MEDIAN_STOPS - p50
+        var delta = TARGET_MEDIAN_STOPS - p50
+        if (faceN > 0) {
+            // A backlit face should end up properly exposed even if the frame median looks fine.
+            val faceDelta = TARGET_FACE_STOPS - faceSum / faceN
+            if (faceDelta > delta) delta += (faceDelta - delta) * 0.7f
+        }
         var exposure = 0f
         if (delta > 0.25f) {
             var cap = config.maxExposureLiftStops
@@ -320,6 +417,20 @@ class LocalEnhancementPipeline(
         val cTarget = if (depth > 3f) (3f / depth).coerceIn(0.6f, 1f) else 1f
         val shadowC = 1f - config.shadowRecovery * (1f - cTarget)
 
+        // Highlight recovery: only with real highlight content and a scene that has range to give.
+        val brightFrac = brightN.toFloat() / n
+        var highlightStops = 0f
+        if (config.highlightRecovery > 0f && brightFrac > 0.03f && p95 - p05 > 4f) {
+            val rangeWeight = if (scene == EnhancementScene.HIGH_CONTRAST) 1f else 0.6f
+            highlightStops = MAX_HIGHLIGHT_RECOVERY_STOPS * config.highlightRecovery * rangeWeight *
+                smoothstep(0.03f, 0.15f, brightFrac)
+            // Keeps the combined tone curve monotonic: the exposure term's steepest negative slope
+            // (1.5 · exposure / |anchor|) plus this term's (1.6 · stops) stays below 0.9.
+            val exposureSlope = if (exposure > 0f) 1.5f * exposure / -anchor else 0f
+            highlightStops = min(highlightStops, max(0f, 0.9f - exposureSlope) / 1.6f)
+            if (highlightStops < 0.02f) highlightStops = 0f
+        }
+
         val denoiseRadius = when {
             config.lumaNoiseReduction <= 0f || sigmaShadow < 0.0035f -> 0
             sigmaShadow < 0.010f -> 1
@@ -327,21 +438,98 @@ class LocalEnhancementPipeline(
         }
         val longEdge = max(w, h)
         val sizeFactor = ((longEdge - 800f) / 2000f).coerceIn(0.3f, 1f)
-        val sharpen = config.sharpening * sizeFactor / (1f + sigmaAll * 40f)
+        val sceneSharpen = when (scene) {
+            EnhancementScene.LOW_LIGHT -> 0.6f
+            EnhancementScene.LANDSCAPE -> 1.15f
+            else -> 1f
+        }
+        val sharpen = config.sharpening * sceneSharpen * sizeFactor / (1f + sigmaAll * 40f)
+        val clarity = config.localContrast * if (scene == EnhancementScene.LANDSCAPE) 1.2f else 1f
+        val denoiseStrength = if (scene == EnhancementScene.LOW_LIGHT) {
+            min(1f, config.lumaNoiseReduction * 1.2f)
+        } else {
+            config.lumaNoiseReduction
+        }
 
         Plan(
             f = f, lw = lw, lh = lh, grids = grids,
             gainR = gainR, gainG = gainG, gainB = gainB,
             anchor = anchor, exposure = exposure, shadowC = shadowC,
             shadowDepth = max(depth, 1f),
-            clarity = config.localContrast,
+            clarity = clarity,
             sigmaShadow = sigmaShadow, sigmaAll = sigmaAll,
-            denoiseRadius = denoiseRadius, denoiseStrength = config.lumaNoiseReduction,
+            denoiseRadius = denoiseRadius, denoiseStrength = denoiseStrength,
             chromaStrength = config.chromaNoiseReduction,
             sharpenAmount = sharpen,
             vibrance = config.vibrance,
             clippedFraction = clipped.get().toFloat() / (w.toLong() * h).toFloat(),
+            scene = scene,
+            airR = hazeInfo?.get(0) ?: 0f,
+            airG = hazeInfo?.get(1) ?: 0f,
+            airB = hazeInfo?.get(2) ?: 0f,
+            dehaze = hazeInfo?.get(3) ?: 0f,
+            highlightStops = highlightStops,
+            faceCount = faces.size,
         )
+    }
+
+    /**
+     * Dark-channel haze estimate (He et al. 2009) on the white-balanced linear low-res image.
+     * Returns guided-filter coefficients of the transmission map (t = a · lPre + b) and
+     * [airR, airG, airB, strength], or null when the photo is not measurably hazy.
+     */
+    private fun estimateHaze(
+        r: FloatArray,
+        g: FloatArray,
+        b: FloatArray,
+        lPre: FloatArray,
+        lw: Int,
+        lh: Int,
+    ): Triple<FloatArray, FloatArray, FloatArray>? {
+        val n = lw * lh
+        if (n < 64) return null
+        val dark = FloatArray(n) { min(r[it], min(g[it], b[it])) }
+        val patch = max(2, max(lw, lh) / 48)
+        val darkPatch = minFilter(dark, lw, lh, patch)
+
+        // Airlight: mean colour of the haziest 0.2 % (by dark channel).
+        val threshold = quantileSorted(darkPatch.copyOf().also { it.sort() }, 0.998f)
+        var aR = 0f
+        var aG = 0f
+        var aB = 0f
+        var count = 0
+        var rowSum = 0L
+        for (i in 0 until n) {
+            if (darkPatch[i] < threshold) continue
+            aR += r[i]; aG += g[i]; aB += b[i]; count++
+            rowSum += i / lw
+        }
+        if (count == 0) return null
+        aR /= count; aG /= count; aB /= count
+        val aMin = min(aR, min(aG, aB))
+        // Atmospheric light is bright and lies towards the horizon/sky. Dim or low-lying "airlight"
+        // (indoor white walls, snow in the foreground, night scenes) breaks the prior, so skip.
+        if (aMin < MIN_AIRLIGHT) return null
+        if (rowSum.toFloat() / count > AIRLIGHT_MAX_ROW * lh) return null
+
+        // Haze level: median dark-channel ratio over the frame (≈ 1 − t for the typical pixel).
+        val ratio = FloatArray(n) { (darkPatch[it] / aMin).coerceIn(0f, 1f) }
+        val median = quantileSorted(ratio.copyOf().also { it.sort() }, 0.5f)
+        val strength = config.dehaze * smoothstep(HAZE_START, HAZE_FULL, median)
+        if (strength < 0.05f) return null
+
+        val airY = KR * aR + KG * aG + KB * aB
+        val t = FloatArray(n)
+        for (i in 0 until n) {
+            var ti = 1f - strength * 0.95f * ratio[i]
+            // Sky / light sources close to the airlight: the prior overestimates haze there.
+            val y = KR * r[i] + KG * g[i] + KB * b[i]
+            ti += (1f - ti) * smoothstep(0.75f, 0.95f, y / max(airY, 1e-4f))
+            t[i] = ti.coerceIn(MIN_TRANSMISSION, 1f)
+        }
+        val rad = max(2, max(lw, lh) / 40)
+        val (a, bb) = guidedCoefficients(lPre, t, lw, lh, rad, TRANSMISSION_EPS)
+        return Triple(a, bb, floatArrayOf(aR, aG, aB, strength))
     }
 
     /** Robust noise estimate (Immerkær Laplacian, 30th percentile) on sampled full-res rows. */
@@ -401,6 +589,7 @@ class LocalEnhancementPipeline(
         val pd = FloatArray(capacity)
         val hs = FloatArray(capacity)
         val hs2 = FloatArray(capacity)
+        val fm = FloatArray(capacity)
         val out = IntArray(width * STRIP_ROWS)
         val rowGrid = FloatArray(lw * GRID_CHANNELS)
     }
@@ -503,7 +692,8 @@ class LocalEnhancementPipeline(
                         val mn = min(min(min(n, s), min(e, wv)), min(min(nw, ne), min(min(sw, se), c)))
                         val mx = max(max(max(n, s), max(e, wv)), max(max(nw, ne), max(max(sw, se), c)))
                         val boost = if (hp > 0f) excess else -excess
-                        ps = (c + plan.sharpenAmount * SHARPEN_GAIN * boost).coerceIn(mn - 0.003f, mx + 0.003f)
+                        val amount = plan.sharpenAmount * (1f - FACE_SHARPEN_CUT * ws.fm[i])
+                        ps = (c + amount * SHARPEN_GAIN * boost).coerceIn(mn - 0.003f, mx + 0.003f)
                     }
                 }
                 var r = ws.r[i]
@@ -552,15 +742,33 @@ class LocalEnhancementPipeline(
         var r = LIN[(argb shr 16) and 0xFF] * plan.gainR
         var g = LIN[(argb shr 8) and 0xFF] * plan.gainG
         var b = LIN[argb and 0xFF] * plan.gainB
-        val y = KR * r + KG * g + KB * b
-        val l = log2(y + EPS)
-        val pOrig = ENC.get(y)
 
         val rg = ws.rowGrid
         val o0 = i0 * GRID_CHANNELS
         val o1 = min(i0 + 1, plan.lw - 1) * GRID_CHANNELS
 
-        val noiseHere = plan.sigmaAll + (plan.sigmaShadow - plan.sigmaAll) * (1f - (pOrig / 0.3f).coerceIn(0f, 1f))
+        // Haze removal with the scattering model; t comes from the edge-aware transmission map.
+        var transmission = 1f
+        if (plan.dehaze > 0f) {
+            val lPre = log2(KR * r + KG * g + KB * b + EPS)
+            transmission = (lerp(rg[o0 + 8], rg[o1 + 8], fx) * lPre + lerp(rg[o0 + 9], rg[o1 + 9], fx))
+                .coerceIn(MIN_TRANSMISSION, 1f)
+            if (transmission < 0.999f) {
+                val inv = 1f / transmission
+                r = max(0f, (r - plan.airR * (1f - transmission)) * inv)
+                g = max(0f, (g - plan.airG * (1f - transmission)) * inv)
+                b = max(0f, (b - plan.airB * (1f - transmission)) * inv)
+            }
+        }
+        val faceM = lerp(rg[o0 + 10], rg[o1 + 10], fx)
+        ws.fm[i] = faceM
+
+        val y = KR * r + KG * g + KB * b
+        val l = log2(y + EPS)
+        val pOrig = ENC.get(y)
+
+        val noiseHere = (plan.sigmaAll + (plan.sigmaShadow - plan.sigmaAll) * (1f - (pOrig / 0.3f).coerceIn(0f, 1f))) /
+            transmission
 
         // Chroma denoise: move towards the guided low-res chromaticity only within the noise band.
         if (plan.chromaStrength > 0f && y > 1e-6f) {
@@ -591,8 +799,15 @@ class LocalEnhancementPipeline(
         val mid = lerp(rg[o0 + 2], rg[o1 + 2], fx) * l + lerp(rg[o0 + 3], rg[o1 + 3], fx)
         val noiseFade = smoothstep(-9f, -6f, l)
         val highlightFade = 1f - 0.7f * smoothstep(-1f, 0f, base)
-        val k = plan.clarity * noiseFade * highlightFade
-        val lOut = toneCurve(plan, base) + (1f + k) * (mid - base) + (l - mid)
+        // Faces keep their natural micro-contrast: clarity there would exaggerate skin texture.
+        val k = plan.clarity * noiseFade * highlightFade * (1f - FACE_CLARITY_CUT * faceM)
+        var lOut = toneCurve(plan, base) + (1f + k) * (mid - base) + (l - mid)
+        if (plan.highlightStops > 0f && base > HIGHLIGHT_KNEE_STOPS && base < 0f) {
+            // Bump that is 0 at the knee and at white, so bright areas darken; it also fades out
+            // per pixel towards white so pixels that were clipped in the input stay exactly white.
+            val t = (base - HIGHLIGHT_KNEE_STOPS) / -HIGHLIGHT_KNEE_STOPS
+            lOut -= plan.highlightStops * 4f * t * (1f - t) * (1f - smoothstep(-0.08f, -0.005f, l))
+        }
         val ratio = exp2(lOut - l)
         r *= ratio; g *= ratio; b *= ratio
         val yOut = y * ratio
@@ -694,7 +909,8 @@ class LocalEnhancementPipeline(
                 val noiseVar = sigma * sigma
                 val k = if (variance > 1e-12f) max(0f, variance - noiseVar) / variance else 0f
                 val filtered = mean + k * (c - mean)
-                ws.pd[i] = c + plan.denoiseStrength * (filtered - c)
+                // Less smoothing on faces: noise reduction must not read as skin retouching.
+                ws.pd[i] = c + plan.denoiseStrength * (1f - FACE_DENOISE_CUT * ws.fm[i]) * (filtered - c)
             }
         }
     }
@@ -703,7 +919,7 @@ class LocalEnhancementPipeline(
         const val ANALYSIS_LONG_EDGE = 512
         const val STRIP_ROWS = 64
         const val MARGIN = 3
-        const val GRID_CHANNELS = 8
+        const val GRID_CHANNELS = 11
         const val ANALYSIS_PROGRESS = 0.15f
         const val CLIP_LEVEL = 254
         const val TARGET_MEDIAN_STOPS = -2.6f
@@ -714,6 +930,22 @@ class LocalEnhancementPipeline(
         const val CHROMA_RADIUS = 2
         const val CHROMA_EPS = 0.05f
         const val SHARPEN_GAIN = 1.6f
+        const val MIN_FACE_AREA = 0.002f
+        const val PORTRAIT_FACE_AREA = 0.015f
+        const val TARGET_FACE_STOPS = -2.0f
+        const val LOW_LIGHT_MEDIAN_STOPS = -5.0f
+        const val HIGH_CONTRAST_RANGE_STOPS = 6.5f
+        const val MAX_HIGHLIGHT_RECOVERY_STOPS = 0.45f
+        const val HIGHLIGHT_KNEE_STOPS = -2.5f
+        const val MIN_TRANSMISSION = 0.6f
+        const val MIN_AIRLIGHT = 0.35f
+        const val AIRLIGHT_MAX_ROW = 0.55f
+        const val HAZE_START = 0.08f
+        const val HAZE_FULL = 0.25f
+        const val TRANSMISSION_EPS = 0.01f
+        const val FACE_CLARITY_CUT = 0.65f
+        const val FACE_SHARPEN_CUT = 0.6f
+        const val FACE_DENOISE_CUT = 0.4f
         const val KR = 0.2126f
         const val KG = 0.7152f
         const val KB = 0.0722f
@@ -782,6 +1014,28 @@ class LocalEnhancementPipeline(
             if (sorted.isEmpty()) return 0f
             val idx = (q * (sorted.size - 1)).roundToInt().coerceIn(0, sorted.size - 1)
             return sorted[idx]
+        }
+
+        /** Separable min filter over a (2r+1)² window (edges clamped). */
+        fun minFilter(src: FloatArray, w: Int, h: Int, r: Int): FloatArray {
+            val tmp = FloatArray(w * h)
+            val out = FloatArray(w * h)
+            for (y in 0 until h) {
+                val o = y * w
+                for (x in 0 until w) {
+                    var m = Float.MAX_VALUE
+                    for (k in max(0, x - r)..min(w - 1, x + r)) m = min(m, src[o + k])
+                    tmp[o + x] = m
+                }
+            }
+            for (x in 0 until w) {
+                for (y in 0 until h) {
+                    var m = Float.MAX_VALUE
+                    for (k in max(0, y - r)..min(h - 1, y + r)) m = min(m, tmp[k * w + x])
+                    out[y * w + x] = m
+                }
+            }
+            return out
         }
 
         /** Mean box filter with edge-normalised windows (separable prefix sums). */

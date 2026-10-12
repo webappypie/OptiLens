@@ -112,8 +112,7 @@
     <string name="camera_merging">画像を合成中…</string>
     <string name="camera_boost_on">ブースト：オン（構図用）</string>
     <string name="camera_boost_off">ブースト：オフ</string>
-    <string name="camera_portrait_refining">ポートレートを調整中…</string>
-    <string name="camera_portrait_aperture">ポートレート %1$s</string>
+    <string name="camera_portrait_refining">撮影中…</string>
     <string name="hint_hold_steady">しっかり構えて</string>
     <string name="hint_night">夜景モード推奨</string>
     <string name="hint_backlight">逆光</string>
@@ -339,4 +338,15 @@
     <plurals name="camera_portrait_faces">
         <item quantity="other">ポートレート（顔 %1$d）</item>
     </plurals>
+    <string name="mode_landscape">風景</string>
+    <string name="note_highlights">明るい部分を抑え、ディテールを保持</string>
+    <string name="note_haze">遠景のかすみを軽減</string>
+    <string name="note_faces">顔は自然なまま：露出を調整、肌の質感はそのまま</string>
+    <string name="note_low_light">暗所：ノイズ低減を強め、シャープ化は控えめ</string>
+    <string name="camera_ev_value">%1$+.1f EV</string>
+    <string name="camera_focus_locked">AE/AFロック</string>
+    <string name="camera_portrait_blur_device">端末の深度によるぼかし</string>
+    <string name="camera_portrait_no_blur">この端末では背景ぼかし非対応</string>
+    <string name="camera_landscape_label">風景：高コントラスト時は自動HDR</string>
+    <string name="camera_landscape_merging">フレームを合成中…</string>
 </resources>

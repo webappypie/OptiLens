@@ -18,6 +18,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.navigation.NavHostController
+import androidx.navigation.NavOptionsBuilder
 import androidx.navigation.compose.rememberNavController
 import com.webappypie.optilens.core.common.performance.StartupMetricsTracker
 import com.webappypie.optilens.core.logging.AppLogger
@@ -174,12 +176,12 @@ fun OptiLensNavigationShell(
             },
             cameraScreen = {
                 CameraScreen(
-                    onNavigateToSettings = { navController.navigate(AppDestination.Settings) },
-                    onNavigateToGallery  = { navController.navigate(AppDestination.Gallery) },
-                    onNavigateToPhotoReview = { uri -> navController.navigate(AppDestination.PhotoDetail(uri)) },
-                    onNavigateToAiTools = { navController.navigate(AppDestination.AiTools()) },
+                    onNavigateToSettings = { navController.navigateSafely(AppDestination.Settings) },
+                    onNavigateToGallery  = { navController.navigateSafely(AppDestination.Gallery) },
+                    onNavigateToPhotoReview = { uri -> navController.navigateSafely(AppDestination.PhotoDetail(uri)) },
+                    onNavigateToAiTools = { navController.navigateSafely(AppDestination.AiTools()) },
                     onNavigateToCaptureReview = { uri ->
-                        navController.navigate(AppDestination.PhotoDetail(uri, fromCapture = true)) {
+                        navController.navigateSafely(AppDestination.PhotoDetail(uri, fromCapture = true)) {
                             launchSingleTop = true
                         }
                     },
@@ -194,43 +196,43 @@ fun OptiLensNavigationShell(
                 PhotoReviewScreen(
                     photoUri = detail.photoUri,
                     fromCapture = detail.fromCapture,
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.popSafely() },
                     onNavigateToAiTools = { uri ->
-                        navController.navigate(AppDestination.AiTools(photoUri = uri))
+                        navController.navigateSafely(AppDestination.AiTools(photoUri = uri))
                     },
                 )
             },
             galleryScreen = {
                 GalleryScreen(
-                    onNavigateBack = { navController.popBackStack() },
-                    onNavigateToCamera = { navController.popBackStack() },
-                    onNavigateToPhotoDetail = { uri -> navController.navigate(AppDestination.PhotoDetail(uri)) },
+                    onNavigateBack = { navController.popSafely() },
+                    onNavigateToCamera = { navController.popSafely() },
+                    onNavigateToPhotoDetail = { uri -> navController.navigateSafely(AppDestination.PhotoDetail(uri)) },
                 )
             },
             settingsScreen = {
                 SettingsScreen(
                     appSettings = appSettings,
-                    onNavigateBack = { navController.popBackStack() },
-                    onNavigateToPro = { navController.navigate(AppDestination.ProUpgrade) },
-                    onNavigateToDiagnostics = { navController.navigate(AppDestination.CameraDiagnostics) },
+                    onNavigateBack = { navController.popSafely() },
+                    onNavigateToPro = { navController.navigateSafely(AppDestination.ProUpgrade) },
+                    onNavigateToDiagnostics = { navController.navigateSafely(AppDestination.CameraDiagnostics) },
                 )
             },
             aiToolsScreen = { destination ->
                 AiToolsScreen(
                     photoUri = destination.photoUri,
-                    onNavigateBack = { navController.popBackStack() },
-                    onNavigateToUpgrade = { navController.navigate(AppDestination.ProUpgrade) },
+                    onNavigateBack = { navController.popSafely() },
+                    onNavigateToUpgrade = { navController.navigateSafely(AppDestination.ProUpgrade) },
                 )
             },
             proUpgradeScreen = {
                 ProUpgradeScreen(
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.popSafely() },
                 )
             },
             cameraDiagnosticsScreen = {
                 CameraDiagnosticsScreen(
                     viewModel = hiltViewModel(),
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.popSafely() },
                 )
             },
         )
@@ -253,4 +255,23 @@ fun OptiLensNavigationShell(
             )
         }
     }
+}
+
+/**
+ * Navigates only from a settled (resumed) screen and never stacks the same destination twice, so a
+ * double tap cannot open a screen twice or act on a screen that is already leaving.
+ */
+private fun NavHostController.navigateSafely(route: AppDestination, builder: NavOptionsBuilder.() -> Unit = {}) {
+    if (currentBackStackEntry?.lifecycle?.currentState != Lifecycle.State.RESUMED) return
+    navigate(route) {
+        launchSingleTop = true
+        builder()
+    }
+}
+
+/** Pops the current screen unless it is the root (popping the root left a blank screen) or already leaving. */
+private fun NavHostController.popSafely() {
+    if (previousBackStackEntry == null) return
+    if (currentBackStackEntry?.lifecycle?.currentState != Lifecycle.State.RESUMED) return
+    popBackStack()
 }

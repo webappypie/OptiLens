@@ -1,6 +1,7 @@
 package com.webappypie.optilens.core.imaging.enhance
 
 import android.graphics.Bitmap
+import com.webappypie.optilens.core.camera.analysis.face.StillImageFaceDetector
 import com.webappypie.optilens.core.common.coroutines.AppDispatchers
 import com.webappypie.optilens.core.logging.AppLogger
 import kotlinx.coroutines.withContext
@@ -19,13 +20,18 @@ data class EnhancementResult(
  * On-device photo enhancement (no network, no model download, no ads): runs
  * [LocalEnhancementPipeline] on a Bitmap. See that class for the algorithm.
  *
+ * Faces are located first with the bundled on-device detector ([StillImageFaceDetector]) so the
+ * pipeline can meter them and keep skin texture; without a detector (tests) or on any failure the
+ * photo is enhanced without face protection.
+ *
  * Work is split into row strips processed on up to 6 cores; the worker count is lowered
- * when the heap is tight (each worker needs ≈ 48 bytes × width × 70 rows).
+ * when the heap is tight (each worker needs ≈ 52 bytes × width × 70 rows).
  */
 @Singleton
 class OnDeviceEnhancementEngine @Inject constructor(
     private val dispatchers: AppDispatchers,
     private val logger: AppLogger,
+    private val faceDetector: StillImageFaceDetector? = null,
 ) {
     companion object {
         private const val TAG = "OnDeviceEnhancementEngine"
@@ -70,13 +76,23 @@ class OnDeviceEnhancementEngine @Inject constructor(
 
         val workers = workerCount(width)
         try {
-            val report = LocalEnhancementPipeline(config).process(source, sink, workers, onProgress)
+            val faces = try {
+                faceDetector?.detect(input).orEmpty().map { FaceRegion(it.left, it.top, it.right, it.bottom) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.w(TAG, "Face detection skipped: ${e.message}")
+                emptyList()
+            }
+            val report = LocalEnhancementPipeline(config, EnhancementHints(faces)).process(source, sink, workers, onProgress)
             logger.i(
                 TAG,
                 "Enhanced ${width}x$height with $workers workers: analysis ${report.analysisMs} ms, " +
                     "render ${report.renderMs} ms, exposure ${"%.2f".format(report.exposureStops)} EV, " +
                     "noise ${"%.4f".format(report.shadowNoiseSigma)}, denoise r=${report.lumaDenoiseRadius}, " +
-                    "clipped ${"%.1f".format(report.clippedHighlightFraction * 100)}%",
+                    "clipped ${"%.1f".format(report.clippedHighlightFraction * 100)}%, scene ${report.scene}, " +
+                    "dehaze ${"%.2f".format(report.dehazeStrength)}, highlights -${"%.2f".format(report.highlightRecoveryStops)} EV, " +
+                    "faces ${report.facesProtected}",
             )
             EnhancementResult(output, report)
         } catch (t: Throwable) {
@@ -90,7 +106,7 @@ class OnDeviceEnhancementEngine @Inject constructor(
     private fun workerCount(width: Int): Int {
         val runtime = Runtime.getRuntime()
         val free = runtime.maxMemory() - (runtime.totalMemory() - runtime.freeMemory())
-        val perWorker = 48L * width * (LocalEnhancementPipeline.STRIP_ROWS + 2 * LocalEnhancementPipeline.MARGIN)
+        val perWorker = 52L * width * (LocalEnhancementPipeline.STRIP_ROWS + 2 * LocalEnhancementPipeline.MARGIN)
         val byMemory = (free / 3 / max(1L, perWorker)).toInt()
         val cores = runtime.availableProcessors()
         return min(MAX_WORKERS, min(cores, byMemory)).coerceAtLeast(1)

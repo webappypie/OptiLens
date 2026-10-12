@@ -61,6 +61,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.withResumed
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -112,6 +113,8 @@ fun PhotoReviewScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var confirmRetake by rememberSaveable { mutableStateOf(false) }
     var confirmLeave by rememberSaveable { mutableStateOf(false) }
+    // "Save" in the leave dialog: close the screen once the save has actually succeeded.
+    var leaveAfterSave by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(photoUri) {
         viewModel.loadPhoto(photoUri)
@@ -122,8 +125,22 @@ fun PhotoReviewScreen(
             viewModel.clearMessage()
         }
     }
+    // Automatic closes wait until the screen is resumed again (e.g. after the system delete
+    // dialog); navigation ignores requests from screens that are not resumed.
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(uiState.isDiscarded) {
-        if (uiState.isDiscarded) onNavigateBack()
+        if (uiState.isDiscarded) lifecycle.withResumed { onNavigateBack() }
+    }
+    LaunchedEffect(leaveAfterSave, uiState.isSaved, uiState.errorMessage) {
+        if (!leaveAfterSave) return@LaunchedEffect
+        if (uiState.isSaved) {
+            // Navigate before clearing the flag: it is an effect key, and clearing it first would
+            // cancel this coroutine while it waits for RESUMED.
+            lifecycle.withResumed { onNavigateBack() }
+            leaveAfterSave = false
+        } else if (uiState.errorMessage != null) {
+            leaveAfterSave = false // stay so the user sees the error and can retry
+        }
     }
     val deleteConsentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartIntentSenderForResult(),
@@ -336,6 +353,7 @@ fun PhotoReviewScreen(
             confirmButton = {
                 TextButton(onClick = {
                     confirmLeave = false
+                    leaveAfterSave = true
                     viewModel.saveEnhanced()
                 }) { Text(stringResource(R.string.common_save)) }
             },
@@ -351,7 +369,7 @@ fun PhotoReviewScreen(
 
 private enum class PanelState { IDLE, PROCESSING, RESULT }
 
-private val CAPTURE_NOTE = Regex("^(Night|HDR|Moon) · (\\d+)-frame merge(, tone-mapped)?$")
+private val CAPTURE_NOTE = Regex("^(Night|HDR|Moon|Landscape) · (\\d+)-frame merge(, tone-mapped)?$")
 
 /** Rebuilds the EXIF capture note ("Night · 4-frame merge, tone-mapped") in the user's language. */
 @Composable
@@ -361,6 +379,7 @@ private fun localizedCaptureProcessing(raw: String): String {
         when (match.groupValues[1]) {
             "Night" -> R.string.mode_night
             "HDR" -> R.string.mode_hdr
+            "Landscape" -> R.string.mode_landscape
             else -> R.string.mode_moon
         },
     )

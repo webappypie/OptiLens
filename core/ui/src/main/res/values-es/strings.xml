@@ -112,8 +112,7 @@
     <string name="camera_merging">Combinando fotogramas…</string>
     <string name="camera_boost_on">Boost: activado (encuadre)</string>
     <string name="camera_boost_off">Boost: desactivado</string>
-    <string name="camera_portrait_refining">Afinando el retrato…</string>
-    <string name="camera_portrait_aperture">Retrato %1$s</string>
+    <string name="camera_portrait_refining">Capturando…</string>
     <string name="hint_hold_steady">Mantén firme</string>
     <string name="hint_night">Se recomienda Noche</string>
     <string name="hint_backlight">Contraluz</string>
@@ -342,4 +341,15 @@
         <item quantity="one">Retrato (%1$d cara)</item>
         <item quantity="other">Retrato (%1$d caras)</item>
     </plurals>
+    <string name="mode_landscape">Paisaje</string>
+    <string name="note_highlights">Zonas brillantes suavizadas, detalle conservado</string>
+    <string name="note_haze">Neblina reducida en zonas lejanas</string>
+    <string name="note_faces">Rostros naturales: exposición equilibrada, textura de la piel intacta</string>
+    <string name="note_low_light">Poca luz: más reducción de ruido, enfoque suave</string>
+    <string name="camera_ev_value">%1$+.1f EV</string>
+    <string name="camera_focus_locked">BLOQUEO AE/AF</string>
+    <string name="camera_portrait_blur_device">Desenfoque por profundidad del dispositivo</string>
+    <string name="camera_portrait_no_blur">Sin desenfoque de fondo en este dispositivo</string>
+    <string name="camera_landscape_label">Paisaje: HDR automático con alto contraste</string>
+    <string name="camera_landscape_merging">Combinando fotogramas…</string>
 </resources>

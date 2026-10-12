@@ -22,6 +22,8 @@ import androidx.camera.core.MeteringPoint
 import androidx.camera.core.Preview
 import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.extensions.ExtensionMode
+import androidx.camera.extensions.ExtensionsManager
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
@@ -105,7 +107,8 @@ import kotlin.coroutines.resume
  * - Hardware-derived truthful zoom stops (optical vs digital crop).
  * - Live 64-bin luminance histogram via non-blocking [ImageAnalysis].
  * - Pro photography manual overrides (ISO, Shutter, Focus, WB, EV) via [Camera2CameraControl].
- * - Tap-to-focus and metering.
+ * - Tap-to-focus/exposure/white-balance metering with optional AE/AF lock.
+ * - Portrait background blur only through the device's own CameraX Bokeh extension.
  * - Exposure compensation.
  * - Flash and torch modes.
  * - Orientation awareness and background MediaStore saving.
@@ -220,6 +223,13 @@ class CameraXController @Inject constructor(
     private var portraitPolicyPreference: PortraitPolicyPreference = PortraitPolicyPreference.AUTO
     private var portraitAperture: PortraitAperture = PortraitAperture.DEFAULT
     private var portraitSkinSmoothingStrength: Float = 0.25f
+
+    private val _portraitBlurActive = MutableStateFlow(false)
+    override val portraitBlurActive: Flow<Boolean> = _portraitBlurActive.asStateFlow()
+
+    /** Lazily obtained; null when the device has no extensions support or it failed to load. */
+    private var extensionsManager: ExtensionsManager? = null
+    private var extensionsManagerLoaded = false
 
     private val _isPreviewBoostActive = MutableStateFlow(false)
     override val isPreviewBoostActive: Flow<Boolean> = _isPreviewBoostActive.asStateFlow()
@@ -472,12 +482,24 @@ class CameraXController @Inject constructor(
                 CameraSelector.DEFAULT_BACK_CAMERA
             }
 
+            // Portrait uses the OEM Bokeh extension (real depth/segmentation) when this lens has one.
+            // RAW cannot be combined with extensions, so RAW capture keeps the plain session.
+            val bokehSelector = if (
+                _activeCameraMode.value == com.webappypie.optilens.core.camera.model.CameraMode.PORTRAIT &&
+                !_proState.value.isRawEnabled
+            ) {
+                bokehSelectorFor(provider, selector)
+            } else {
+                null
+            }
+
             // Unbind previous use cases safely before re-binding
             provider.unbindAll()
 
-            // 1. Build Preview Use Case (with a metering callback for shutter/ISO priority)
+            // 1. Build Preview Use Case (with a metering callback for shutter/ISO priority; not
+            // with an extension, whose vendor session does not support interop callbacks).
             val previewBuilder = Preview.Builder().setResolutionSelector(resolutionSelectorFor(captureAspectRatio))
-            Camera2Interop.Extender(previewBuilder).setSessionCaptureCallback(meteringCallback)
+            if (bokehSelector == null) Camera2Interop.Extender(previewBuilder).setSessionCaptureCallback(meteringCallback)
             val preview = previewBuilder.build()
             preview.setSurfaceProvider(surfaceProvider)
             previewUseCase = preview
@@ -489,7 +511,7 @@ class CameraXController @Inject constructor(
                 .setFlashMode(flashModeToCameraX(_flashMode.value))
 
             // Configure RAW output format if requested and supported
-            if (_proState.value.isRawEnabled && _proState.value.isRawSupported) {
+            if (bokehSelector == null && _proState.value.isRawEnabled && _proState.value.isRawSupported) {
                 try {
                     val rawFormat = if (_proState.value.saveCompanionJpeg) {
                         ImageCapture.OUTPUT_FORMAT_RAW_JPEG
@@ -549,14 +571,28 @@ class CameraXController @Inject constructor(
             analysis.setAnalyzer(analysisExecutor, analyzer)
             imageAnalysisUseCase = analysis
 
-            // 5. Bind to Lifecycle
-            val boundCamera = provider.bindToLifecycle(
-                lifecycleOwner,
-                selector,
-                preview,
-                capture,
-                analysis,
-            )
+            // 5. Bind to Lifecycle. With the Bokeh extension, analysis is bound only where the
+            // vendor supports it; any extension bind failure falls back to the plain session.
+            var boundWithBokeh = false
+            val boundCamera = if (bokehSelector != null) {
+                try {
+                    val withAnalysis = extensionsManager?.isImageAnalysisSupported(selector, ExtensionMode.BOKEH) == true
+                    val cam = if (withAnalysis) {
+                        provider.bindToLifecycle(lifecycleOwner, bokehSelector, preview, capture, analysis)
+                    } else {
+                        provider.bindToLifecycle(lifecycleOwner, bokehSelector, preview, capture)
+                    }
+                    boundWithBokeh = true
+                    cam
+                } catch (e: Exception) {
+                    logger.w(TAG, "Bokeh extension bind failed, using the standard session: ${e.message}")
+                    provider.unbindAll()
+                    provider.bindToLifecycle(lifecycleOwner, selector, preview, capture, analysis)
+                }
+            } else {
+                provider.bindToLifecycle(lifecycleOwner, selector, preview, capture, analysis)
+            }
+            _portraitBlurActive.value = boundWithBokeh
             camera = boundCamera
 
             // Limits and zoom stops must describe the camera just bound (also after a flip),
@@ -594,8 +630,8 @@ class CameraXController @Inject constructor(
             // 5. Observe zoom and exposure bounds
             setupCameraStateObservers(boundCamera)
 
-            // 6. Re-apply any active manual Pro parameters
-            applyCamera2CaptureOptions()
+            // 6. Re-apply any active manual Pro parameters (interop is not used with an extension)
+            if (!boundWithBokeh) applyCamera2CaptureOptions()
 
             _sessionState.value = CameraSessionState.PREVIEW_ACTIVE
             logger.i(TAG, "Camera preview successfully bound to lifecycle.")
@@ -617,22 +653,81 @@ class CameraXController @Inject constructor(
         }
     }
 
-    override suspend fun focusAndMeter(meteringPoint: MeteringPoint): OptiResult<Unit> = withContext(dispatchers.main) {
-        val control = camera?.cameraControl ?: return@withContext OptiResult.Error(
+    override suspend fun focusAndMeter(meteringPoint: MeteringPoint): OptiResult<Unit> =
+        focusAndMeter(meteringPoint, lock = false).map { }
+
+    override suspend fun focusAndMeter(meteringPoint: MeteringPoint, lock: Boolean): OptiResult<Boolean> = withContext(dispatchers.main) {
+        val cam = camera ?: return@withContext OptiResult.Error(
             OptiError.CameraUnavailable("Camera not active")
         )
 
         try {
-            val action = FocusMeteringAction.Builder(meteringPoint, FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE)
-                .setAutoCancelDuration(4, TimeUnit.SECONDS)
-                .build()
-
-            control.startFocusAndMetering(action)
-            logger.d(TAG, "Focus and metering triggered")
-            OptiResult.Success(Unit)
+            // A manual focus distance (Pro) must not be overridden by AF; meter exposure/WB only.
+            val manualFocus = _proState.value.focusDistanceDiopters != null
+            var flags = FocusMeteringAction.FLAG_AE or FocusMeteringAction.FLAG_AWB
+            if (!manualFocus && !_lensMetadata.value.isFixedFocus) flags = flags or FocusMeteringAction.FLAG_AF
+            val builder = FocusMeteringAction.Builder(meteringPoint, flags)
+            if (lock) builder.disableAutoCancel() else builder.setAutoCancelDuration(FOCUS_AUTO_CANCEL_S, TimeUnit.SECONDS)
+            val action = builder.build()
+            if (!cam.cameraInfo.isFocusMeteringSupported(action)) {
+                return@withContext OptiResult.Success(false)
+            }
+            val future = cam.cameraControl.startFocusAndMetering(action)
+            // Wait (bounded) for the lens to report the result so the UI can show lock/fail.
+            val focused = withTimeoutOrNull(FOCUS_RESULT_TIMEOUT_MS) {
+                suspendCancellableCoroutine<Boolean> { cont ->
+                    future.addListener({
+                        val ok = try { future.get().isFocusSuccessful } catch (_: Exception) { false }
+                        if (cont.isActive) cont.resume(ok)
+                    }, ContextCompat.getMainExecutor(context))
+                }
+            } ?: false
+            OptiResult.Success(focused || manualFocus)
         } catch (e: Exception) {
             logger.w(TAG, "Focus and metering failed: ${e.message}")
             OptiResult.Error(OptiError.Unknown(cause = e, message = "Tap-to-focus failed"))
+        }
+    }
+
+    override suspend fun cancelFocusAndMetering() {
+        withContext(dispatchers.main) {
+            try {
+                camera?.cameraControl?.cancelFocusAndMetering()
+            } catch (e: Exception) {
+                logger.w(TAG, "Cancel focus and metering failed: ${e.message}")
+            }
+        }
+    }
+
+    /** Extension-enabled selector for Portrait blur on this lens, or null when unsupported. */
+    private suspend fun bokehSelectorFor(provider: ProcessCameraProvider, base: CameraSelector): CameraSelector? {
+        if (!extensionsManagerLoaded) {
+            extensionsManagerLoaded = true
+            extensionsManager = try {
+                withTimeoutOrNull(EXTENSIONS_LOAD_TIMEOUT_MS) {
+                    suspendCancellableCoroutine<ExtensionsManager?> { cont ->
+                        val future = ExtensionsManager.getInstanceAsync(context, provider)
+                        future.addListener({
+                            val manager = try { future.get() } catch (_: Exception) { null }
+                            if (cont.isActive) cont.resume(manager)
+                        }, ContextCompat.getMainExecutor(context))
+                    }
+                }
+            } catch (e: Exception) {
+                logger.w(TAG, "ExtensionsManager unavailable: ${e.message}")
+                null
+            }
+        }
+        val manager = extensionsManager ?: return null
+        return try {
+            if (manager.isExtensionAvailable(base, ExtensionMode.BOKEH)) {
+                manager.getExtensionEnabledCameraSelector(base, ExtensionMode.BOKEH)
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            logger.w(TAG, "Bokeh extension query failed: ${e.message}")
+            null
         }
     }
 
@@ -1321,13 +1416,31 @@ class CameraXController @Inject constructor(
     }
 
     override suspend fun setCameraMode(mode: com.webappypie.optilens.core.camera.model.CameraMode): OptiResult<Unit> = withContext(dispatchers.main) {
+        val previous = _activeCameraMode.value
         _activeCameraMode.value = mode
+        if (previous == mode) return@withContext OptiResult.Success(Unit)
+        // A tap/lock from the previous mode must not carry over.
+        try {
+            camera?.cameraControl?.cancelFocusAndMetering()
+        } catch (_: Exception) {
+        }
+        // Entering or leaving Portrait switches the Bokeh extension session (only where it exists).
+        val portrait = com.webappypie.optilens.core.camera.model.CameraMode.PORTRAIT
+        val provider = cameraProvider
+        val needsBokeh = mode == portrait && provider != null && !_proState.value.isRawEnabled &&
+            bokehSelectorFor(provider, if (_isFrontCamera) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA) != null
+        if (needsBokeh != _portraitBlurActive.value && currentLifecycleOwner != null && currentSurfaceProvider != null) {
+            return@withContext startPreview()
+        }
         OptiResult.Success(Unit)
     }
 
     companion object {
         private const val TAG = "CameraXController"
         private const val OPTIONS_APPLY_TIMEOUT_MS = 1_000L
+        private const val FOCUS_AUTO_CANCEL_S = 5L
+        private const val FOCUS_RESULT_TIMEOUT_MS = 3_000L
+        private const val EXTENSIONS_LOAD_TIMEOUT_MS = 3_000L
         private const val SCENE_MODE_MAX_BOOST_FACTOR = 4.0
         private const val SCENE_MODE_SLOWEST_SHUTTER_NS = 16_666_667L // 1/60 s
     }

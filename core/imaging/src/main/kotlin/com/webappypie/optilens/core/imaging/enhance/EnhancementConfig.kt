@@ -28,6 +28,16 @@ data class EnhancementConfig(
     val vibrance: Float = 0.15f,
     /** Reduces vibrance on skin-coloured pixels. */
     val preserveSkinTones: Boolean = true,
+    /**
+     * 0..1: atmospheric haze removal (dark-channel prior, linear light). Runs only when haze is
+     * measured, never on photos with faces, and transmission is floored so distant detail is
+     * restored without the "over-processed" look.
+     */
+    val dehaze: Float = 0.6f,
+    /** 0..1: compression of bright-but-unclipped areas (sky, windows); clipped pixels stay white. */
+    val highlightRecovery: Float = 0.7f,
+    /** Uses detected faces (when provided) to keep skin texture: less clarity, sharpening and denoise there. */
+    val protectFaces: Boolean = true,
 ) {
     companion object {
         val BALANCED = EnhancementConfig()
@@ -39,6 +49,23 @@ data class EnhancementConfig(
             shadowRecovery = 0.3f,
             localContrast = 0.2f,
             lumaNoiseReduction = 0.3f,
+            dehaze = 0.3f,
+            highlightRecovery = 0.3f,
         )
     }
 }
+
+/** A detected face in normalised image coordinates (0..1, same orientation as the bitmap). */
+data class FaceRegion(val left: Float, val top: Float, val right: Float, val bottom: Float) {
+    val area: Float get() = (right - left).coerceAtLeast(0f) * (bottom - top).coerceAtLeast(0f)
+}
+
+/** Optional measurements from outside the pipeline (e.g. on-device face detection). */
+data class EnhancementHints(val faces: List<FaceRegion> = emptyList()) {
+    companion object {
+        val NONE = EnhancementHints()
+    }
+}
+
+/** Scene type the pipeline measured; drives which corrections are emphasised. */
+enum class EnhancementScene { GENERAL, PORTRAIT, LANDSCAPE, LOW_LIGHT, HIGH_CONTRAST }

@@ -111,8 +111,7 @@
     <string name="camera_merging">Merging frames…</string>
     <string name="camera_boost_on">Boost: on (framing)</string>
     <string name="camera_boost_off">Boost: off</string>
-    <string name="camera_portrait_refining">Refining portrait…</string>
-    <string name="camera_portrait_aperture">Portrait %1$s</string>
+    <string name="camera_portrait_refining">Capturing…</string>
     <string name="hint_hold_steady">Hold steady</string>
     <string name="hint_night">Night suggested</string>
     <string name="hint_backlight">Backlight</string>
@@ -341,4 +340,15 @@
         <item quantity="one">Portrait (%1$d face)</item>
         <item quantity="other">Portrait (%1$d faces)</item>
     </plurals>
+    <string name="mode_landscape">Landscape</string>
+    <string name="note_highlights">Bright areas toned down, detail kept</string>
+    <string name="note_haze">Haze reduced in distant areas</string>
+    <string name="note_faces">Faces kept natural: exposure balanced, skin texture untouched</string>
+    <string name="note_low_light">Low light: stronger noise reduction, gentle sharpening</string>
+    <string name="camera_ev_value">%1$+.1f EV</string>
+    <string name="camera_focus_locked">AE/AF LOCK</string>
+    <string name="camera_portrait_blur_device">Depth blur by device</string>
+    <string name="camera_portrait_no_blur">No background blur on this device</string>
+    <string name="camera_landscape_label">Landscape: auto HDR in high contrast</string>
+    <string name="camera_landscape_merging">Merging frames…</string>
 </resources>

@@ -243,6 +243,11 @@ class CaptureStrategyEngine {
                 recommendedFrameCount = 1,
                 exposureEvOffsets = listOf(0),
             )
+            com.webappypie.optilens.core.camera.model.CameraMode.LANDSCAPE -> CaptureStrategy(
+                mode = CaptureStrategyMode.SINGLE_FRAME,
+                recommendedFrameCount = 1,
+                exposureEvOffsets = listOf(0),
+            )
             com.webappypie.optilens.core.camera.model.CameraMode.PRO -> CaptureStrategy(
                 mode = CaptureStrategyMode.SINGLE_FRAME,
                 recommendedFrameCount = 1,

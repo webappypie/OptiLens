@@ -112,8 +112,7 @@
     <string name="camera_merging">फ़्रेम मिलाए जा रहे हैं…</string>
     <string name="camera_boost_on">बूस्ट: चालू (फ़्रेमिंग)</string>
     <string name="camera_boost_off">बूस्ट: बंद</string>
-    <string name="camera_portrait_refining">पोर्ट्रेट निखारा जा रहा है…</string>
-    <string name="camera_portrait_aperture">पोर्ट्रेट %1$s</string>
+    <string name="camera_portrait_refining">कैप्चर हो रहा है…</string>
     <string name="hint_hold_steady">स्थिर रखें</string>
     <string name="hint_night">नाइट मोड सुझाया गया</string>
     <string name="hint_backlight">बैकलाइट</string>
@@ -342,4 +341,15 @@
         <item quantity="one">पोर्ट्रेट (%1$d चेहरा)</item>
         <item quantity="other">पोर्ट्रेट (%1$d चेहरे)</item>
     </plurals>
+    <string name="mode_landscape">लैंडस्केप</string>
+    <string name="note_highlights">चमकीले हिस्से संतुलित, विवरण बरकरार</string>
+    <string name="note_haze">दूर के हिस्सों में धुंध कम की गई</string>
+    <string name="note_faces">चेहरे स्वाभाविक: एक्सपोज़र संतुलित, त्वचा की बनावट अपरिवर्तित</string>
+    <string name="note_low_light">कम रोशनी: अधिक नॉइज़ रिडक्शन, हल्की शार्पनिंग</string>
+    <string name="camera_ev_value">%1$+.1f EV</string>
+    <string name="camera_focus_locked">AE/AF लॉक</string>
+    <string name="camera_portrait_blur_device">डिवाइस द्वारा डेप्थ ब्लर</string>
+    <string name="camera_portrait_no_blur">इस डिवाइस पर बैकग्राउंड ब्लर उपलब्ध नहीं</string>
+    <string name="camera_landscape_label">लैंडस्केप: हाई कॉन्ट्रास्ट में ऑटो HDR</string>
+    <string name="camera_landscape_merging">फ़्रेम मिलाए जा रहे हैं…</string>
 </resources>

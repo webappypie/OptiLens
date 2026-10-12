@@ -112,8 +112,7 @@
     <string name="camera_merging">Bilder werden kombiniert…</string>
     <string name="camera_boost_on">Boost: an (Bildausschnitt)</string>
     <string name="camera_boost_off">Boost: aus</string>
-    <string name="camera_portrait_refining">Porträt wird verfeinert…</string>
-    <string name="camera_portrait_aperture">Porträt %1$s</string>
+    <string name="camera_portrait_refining">Aufnahme…</string>
     <string name="hint_hold_steady">Ruhig halten</string>
     <string name="hint_night">Nachtmodus empfohlen</string>
     <string name="hint_backlight">Gegenlicht</string>
@@ -342,4 +341,15 @@
         <item quantity="one">Porträt (%1$d Gesicht)</item>
         <item quantity="other">Porträt (%1$d Gesichter)</item>
     </plurals>
+    <string name="mode_landscape">Landschaft</string>
+    <string name="note_highlights">Helle Bereiche abgemildert, Details erhalten</string>
+    <string name="note_haze">Dunst in der Ferne verringert</string>
+    <string name="note_faces">Gesichter natürlich belassen: Belichtung ausgeglichen, Hautstruktur unverändert</string>
+    <string name="note_low_light">Wenig Licht: stärkere Rauschminderung, sanfte Schärfung</string>
+    <string name="camera_ev_value">%1$+.1f EV</string>
+    <string name="camera_focus_locked">AE/AF-SPERRE</string>
+    <string name="camera_portrait_blur_device">Tiefenunschärfe vom Gerät</string>
+    <string name="camera_portrait_no_blur">Keine Hintergrundunschärfe auf diesem Gerät</string>
+    <string name="camera_landscape_label">Landschaft: Auto-HDR bei hohem Kontrast</string>
+    <string name="camera_landscape_merging">Bilder werden kombiniert…</string>
 </resources>

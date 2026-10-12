@@ -11,6 +11,7 @@ val CameraMode.labelRes: Int
         CameraMode.PHOTO -> R.string.mode_photo
         CameraMode.NIGHT -> R.string.mode_night
         CameraMode.PORTRAIT -> R.string.mode_portrait
+        CameraMode.LANDSCAPE -> R.string.mode_landscape
         CameraMode.BEST_SHOT -> R.string.mode_best_shot
         CameraMode.PET -> R.string.mode_pet
         CameraMode.FOOD -> R.string.mode_food

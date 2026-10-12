@@ -112,8 +112,7 @@
     <string name="camera_merging">Fusion des images…</string>
     <string name="camera_boost_on">Boost : activé (cadrage)</string>
     <string name="camera_boost_off">Boost : désactivé</string>
-    <string name="camera_portrait_refining">Affinage du portrait…</string>
-    <string name="camera_portrait_aperture">Portrait %1$s</string>
+    <string name="camera_portrait_refining">Capture…</string>
     <string name="hint_hold_steady">Restez stable</string>
     <string name="hint_night">Mode Nuit conseillé</string>
     <string name="hint_backlight">Contre-jour</string>
@@ -342,4 +341,15 @@
         <item quantity="one">Portrait (%1$d visage)</item>
         <item quantity="other">Portrait (%1$d visages)</item>
     </plurals>
+    <string name="mode_landscape">Paysage</string>
+    <string name="note_highlights">Zones claires atténuées, détails conservés</string>
+    <string name="note_haze">Brume réduite au loin</string>
+    <string name="note_faces">Visages naturels : exposition équilibrée, texture de peau intacte</string>
+    <string name="note_low_light">Faible lumière : réduction du bruit renforcée, netteté douce</string>
+    <string name="camera_ev_value">%1$+.1f EV</string>
+    <string name="camera_focus_locked">VERROU AE/AF</string>
+    <string name="camera_portrait_blur_device">Flou de profondeur par l\'appareil</string>
+    <string name="camera_portrait_no_blur">Pas de flou d\'arrière-plan sur cet appareil</string>
+    <string name="camera_landscape_label">Paysage : HDR auto en fort contraste</string>
+    <string name="camera_landscape_merging">Fusion des images…</string>
 </resources>

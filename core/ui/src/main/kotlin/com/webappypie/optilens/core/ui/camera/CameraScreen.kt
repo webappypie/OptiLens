@@ -8,7 +8,6 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.core.SurfaceOrientedMeteringPointFactory
 import androidx.camera.view.PreviewView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
@@ -22,6 +21,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -42,6 +43,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -76,6 +78,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -90,6 +93,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -122,13 +126,14 @@ import com.webappypie.optilens.core.ui.camera.pro.ProControlsBar
 import com.webappypie.optilens.core.camera.model.CameraMode
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Pets
+import androidx.compose.material.icons.filled.Landscape
+import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.Restaurant
 import com.webappypie.optilens.core.ui.camera.sensor.HorizonSensor
 import com.webappypie.optilens.core.ui.camera.sensor.rememberCaptureRotation
 import com.webappypie.optilens.core.ui.components.OptiCameraModeChip
 import com.webappypie.optilens.core.ui.components.OptiIconButton
 import com.webappypie.optilens.core.ui.components.OptiIconButtonVariant
-import com.webappypie.optilens.core.camera.portrait.PortraitAperture
 import com.webappypie.optilens.core.ui.components.OptiPermissionState
 import com.webappypie.optilens.core.ui.theme.OptiLensCameraTypography
 import com.webappypie.optilens.core.ui.theme.OptiLensTheme
@@ -198,6 +203,7 @@ fun CameraScreen(
         when (currentMode) {
             CameraMode.NIGHT -> viewModel.takeNightPhoto(targetRotation = rotation)
             CameraMode.PORTRAIT -> viewModel.takePortraitPhoto(targetRotation = rotation)
+            CameraMode.LANDSCAPE -> viewModel.takeLandscapePhoto(targetRotation = rotation)
             CameraMode.BEST_SHOT -> viewModel.takeBestShotPhoto(targetRotation = rotation)
             CameraMode.PET -> viewModel.takePetPhoto(targetRotation = rotation)
             CameraMode.FOOD -> viewModel.takeFoodPhoto(targetRotation = rotation)
@@ -241,48 +247,56 @@ fun CameraScreen(
     externalShutterTrigger?.let { trigger ->
         LaunchedEffect(trigger) {
             trigger.collect {
-                if (uiState.hasCameraPermission && !uiState.isCapturing && !uiState.isBurstCapturing) {
+                if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED && !uiState.isCapturing && !uiState.isBurstCapturing) {
                     dispatchShutter()
                 }
             }
         }
     }
 
-    // Synchronous permission pre-check — runs inline before first composition to eliminate flash
-    val hasCameraPermissionInitial = remember {
-        ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
-            PackageManager.PERMISSION_GRANTED
-    }
+    // Permission is tracked locally from a synchronous check so the first frame is already right
+    // (the ViewModel's flow starts at "not granted" and would flash the rationale screen).
+    fun isCameraGranted() = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+        PackageManager.PERMISSION_GRANTED
+    var cameraGranted by rememberSaveable { mutableStateOf(isCameraGranted()) }
+    // While the system dialog is up, keep a plain black screen instead of the rationale screen.
+    var permissionRequestInFlight by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(cameraGranted) { viewModel.onPermissionResult(cameraGranted) }
 
-    // Re-check on every resume: covers the first frame (no permission-screen flash, since the
-    // UI below also honours the synchronous check) and returning from system Settings after
-    // granting or revoking access.
+    // Re-check on every resume: returning from system Settings after granting or revoking access.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
-            PackageManager.PERMISSION_GRANTED
-        if (granted != uiState.hasCameraPermission) viewModel.onPermissionResult(granted)
+        val granted = isCameraGranted()
+        if (granted != cameraGranted) cameraGranted = granted
         viewModel.onScreenResumed()
     }
 
-    // Camera permission request launcher for the !granted path
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
     ) { isGranted ->
-        viewModel.onPermissionResult(isGranted)
+        permissionRequestInFlight = false
+        cameraGranted = isGranted
     }
 
     LaunchedEffect(Unit) {
-        if (!hasCameraPermissionInitial) {
-            // Only request if not already granted
+        if (!cameraGranted && !permissionRequestInFlight) {
+            permissionRequestInFlight = true
             permissionLauncher.launch(Manifest.permission.CAMERA)
         }
     }
 
-    if (!uiState.hasCameraPermission && !hasCameraPermissionInitial) {
+    if (!cameraGranted && permissionRequestInFlight) {
+        Box(modifier = modifier.fillMaxSize().background(Color.Black))
+        return
+    }
+
+    if (!cameraGranted) {
         OptiPermissionState(
             title = stringResource(R.string.camera_permission_title),
             description = stringResource(R.string.camera_permission_message),
-            onRequestPermission = { permissionLauncher.launch(Manifest.permission.CAMERA) },
+            onRequestPermission = {
+                permissionRequestInFlight = true
+                permissionLauncher.launch(Manifest.permission.CAMERA)
+            },
             onOpenSettings = {
                 val intent = Intent(
                     Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
@@ -327,38 +341,71 @@ fun CameraScreen(
                             viewModel.onZoomRatioChanged(target)
                         }
                     }
-                }
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onDoubleTap = {
-                            viewModel.stopObjectTracking()
-                        },
-                        onTap = { tapOffset ->
-                            val factory = previewViewRef?.meteringPointFactory
-                            val point = factory?.createPoint(tapOffset.x, tapOffset.y)
-                                ?: SurfaceOrientedMeteringPointFactory(1f, 1f).createPoint(0.5f, 0.5f)
-                            viewModel.onTapToFocus(tapOffset, point)
-
-                            val pv = previewViewRef
-                            val viewW = pv?.width ?: 1
-                            val viewH = pv?.height ?: 1
-                            if (viewW > 0 && viewH > 0) {
-                                val normX = (tapOffset.x / viewW.toFloat()).coerceIn(0f, 1f)
-                                val normY = (tapOffset.y / viewH.toFloat()).coerceIn(0f, 1f)
-                                viewModel.startObjectTracking(normX, normY)
-                            }
-                        }
-                    )
                 },
             contentAlignment = Alignment.Center,
         ) {
-            // Viewfinder aspect frame with animated transition
+            // Viewfinder aspect frame with animated transition. Focus gestures live here, not on
+            // the full-screen box: tap offsets must be in PreviewView coordinates (the frame is
+            // letterboxed, so full-screen offsets put the focus point and reticle in the wrong place).
+            val evDragStepPx = with(LocalDensity.current) { EV_DRAG_STEP.toPx() }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(animatedAspect)
                     .clip(RoundedCornerShape(0.dp))
-                    .background(Color(0xFF0A0C10)),
+                    .background(Color(0xFF0A0C10))
+                    .pointerInput(Unit) {
+                        fun focusAt(tapOffset: Offset, lock: Boolean) {
+                            val point = previewViewRef?.meteringPointFactory?.createPoint(tapOffset.x, tapOffset.y) ?: return
+                            viewModel.onTapToFocus(tapOffset, point, lock)
+                        }
+                        detectTapGestures(
+                            onDoubleTap = { viewModel.stopObjectTracking() },
+                            onTap = { tapOffset ->
+                                focusAt(tapOffset, lock = false)
+                                if (size.width > 0 && size.height > 0) {
+                                    viewModel.startObjectTracking(
+                                        (tapOffset.x / size.width).coerceIn(0f, 1f),
+                                        (tapOffset.y / size.height).coerceIn(0f, 1f),
+                                    )
+                                }
+                            },
+                            onLongPress = { tapOffset ->
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                focusAt(tapOffset, lock = true)
+                            },
+                        )
+                    }
+                    // After a tap, dragging up/down adjusts exposure (one EV step per EV_DRAG_STEP).
+                    .pointerInput(uiState.focusTarget != null && currentMode != CameraMode.PRO) {
+                        if (uiState.focusTarget == null || currentMode == CameraMode.PRO) return@pointerInput
+                        // Single finger only: a second finger hands the gesture to pinch-zoom.
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            var accumulated = 0f
+                            var dragging = false
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                if (event.changes.size > 1) break
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) break
+                                val dy = change.position.y - change.previousPosition.y
+                                if (!dragging) {
+                                    accumulated += dy
+                                    if (kotlin.math.abs(accumulated) < viewConfiguration.touchSlop) continue
+                                    dragging = true
+                                    accumulated = 0f
+                                }
+                                change.consume()
+                                accumulated -= dy // up = brighter
+                                val steps = (accumulated / evDragStepPx).toInt()
+                                if (steps != 0) {
+                                    accumulated -= steps * evDragStepPx
+                                    viewModel.nudgeExposure(steps)
+                                }
+                            }
+                        }
+                    },
             ) {
                 // Live CameraX Preview
                 AndroidView(
@@ -394,9 +441,28 @@ fun CameraScreen(
                     )
                 }
 
-                // Tap-to-focus animated reticle
+                // Tap-to-focus animated reticle (result colour, AE/AF lock label, EV value)
                 uiState.focusTarget?.let { target ->
-                    FocusReticle(offset = target)
+                    FocusReticle(
+                        offset = target,
+                        locked = uiState.isFocusLocked,
+                        focusSucceeded = uiState.focusSucceeded,
+                        evLabel = uiState.exposureState.takeIf { it.step > 0f && it.index != 0 }
+                            ?.let { stringResource(R.string.camera_ev_value, it.index * it.step) },
+                    )
+                }
+
+                if (currentMode == CameraMode.PORTRAIT) {
+                    LaunchedEffect(uiState.detectedFaces) {
+                        val face = uiState.detectedFaces.maxByOrNull { it.bounds.width * it.bounds.height } ?: return@LaunchedEffect
+                        val pv = previewViewRef ?: return@LaunchedEffect
+                        if (pv.width <= 0 || pv.height <= 0) return@LaunchedEffect
+                        var cx = (face.bounds.left + face.bounds.right) / 2f
+                        val cy = (face.bounds.top + face.bounds.bottom) / 2f
+                        if (uiState.isFrontCamera) cx = 1f - cx
+                        val point = pv.meteringPointFactory.createPoint(cx * pv.width, cy * pv.height)
+                        viewModel.onPortraitFace(point, cx, cy)
+                    }
                 }
 
                 // Real-time Face & Landmark Detection Overlay
@@ -505,9 +571,21 @@ fun CameraScreen(
             // Portrait Mode Status & Depth Badge (shown when Portrait mode is active)
             if (currentMode == CameraMode.PORTRAIT) {
                 PortraitStatusBadge(
-                    aperture = uiState.portraitAperture,
+                    blurActive = uiState.portraitBlurActive,
                     isProcessing = uiState.isProcessingPortraitShot,
                     faceCount = uiState.detectedFaces.size,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(top = topInset + 64.dp, start = 16.dp),
+                )
+            }
+
+            // Landscape Mode Status Badge
+            if (currentMode == CameraMode.LANDSCAPE) {
+                SpecializedModeBadge(
+                    text = stringResource(if (uiState.isProcessingNightShot) R.string.camera_landscape_merging else R.string.camera_landscape_label),
+                    isProcessing = uiState.isProcessingNightShot,
+                    icon = Icons.Default.Landscape,
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .padding(top = topInset + 64.dp, start = 16.dp),
@@ -776,15 +854,6 @@ fun CameraScreen(
                 )
             }
 
-            // Portrait Mode Aperture Bar (Shown when PORTRAIT mode is selected)
-            if (currentMode == CameraMode.PORTRAIT) {
-                PortraitApertureSelector(
-                    currentAperture = uiState.portraitAperture,
-                    onApertureSelected = { viewModel.setPortraitAperture(it) },
-                    modifier = Modifier.padding(bottom = OptiLensTheme.spacing.xs),
-                )
-            }
-
             // Truthful Zoom Selector Bar (derives optical vs digital crop)
             // Never invent lenses: before discovery completes only the bound lens (1x) is known.
             val activeStops = uiState.zoomStops.ifEmpty {
@@ -989,6 +1058,9 @@ fun CameraShutterButton(
 fun FocusReticle(
     offset: Offset,
     modifier: Modifier = Modifier,
+    locked: Boolean = false,
+    focusSucceeded: Boolean? = null,
+    evLabel: String? = null,
 ) {
     val scale = remember { Animatable(1.3f) }
     val alpha = remember { Animatable(0.4f) }
@@ -1002,28 +1074,71 @@ fun FocusReticle(
 
     val reticleSize = 64.dp
     val overlayColors = OptiLensTheme.overlayColors
+    val color by androidx.compose.animation.animateColorAsState(
+        targetValue = when {
+            locked -> overlayColors.activeAccent
+            focusSucceeded == true -> overlayColors.focusSuccess
+            focusSucceeded == false -> overlayColors.horizonWarning
+            else -> overlayColors.controlOnSurface
+        },
+        label = "reticleColor",
+    )
 
     Box(
-        modifier = modifier
-            .offset {
-                IntOffset(
-                    x = (offset.x - reticleSize.toPx() / 2).roundToInt(),
-                    y = (offset.y - reticleSize.toPx() / 2).roundToInt(),
-                )
-            }
-            .size(reticleSize)
-            .scale(scale.value)
-            .border(1.5.dp, overlayColors.focusSuccess.copy(alpha = alpha.value), CircleShape)
-            .padding(4.dp),
-        contentAlignment = Alignment.Center,
+        modifier = modifier.offset {
+            IntOffset(
+                x = (offset.x - reticleSize.toPx() / 2).roundToInt(),
+                y = (offset.y - reticleSize.toPx() / 2).roundToInt(),
+            )
+        },
     ) {
         Box(
             modifier = Modifier
-                .size(4.dp)
-                .background(overlayColors.focusSuccess.copy(alpha = alpha.value), CircleShape),
-        )
+                .size(reticleSize)
+                .scale(scale.value)
+                .border(1.5.dp, color.copy(alpha = alpha.value), CircleShape)
+                .padding(4.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(4.dp)
+                    .background(color.copy(alpha = alpha.value), CircleShape),
+            )
+        }
+        if (locked) {
+            Text(
+                text = stringResource(R.string.camera_focus_locked),
+                color = overlayColors.controlOnSurfaceActive,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .offset(y = (-22).dp)
+                    .wrapContentWidth(unbounded = true)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(overlayColors.activeAccent)
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+            )
+        }
+        if (evLabel != null) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .offset(x = reticleSize + 6.dp)
+                    .wrapContentWidth(unbounded = true),
+            ) {
+                Icon(Icons.Default.WbSunny, contentDescription = null, tint = color, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(3.dp))
+                Text(evLabel, color = color, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
     }
 }
+
+/** Vertical drag distance for one exposure-compensation step on the viewfinder. */
+private val EV_DRAG_STEP = 18.dp
 
 /**
  * Truthful zoom pill selector derived from actual hardware.
@@ -1323,52 +1438,13 @@ fun PreviewBoostBadge(
     }
 }
 
-@Composable
-private fun PortraitApertureSelector(
-    currentAperture: PortraitAperture,
-    onApertureSelected: (PortraitAperture) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val overlayColors = OptiLensTheme.overlayColors
-
-    LazyRow(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = OptiLensTheme.spacing.m),
-        horizontalArrangement = Arrangement.spacedBy(OptiLensTheme.spacing.s, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        items(PortraitAperture.entries) { aperture ->
-            val isSelected = aperture == currentAperture
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(if (isSelected) overlayColors.activeAccent else overlayColors.controlSurface)
-                    .border(
-                        width = 1.dp,
-                        color = if (isSelected) overlayColors.activeAccent else overlayColors.controlBorder,
-                        shape = RoundedCornerShape(16.dp),
-                    )
-                    .clickable { onApertureSelected(aperture) }
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = aperture.label,
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                        fontSize = 12.sp,
-                    ),
-                    color = if (isSelected) Color.Black else overlayColors.controlOnSurface,
-                )
-            }
-        }
-    }
-}
-
+/**
+ * Portrait status: faces found and whether background blur comes from the device's own depth.
+ * Without the Bokeh extension the photo has no blur, and the badge says so.
+ */
 @Composable
 private fun PortraitStatusBadge(
-    aperture: PortraitAperture,
+    blurActive: Boolean,
     isProcessing: Boolean,
     faceCount: Int,
     modifier: Modifier = Modifier,
@@ -1384,10 +1460,15 @@ private fun PortraitStatusBadge(
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = when {
-                isProcessing -> stringResource(R.string.camera_portrait_refining)
-                faceCount > 0 -> androidx.compose.ui.res.pluralStringResource(R.plurals.camera_portrait_faces, faceCount, faceCount)
-                else -> stringResource(R.string.camera_portrait_aperture, aperture.label)
+            text = if (isProcessing) {
+                stringResource(R.string.camera_portrait_refining)
+            } else {
+                val blur = stringResource(if (blurActive) R.string.camera_portrait_blur_device else R.string.camera_portrait_no_blur)
+                if (faceCount > 0) {
+                    androidx.compose.ui.res.pluralStringResource(R.plurals.camera_portrait_faces, faceCount, faceCount) + " · " + blur
+                } else {
+                    blur
+                }
             },
             style = MaterialTheme.typography.labelSmall.copy(
                 fontWeight = FontWeight.SemiBold,

@@ -182,6 +182,27 @@ interface CameraController {
     suspend fun focusAndMeter(meteringPoint: MeteringPoint): OptiResult<Unit>
 
     /**
+     * Focus, exposure and white-balance metering at [meteringPoint]. With [lock] the result is held
+     * (AE/AF lock) until [cancelFocusAndMetering]; otherwise the camera returns to continuous
+     * auto-focus after a few seconds. Success carries whether the lens reported focus lock.
+     */
+    suspend fun focusAndMeter(meteringPoint: MeteringPoint, lock: Boolean): OptiResult<Boolean> =
+        when (val r = focusAndMeter(meteringPoint)) {
+            is OptiResult.Error -> r
+            else -> OptiResult.Success(true)
+        }
+
+    /** Returns to continuous auto-focus and full-frame auto-exposure (clears tap/lock). */
+    suspend fun cancelFocusAndMetering() {}
+
+    /**
+     * True while Portrait uses the device's own depth/segmentation (CameraX Bokeh extension). When
+     * false, Portrait captures without any background blur — OptiLens never fakes it.
+     */
+    val portraitBlurActive: Flow<Boolean>
+        get() = kotlinx.coroutines.flow.flowOf(false)
+
+    /**
      * Set exposure compensation index.
      */
     suspend fun setExposureCompensation(index: Int): OptiResult<Unit>

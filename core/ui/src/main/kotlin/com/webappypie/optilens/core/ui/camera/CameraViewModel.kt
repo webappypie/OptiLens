@@ -138,6 +138,12 @@ data class CameraUiState(
     val lastCapturedPhoto: CapturedPhoto? = null,
     val lastBurstResult: BurstResult? = null,
     val focusTarget: Offset? = null,
+    /** AE/AF lock is held at [focusTarget] (long-press) until the user taps elsewhere. */
+    val isFocusLocked: Boolean = false,
+    /** Result of the last tap: true = lens locked focus, false = could not, null = pending. */
+    val focusSucceeded: Boolean? = null,
+    /** Portrait background blur from the device's own depth (CameraX Bokeh extension) is active. */
+    val portraitBlurActive: Boolean = false,
     val isShutterBlinking: Boolean = false,
     val currentMode: CameraMode = CameraMode.PHOTO,
     val lensDirtyState: LensDirtyState = LensDirtyState.CLEAN,
@@ -201,6 +207,11 @@ class CameraViewModel @Inject constructor(
         CameraInternalState(isFrontCamera = cameraController.isFrontCamera)
     )
     private var focusResetJob: Job? = null
+    private var lastManualFocusAtMs = 0L
+    private var pendingEvIndex: Int? = null
+    private var lastFaceMeterAtMs = 0L
+    private var lastFaceMeterX = -1f
+    private var lastFaceMeterY = -1f
     private var timerJob: Job? = null
 
     /** Burst awaiting the user's Keep/Discard choice in the Best Shot / Wildlife sheet. */
@@ -225,6 +236,11 @@ class CameraViewModel @Inject constructor(
         viewModelScope.launch {
             cameraController.zoomStops.collect { stops ->
                 activeZoomStops = stops
+            }
+        }
+        viewModelScope.launch {
+            cameraController.portraitBlurActive.collect { active ->
+                _internalState.update { it.copy(portraitBlurActive = active) }
             }
         }
         viewModelScope.launch {
@@ -440,6 +456,9 @@ class CameraViewModel @Inject constructor(
             lastCapturedPhoto = s2.lastPhoto,
             lastBurstResult = s2.lastBurst,
             focusTarget = internal.focusTarget,
+            isFocusLocked = internal.isFocusLocked,
+            focusSucceeded = internal.focusSucceeded,
+            portraitBlurActive = internal.portraitBlurActive,
             isShutterBlinking = internal.isShutterBlinking,
             currentMode = internal.currentMode,
             lensDirtyState = intel.lensDirty,
@@ -485,14 +504,47 @@ class CameraViewModel @Inject constructor(
         }
     }
 
-    fun onTapToFocus(offset: Offset, meteringPoint: MeteringPoint) {
-        _internalState.update { it.copy(focusTarget = offset) }
+    /**
+     * Tap: focus, exposure and white balance at the point, then back to continuous AF after a few
+     * seconds. Long-press ([lock]): AE/AF lock held until the next tap or a mode change.
+     */
+    fun onTapToFocus(offset: Offset, meteringPoint: MeteringPoint, lock: Boolean = false) {
+        lastManualFocusAtMs = android.os.SystemClock.elapsedRealtime()
+        _internalState.update { it.copy(focusTarget = offset, isFocusLocked = lock, focusSucceeded = null) }
         focusResetJob?.cancel()
         focusResetJob = viewModelScope.launch {
-            cameraController.focusAndMeter(meteringPoint)
-            delay(2_000L)
-            _internalState.update { it.copy(focusTarget = null) }
+            val result = cameraController.focusAndMeter(meteringPoint, lock)
+            val focused = (result as? OptiResult.Success)?.data ?: false
+            _internalState.update { if (it.focusTarget == offset) it.copy(focusSucceeded = focused) else it }
+            if (!lock) {
+                delay(FOCUS_RETICLE_VISIBLE_MS)
+                _internalState.update { it.copy(focusTarget = null, focusSucceeded = null) }
+            }
         }
+    }
+
+    /** Drops a tap/lock and returns to continuous auto-focus and auto-exposure. */
+    fun clearFocusLock() {
+        focusResetJob?.cancel()
+        _internalState.update { it.copy(focusTarget = null, isFocusLocked = false, focusSucceeded = null) }
+        viewModelScope.launch { cameraController.cancelFocusAndMetering() }
+    }
+
+    /**
+     * Portrait: keeps focus and exposure on the main face without a tap. Throttled, and never
+     * overrides a recent manual tap or an AE/AF lock.
+     */
+    fun onPortraitFace(meteringPoint: MeteringPoint, centerX: Float, centerY: Float) {
+        val state = _internalState.value
+        if (state.currentMode != CameraMode.PORTRAIT || state.isFocusLocked || state.isCapturing) return
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastManualFocusAtMs < MANUAL_FOCUS_HOLD_MS) return
+        val moved = abs(centerX - lastFaceMeterX) > FACE_MOVE_THRESHOLD || abs(centerY - lastFaceMeterY) > FACE_MOVE_THRESHOLD
+        if (!moved && now - lastFaceMeterAtMs < FACE_METER_INTERVAL_MS) return
+        lastFaceMeterAtMs = now
+        lastFaceMeterX = centerX
+        lastFaceMeterY = centerY
+        viewModelScope.launch { cameraController.focusAndMeter(meteringPoint, lock = false) }
     }
 
     fun startObjectTracking(normX: Float, normY: Float) {
@@ -525,6 +577,29 @@ class CameraViewModel @Inject constructor(
     fun onExposureCompensationChanged(index: Int) {
         viewModelScope.launch {
             cameraController.setExposureCompensation(index)
+        }
+    }
+
+    /** Viewfinder drag after a tap: moves exposure compensation by [steps] and keeps the reticle up. */
+    fun nudgeExposure(steps: Int) {
+        val exposure = uiState.value.exposureState
+        if (steps == 0 || exposure.step <= 0f || exposure.minIndex >= exposure.maxIndex) return
+        // Successive drag events arrive faster than the controller reports the new index.
+        val base = pendingEvIndex ?: exposure.index
+        val target = (base + steps).coerceIn(exposure.minIndex, exposure.maxIndex)
+        if (target == base) return
+        pendingEvIndex = target
+        viewModelScope.launch {
+            cameraController.setExposureCompensation(target)
+            if (pendingEvIndex == target) pendingEvIndex = null
+        }
+        val state = _internalState.value
+        if (!state.isFocusLocked && state.focusTarget != null) {
+            focusResetJob?.cancel()
+            focusResetJob = viewModelScope.launch {
+                delay(FOCUS_RETICLE_VISIBLE_MS)
+                _internalState.update { it.copy(focusTarget = null, focusSucceeded = null) }
+            }
         }
     }
 
@@ -618,7 +693,7 @@ class CameraViewModel @Inject constructor(
      * capture [HDR_FRAMES] frames, merge them (less noise) and tone-map the result, which
      * brings mid-tones and shadows back up. Falls back to the steadiest frame on failure.
      */
-    fun takeHdrPhoto(targetRotation: Int = 0) {
+    fun takeHdrPhoto(targetRotation: Int = 0, label: String = HDR_LABEL) {
         if (_internalState.value.isCapturing || _internalState.value.isBurstCapturing) return
         captureReviewArmed = true
         _internalState.update { it.copy(isCapturing = true, isShutterBlinking = true) }
@@ -643,7 +718,7 @@ class CameraViewModel @Inject constructor(
                 when (val result = cameraController.acquireBurst(HDR_FRAMES, listOf(0), targetRotation)) {
                     is OptiResult.Success -> {
                         _internalState.update { it.copy(isProcessingNightShot = true) }
-                        result.data.use { burst -> mergeAndSaveBurst(burst, listOf(0), shouldMirror, toneMap = true, label = "HDR") }
+                        result.data.use { burst -> mergeAndSaveBurst(burst, listOf(0), shouldMirror, toneMap = true, label = label) }
                     }
                     is OptiResult.Error -> _internalState.update { it.copy(errorMessage = result.error.toUiText()) }
                     else -> Unit
@@ -655,6 +730,15 @@ class CameraViewModel @Inject constructor(
                 _internalState.update { it.copy(isCapturing = false, isProcessingNightShot = false) }
             }
         }
+    }
+
+    /**
+     * Landscape: a single frame when the scene fits the sensor's range; a multi-frame HDR merge
+     * (same pipeline as the HDR button) when the live analysis measures high dynamic range.
+     */
+    fun takeLandscapePhoto(targetRotation: Int = 0) {
+        val highRange = uiState.value.qualityMetrics.dynamicRangeScore > LANDSCAPE_HDR_RANGE_SCORE
+        takePhotoWithTimer(targetRotation, hdr = highRange || _internalState.value.isHdrEnabled, hdrLabel = LANDSCAPE_LABEL)
     }
 
     fun toggleHistogram() {
@@ -742,8 +826,8 @@ class CameraViewModel @Inject constructor(
         viewModelScope.launch { cameraController.revalidateLastCapturedPhoto() }
     }
 
-    fun takePhotoWithTimer(targetRotation: Int = 0, hdr: Boolean = false) {
-        val shoot: (Int) -> Unit = if (hdr) ::takeHdrPhoto else ::takePhoto
+    fun takePhotoWithTimer(targetRotation: Int = 0, hdr: Boolean = false, hdrLabel: String = HDR_LABEL) {
+        val shoot: (Int) -> Unit = if (hdr) { rotation -> takeHdrPhoto(rotation, hdrLabel) } else ::takePhoto
         val timer = _internalState.value.timerState
         if (timer == TimerState.OFF) {
             shoot(targetRotation)
@@ -871,12 +955,10 @@ class CameraViewModel @Inject constructor(
 
             val shouldMirror = _internalState.value.isFrontCamera && _internalState.value.mirrorFrontCameraSelfie
             try {
-                if (plan?.mode == NightModeType.VENDOR_EXTENSION) {
-                    when (val result = cameraController.capturePhoto(targetRotation, mirrorHorizontal = shouldMirror)) {
-                        is OptiResult.Error -> _internalState.update { it.copy(errorMessage = result.error.toUiText()) }
-                        else -> Unit
-                    }
-                } else {
+                // The OEM Night extension is never bound to the session, so its plan branch used to
+                // save a plain single frame labelled as Night. Night always uses the real
+                // multi-frame merge (device-verified) instead.
+                run {
                     val frameCount = plan?.exposurePlan?.frameCount ?: 6
                     val offsets = plan?.exposurePlan?.evOffsets ?: listOf(0)
                     when (val result = cameraController.acquireBurst(frameCount, offsets, targetRotation)) {
@@ -1004,7 +1086,11 @@ class CameraViewModel @Inject constructor(
     }
 
     fun setCameraMode(mode: CameraMode) {
-        _internalState.update { it.copy(currentMode = mode) }
+        focusResetJob?.cancel()
+        lastFaceMeterAtMs = 0L
+        _internalState.update {
+            it.copy(currentMode = mode, focusTarget = null, isFocusLocked = false, focusSucceeded = null)
+        }
         viewModelScope.launch {
             cameraController.setCameraMode(mode)
         }
@@ -1414,6 +1500,9 @@ class CameraViewModel @Inject constructor(
         val portraitAperture: PortraitAperture = PortraitAperture.DEFAULT,
         val mirrorFrontCameraSelfie: Boolean = true,
         val focusTarget: Offset? = null,
+        val isFocusLocked: Boolean = false,
+        val focusSucceeded: Boolean? = null,
+        val portraitBlurActive: Boolean = false,
         val isShutterBlinking: Boolean = false,
         val timerState: TimerState = TimerState.OFF,
         val timerCountdown: Int? = null,
@@ -1446,17 +1535,26 @@ class CameraViewModel @Inject constructor(
         const val HDR_FRAMES = 4
         const val HDR_EV_OFFSET = -0.7f
         const val HDR_AE_SETTLE_MS = 400L
+        const val HDR_LABEL = "HDR"
+        const val LANDSCAPE_LABEL = "Landscape"
+        /** QualityMetrics.dynamicRangeScore above which Landscape merges frames (same bar as Night's neon check). */
+        const val LANDSCAPE_HDR_RANGE_SCORE = 65f
+        const val FOCUS_RETICLE_VISIBLE_MS = 2_500L
+        const val MANUAL_FOCUS_HOLD_MS = 5_000L
+        const val FACE_METER_INTERVAL_MS = 3_000L
+        const val FACE_MOVE_THRESHOLD = 0.08f
 
         /**
          * Modes whose capture differs from PHOTO in a real way. Excluded until implemented
          * (PRD: modes only where real supported paths exist):
          * - VIDEO: no recording pipeline.
-         * - PORTRAIT: no depth/bokeh is applied; the aperture selector changed nothing.
          * - FOOD: computed white-balance/colour values were never applied.
          * - DOCUMENT: no edge detection/crop; the colour-mode selector was never applied.
+         * PORTRAIT is offered with face-priority focus/exposure; its background blur comes only from
+         * the device Bokeh extension (no simulated blur). LANDSCAPE merges frames in high contrast.
          */
         val IMPLEMENTED_MODES: Set<CameraMode> = CameraMode.entries.toSet() -
-            setOf(CameraMode.VIDEO, CameraMode.PORTRAIT, CameraMode.FOOD, CameraMode.DOCUMENT)
+            setOf(CameraMode.VIDEO, CameraMode.FOOD, CameraMode.DOCUMENT)
     }
 }
 

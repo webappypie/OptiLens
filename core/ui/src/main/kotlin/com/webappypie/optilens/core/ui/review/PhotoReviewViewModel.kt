@@ -7,6 +7,7 @@ import com.webappypie.optilens.core.camera.storage.GalleryRepository
 import com.webappypie.optilens.core.common.result.OptiResult
 import com.webappypie.optilens.core.imaging.enhance.EnhancementConfig
 import com.webappypie.optilens.core.imaging.enhance.EnhancementReport
+import com.webappypie.optilens.core.imaging.enhance.EnhancementScene
 import com.webappypie.optilens.core.imaging.enhance.OnDeviceEnhancementEngine
 import com.webappypie.optilens.core.logging.AppLogger
 import com.webappypie.optilens.core.settings.AppSettings
@@ -306,9 +307,16 @@ class PhotoReviewViewModel @Inject constructor(
                 report.exposureStops <= -0.15f -> add(UiText(R.string.note_darkened, listOf(-report.exposureStops)))
             }
             if (report.shadowCompression < 0.97f) add(UiText(R.string.note_shadows))
+            if (report.highlightRecoveryStops >= 0.05f) add(UiText(R.string.note_highlights))
+            if (report.dehazeStrength > 0f) add(UiText(R.string.note_haze))
+            if (report.facesProtected > 0) add(UiText(R.string.note_faces))
             val wbShift = maxOf(abs(report.whiteBalanceGainR - 1f), abs(report.whiteBalanceGainB - 1f))
             if (wbShift >= 0.02f) add(UiText(R.string.note_color))
-            if (report.lumaDenoiseRadius > 0) add(UiText(R.string.note_noise))
+            if (report.scene == EnhancementScene.LOW_LIGHT) {
+                add(UiText(R.string.note_low_light))
+            } else if (report.lumaDenoiseRadius > 0) {
+                add(UiText(R.string.note_noise))
+            }
             if (report.clippedHighlightFraction >= 0.02f) {
                 add(UiText(R.string.note_clipped, listOf((report.clippedHighlightFraction * 100).toInt())))
             }

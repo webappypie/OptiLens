@@ -221,6 +221,34 @@ class PhotoReviewViewModelTest {
         assertTrue(PhotoReviewViewModel.describe(untouched).isEmpty())
     }
 
+    @Test
+    fun `scene-adaptive steps are described only when applied`() {
+        val base = com.webappypie.optilens.core.imaging.enhance.EnhancementReport(
+            width = 10, height = 10, exposureStops = 0f, shadowCompression = 1f,
+            whiteBalanceGainR = 1f, whiteBalanceGainG = 1f, whiteBalanceGainB = 1f,
+            shadowNoiseSigma = 0.02f, lumaDenoiseRadius = 2, clippedHighlightFraction = 0f,
+            analysisMs = 1, renderMs = 1,
+        )
+        val applied = base.copy(
+            scene = com.webappypie.optilens.core.imaging.enhance.EnhancementScene.LOW_LIGHT,
+            highlightRecoveryStops = 0.2f, dehazeStrength = 0.4f, facesProtected = 1,
+        )
+        assertEquals(
+            listOf(
+                com.webappypie.optilens.core.ui.R.string.note_highlights,
+                com.webappypie.optilens.core.ui.R.string.note_haze,
+                com.webappypie.optilens.core.ui.R.string.note_faces,
+                com.webappypie.optilens.core.ui.R.string.note_low_light,
+            ),
+            PhotoReviewViewModel.describe(applied).map { it.id },
+        )
+        // Not applied → no claims; ordinary denoise keeps its plain note.
+        assertEquals(
+            listOf(com.webappypie.optilens.core.ui.R.string.note_noise),
+            PhotoReviewViewModel.describe(base).map { it.id },
+        )
+    }
+
     private class FakeGalleryRepository : com.webappypie.optilens.core.camera.storage.GalleryRepository {
         val deleted = mutableListOf<String>()
         override fun observeMedia(): Flow<List<com.webappypie.optilens.core.camera.storage.MediaItem>> =

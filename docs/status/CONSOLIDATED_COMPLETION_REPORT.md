@@ -271,3 +271,47 @@ Tests updated for the new types: `PhotoReviewViewModelTest`, `GalleryViewModelTe
 
 ## Translation quality
 Machine-assisted; needs native-speaker review before release (marked in each `values-xx/strings.xml`).
+
+# Run 10 — scene-adaptive Enhance, Portrait/Landscape, focus controls, reliability (2026-10-13)
+
+Owner request: UI/UX + reliability, advanced on-device enhancement, premium portrait/camera modes in one run; cloud AI stays deferred.
+
+## 1. On-device Enhance (no network, no tokens, no ads)
+Extends `LocalEnhancementPipeline` (spec table in `docs/04_COMPUTATIONAL_PHOTOGRAPHY.md`):
+
+| Added | Method | Guard |
+|---|---|---|
+| Scene classification | PORTRAIT / LOW_LIGHT / LANDSCAPE / HIGH_CONTRAST / GENERAL from measured faces, tone quantiles and haze | Reported, never assumed |
+| Face awareness | `StillImageFaceDetector` (bundled ML Kit, ≤1280 px) → `EnhancementHints`; soft face mask: clarity −65 %, sharpening −60 %, luma denoise −40 %; face metered for exposure (backlit faces) | Detector failure → no face protection, enhancement still runs |
+| Dehaze | Dark-channel prior in linear light, guided-filter transmission, floor t ≥ 0.6, sky protection | Off with faces, dim or low-lying airlight (indoor walls, snow, night) |
+| Highlight recovery | Base-layer bump up to 0.45 EV below white, faded per pixel near white | Clipped pixels stay 255; monotonic cap |
+| Low light | Sharpen ×0.6, denoise ×1.2 | — |
+
+The preview already had Original / Enhanced / Compare (split + hold) and **Save Enhanced Photo** (copy; original untouched). New factual notes: highlights, haze, faces, low light. Night/HDR/Landscape merges are tone-mapped by the same pipeline, so highlight recovery / LOW_LIGHT tuning now also applies to them (device-verified Night/HDR output will differ slightly — re-check on device).
+
+## 2. Camera modes and focus
+| Change | Detail |
+|---|---|
+| **Bug: tap-to-focus point was offset** | The tap handler sat on the full-screen box but passed its coordinates to `PreviewView.meteringPointFactory`; with the letterboxed 4:3/16:9 frame, focus/metering and the reticle landed above/below the touched spot. Gestures now live on the aspect frame (PreviewView coordinates) |
+| Tap / long-press / drag | Tap = AF + AE + AWB, auto-cancel 5 s, reticle colour shows the lens result (green locked / amber failed). Long-press = AE/AF lock until next tap or mode change ("AE/AF LOCK"). Vertical drag after a tap = EV ± in device steps (single finger; pinch still zooms). Manual focus (Pro) is never overridden by AF |
+| Portrait (now offered) | Face-priority AF/AE on the main face (throttled; never overrides a recent tap/lock). Background blur **only** via the CameraX **Bokeh extension** when the lens reports it (session rebinds on entering/leaving Portrait); otherwise badge: "No background blur on this device". The aperture selector (changed nothing) was removed |
+| Landscape (new) | Single frame; multi-frame HDR merge when live dynamic range is high (EXIF "Landscape · n-frame merge, tone-mapped"); Enhance dehazes when haze is measured |
+| **Bug: Night "vendor extension" path** | When the night policy picked VENDOR_EXTENSION, the app saved a plain single frame (no Night extension is ever bound). Night now always uses the real multi-frame merge |
+| Mode change | Cancels any tap/lock from the previous mode |
+
+## 3. Reliability / UI
+| Change | Why |
+|---|---|
+| **Bug: permission screen flashed** behind the system dialog on first launch; a permission revoked in Settings was never detected when it had been granted at screen creation | Permission state is local + synchronous; black screen while the dialog is up; re-checked on resume |
+| **Bug: double back emptied the back stack** (blank screen) and double taps pushed duplicate screens (e.g. two Editing Tools) | `navigateSafely` (resumed screens only, single-top) and `popSafely` (never pops the root) in `MainActivity` |
+| **Bug: "Save" in the leave dialog** saved but stayed on the screen | Closes after a successful save; stays and shows the error otherwise |
+| "Refining portrait…" claimed processing that does not happen | Now "Capturing…" |
+
+## Validation (this run)
+`assembleDebug testDebugUnitTest lintDebug --continue` → **BUILD SUCCESSFUL; 566 unit tests, 0 failures (1 skipped, pre-existing); lint 0 errors in every module.** New tests: `SceneAdaptiveEnhancementTest` (7: haze removed / not applied indoors or on clear scenes, faces disable dehaze and keep texture, backlit-face exposure, highlight recovery keeps white and tone order, neutrality), `CameraViewModelModesAndFocusTest` (7: mode availability, Landscape single vs HDR path, Night vendor plan still bursts, AE/AF lock, reticle timeout, EV drag clamping), `PhotoReviewViewModelTest` scene notes.
+**Not done:** no physical-device run (per owner instruction to avoid repeated device testing); enhancement timing with face detection not measured; Bokeh extension path compiled and unit-reachable only — it needs a device that ships the extension.
+
+## Known limitations / open items
+- Translations of the 11 new strings are machine-assisted (as before).
+- `docs/04_COMPUTATIONAL_PHOTOGRAPHY.md` was updated but is part of the owner's untracked doc pack, so it is not in this commit; same for the owner's uncommitted notification work and the strings hunks belonging to it.
+- ML Kit "accurate" face detection adds an estimated 0.1–0.3 s before enhancement (not measured).

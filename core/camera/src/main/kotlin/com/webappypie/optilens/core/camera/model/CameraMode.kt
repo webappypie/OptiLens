@@ -19,7 +19,11 @@ enum class CameraMode(
     ),
     PORTRAIT(
         label = "Portrait",
-        description = "Face-aware processing with synthetic optical bokeh disc simulation",
+        description = "Face-priority focus and exposure; background blur only from the device's own depth (CameraX Bokeh extension)",
+    ),
+    LANDSCAPE(
+        label = "Landscape",
+        description = "Wide-area metering with automatic multi-frame HDR when the scene's dynamic range is high",
     ),
     BEST_SHOT(
         label = "Best Shot",
