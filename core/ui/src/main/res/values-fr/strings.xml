@@ -352,4 +352,5 @@
     <string name="camera_portrait_no_blur">Pas de flou d\'arrière-plan sur cet appareil</string>
     <string name="camera_landscape_label">Paysage : HDR auto en fort contraste</string>
     <string name="camera_landscape_merging">Fusion des images…</string>
+    <string name="camera_hdr_too_dark">Trop sombre pour le HDR : une photo normale a été prise. Essayez le mode Nuit.</string>
 </resources>

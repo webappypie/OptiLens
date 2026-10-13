@@ -349,4 +349,5 @@
     <string name="camera_portrait_no_blur">この端末では背景ぼかし非対応</string>
     <string name="camera_landscape_label">風景：高コントラスト時は自動HDR</string>
     <string name="camera_landscape_merging">フレームを合成中…</string>
+    <string name="camera_hdr_too_dark">HDRには暗すぎるため、通常の写真を撮影しました。夜景モードをお試しください。</string>
 </resources>

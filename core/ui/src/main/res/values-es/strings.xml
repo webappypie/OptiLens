@@ -352,4 +352,5 @@
     <string name="camera_portrait_no_blur">Sin desenfoque de fondo en este dispositivo</string>
     <string name="camera_landscape_label">Paisaje: HDR automático con alto contraste</string>
     <string name="camera_landscape_merging">Combinando fotogramas…</string>
+    <string name="camera_hdr_too_dark">Demasiado oscuro para HDR; se tomó una foto normal. Prueba el modo Noche.</string>
 </resources>

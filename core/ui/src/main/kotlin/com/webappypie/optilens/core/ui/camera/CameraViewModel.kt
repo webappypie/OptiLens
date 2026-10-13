@@ -695,6 +695,14 @@ class CameraViewModel @Inject constructor(
      */
     fun takeHdrPhoto(targetRotation: Int = 0, label: String = HDR_LABEL) {
         if (_internalState.value.isCapturing || _internalState.value.isBurstCapturing) return
+        // In a dark scene the underexposed burst is far darker than the phone's own low-light
+        // single shot, and the merge came out nearly black (device-verified). Take a normal photo
+        // and point to Night instead.
+        if (uiState.value.qualityMetrics.luminance < HDR_MIN_LUMINANCE) {
+            _internalState.update { it.copy(errorMessage = UiText(R.string.camera_hdr_too_dark)) }
+            takePhoto(targetRotation)
+            return
+        }
         captureReviewArmed = true
         _internalState.update { it.copy(isCapturing = true, isShutterBlinking = true) }
 
@@ -737,7 +745,8 @@ class CameraViewModel @Inject constructor(
      * (same pipeline as the HDR button) when the live analysis measures high dynamic range.
      */
     fun takeLandscapePhoto(targetRotation: Int = 0) {
-        val highRange = uiState.value.qualityMetrics.dynamicRangeScore > LANDSCAPE_HDR_RANGE_SCORE
+        val quality = uiState.value.qualityMetrics
+        val highRange = quality.dynamicRangeScore > LANDSCAPE_HDR_RANGE_SCORE && quality.luminance >= HDR_MIN_LUMINANCE
         takePhotoWithTimer(targetRotation, hdr = highRange || _internalState.value.isHdrEnabled, hdrLabel = LANDSCAPE_LABEL)
     }
 
@@ -1527,9 +1536,12 @@ class CameraViewModel @Inject constructor(
     )
 
     companion object {
-        /** EXIF Software for merged shots, e.g. "OptiLens Night · 4-frame merge, tone-mapped". */
+        /**
+         * EXIF Software for merged shots, e.g. "OptiLens Night - 4-frame merge, tone-mapped". ASCII
+         * only: TAG_SOFTWARE is an ASCII field, and a "·" separator was stored as "?" on device.
+         */
         fun processingNote(label: String, frames: Int, toneMapped: Boolean): String =
-            "$PROCESSING_PREFIX$label · $frames-frame merge" + if (toneMapped) ", tone-mapped" else ""
+            "$PROCESSING_PREFIX$label - $frames-frame merge" + if (toneMapped) ", tone-mapped" else ""
 
         const val PROCESSING_PREFIX = "OptiLens "
         const val HDR_FRAMES = 4
@@ -1539,6 +1551,8 @@ class CameraViewModel @Inject constructor(
         const val LANDSCAPE_LABEL = "Landscape"
         /** QualityMetrics.dynamicRangeScore above which Landscape merges frames (same bar as Night's neon check). */
         const val LANDSCAPE_HDR_RANGE_SCORE = 65f
+        /** Below this mean luminance (0–255) the app suggests Night and HDR takes a normal photo. */
+        const val HDR_MIN_LUMINANCE = 38f
         const val FOCUS_RETICLE_VISIBLE_MS = 2_500L
         const val MANUAL_FOCUS_HOLD_MS = 5_000L
         const val FACE_METER_INTERVAL_MS = 3_000L

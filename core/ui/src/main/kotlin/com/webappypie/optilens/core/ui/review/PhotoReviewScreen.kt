@@ -21,8 +21,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -369,7 +368,8 @@ fun PhotoReviewScreen(
 
 private enum class PanelState { IDLE, PROCESSING, RESULT }
 
-private val CAPTURE_NOTE = Regex("^(Night|HDR|Moon|Landscape) · (\\d+)-frame merge(, tone-mapped)?$")
+// Separator: "-" (current), "·" or "?" (older photos; EXIF Software is ASCII-only).
+private val CAPTURE_NOTE = Regex("^(Night|HDR|Moon|Landscape) \\S (\\d+)-frame merge(, tone-mapped)?$")
 
 /** Rebuilds the EXIF capture note ("Night · 4-frame merge, tone-mapped") in the user's language. */
 @Composable
@@ -499,7 +499,6 @@ private fun ProcessingPanel(progress: Float, onCancel: () -> Unit) {
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ResultPanel(
     notes: List<UiText>,
@@ -517,15 +516,21 @@ private fun ResultPanel(
             fontSize = 12.sp,
         )
         if (notes.isNotEmpty()) {
-            FlowRow(
+            // One scrollable line: wrapped chips grew the panel over the photo (device: it covered
+            // the subject's face with five or six notes and a large system font).
+            Row(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(androidx.compose.foundation.rememberScrollState()),
             ) {
                 notes.forEach { note ->
                     Text(
                         text = note.resolve(),
                         color = Color.White,
                         fontSize = 12.sp,
+                        maxLines = 1,
+                        softWrap = false,
                         modifier = Modifier
                             .clip(RoundedCornerShape(10.dp))
                             .background(ChipColor)

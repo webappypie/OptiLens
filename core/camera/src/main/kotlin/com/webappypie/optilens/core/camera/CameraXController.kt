@@ -1184,6 +1184,14 @@ class CameraXController @Inject constructor(
             return@withContext OptiResult.Error(OptiError.CameraUnavailable("Capture already in progress"))
         }
 
+        // Merged frames must share the same light: with flash on AUTO, a dark scene fired the flash
+        // on some burst frames only and the merge came out blown (device-verified). Bursts run
+        // with flash off; the user's setting is restored afterwards.
+        val capture = imageCaptureUseCase
+        val userFlash = capture?.flashMode
+        if (capture != null && userFlash != ImageCapture.FLASH_MODE_OFF) {
+            withContext(dispatchers.main) { capture.flashMode = ImageCapture.FLASH_MODE_OFF }
+        }
         try {
             _sessionState.value = CameraSessionState.CAPTURING
 
@@ -1207,6 +1215,9 @@ class CameraXController @Inject constructor(
             logger.e(TAG, "Burst acquisition failed: ${e.message}", e)
             OptiResult.Error(OptiError.ProcessingFailed(stage = "Burst acquisition", cause = e))
         } finally {
+            if (capture != null && userFlash != null && userFlash != ImageCapture.FLASH_MODE_OFF) {
+                withContext(kotlinx.coroutines.NonCancellable + dispatchers.main) { capture.flashMode = userFlash }
+            }
             isCapturing.set(false)
             _sessionState.value = CameraSessionState.PREVIEW_ACTIVE
         }

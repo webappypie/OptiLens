@@ -351,4 +351,5 @@
     <string name="camera_portrait_no_blur">No background blur on this device</string>
     <string name="camera_landscape_label">Landscape: auto HDR in high contrast</string>
     <string name="camera_landscape_merging">Merging frames…</string>
+    <string name="camera_hdr_too_dark">Too dark for HDR, so a normal photo was taken. Try Night mode.</string>
 </resources>

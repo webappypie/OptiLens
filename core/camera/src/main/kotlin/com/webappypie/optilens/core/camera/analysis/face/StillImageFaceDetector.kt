@@ -67,7 +67,7 @@ class StillImageFaceDetector @Inject constructor() {
     }
 
     private companion object {
-        const val MAX_EDGE = 1280
+        const val MAX_EDGE = 960
         const val MIN_FACE_SIZE = 0.05f
     }
 }

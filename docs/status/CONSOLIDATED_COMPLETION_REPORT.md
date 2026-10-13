@@ -315,3 +315,50 @@ The preview already had Original / Enhanced / Compare (split + hold) and **Save 
 - Translations of the 11 new strings are machine-assisted (as before).
 - `docs/04_COMPUTATIONAL_PHOTOGRAPHY.md` was updated but is part of the owner's untracked doc pack, so it is not in this commit; same for the owner's uncommitted notification work and the strings hunks belonging to it.
 - ML Kit "accurate" face detection adds an estimated 0.1–0.3 s before enhancement (not measured).
+
+# Run 11 — device verification of Run 10 + fixes found on device (2026-10-13)
+
+Device: Xiaomi Redmi Note 11 Pro+ 5G (`2201116SI`), Android 13. Scene: dim indoor desk (the app suggested Night throughout), phone stationary. Debug build unless stated.
+
+## Verified on device (working)
+| Area | Result |
+|---|---|
+| First launch without camera permission | Splash → plain black behind the system dialog (no rationale flash) → "Don't allow" shows the rationale screen. A second request was auto-denied by Android in 188 ms (expected after a denial); "Open app settings" → granted there → detected on return, preview starts |
+| Tap-to-focus | Reticle lands exactly on the touched point (letterbox fix confirmed); green when the lens reports focus |
+| Long-press AE/AF lock | Amber reticle + "AE/AF LOCK", held after 3.5 s; next tap releases it |
+| Drag for EV | Drag up → +0.8 EV, preview visibly brighter; drag down restores |
+| Photo → Preview → Enhance → Compare → Save | Works; notes accurate; "Enhanced copy saved to Gallery"; leave dialog on unsaved result; Discard keeps original |
+| Enhance quality | Low-light desk: +1.2 EV, shadows, colour cast, noise — natural. Older desk photo: highlight recovery −0.24 EV. Selfie: `faces 1`, scene PORTRAIT, skin texture kept (not smoothed). Night shot: gentle (+0.2 EV, already-tone-mapped path) |
+| Portrait | Offered; "No background blur on this device" on both lenses (this Xiaomi exposes no CameraX Bokeh extension — no fake blur); capture works |
+| Landscape | Badge correct; dim scene → single frame (HDR merge correctly not triggered) |
+| Night | Real multi-frame merge, clean brighter result |
+| Retake | Deletes the test shot, returns to camera, thumbnail cleared |
+| Navigation | Triple-tap of an in-app back arrow lands on the live camera (no blank screen); double-tap on Editing Tools opens it once; Upgrade screen honest "purchases unavailable" |
+| Other controls | Flip camera, 16:9/4:3, histogram, "Digital zoom 2.0x" label, 3 s timer, Best Shot sheet, Pro controls, Gallery with WAPCentral test banner |
+| Object tracking (pre-existing feature) | Box now centred on the tap (see fixes) |
+
+## Bugs found on device and fixed in this run
+| Bug | Cause | Fix | Re-verified |
+|---|---|---|---|
+| **HDR in a dark room came out blown white** | Bursts used the user's flash setting (Auto) — the flash fired on some frames only | `acquireBurst` captures with flash off and restores the user's setting (all merges: Night/HDR/Landscape/Moon/Best Shot/Wildlife) | Yes (no flash-lit merges since) |
+| **HDR in a dark room (flash off) came out nearly black** | −0.7 EV burst frames are far darker than the phone's own low-light single shot; the tone mapper deliberately limits lifting very dark scenes | Below luminance 38 (the app's own "Night suggested" threshold) HDR takes a normal photo and says "Too dark for HDR, so a normal photo was taken. Try Night mode." Landscape's auto-HDR also requires that light level | Yes: properly exposed photo + message |
+| **Capture note showed "Night ? 2-frame merge"** and was not localized | EXIF Software is ASCII-only; "·" was stored as "?" | ASCII "-" separator; parser accepts "-", "·" and "?" (older photos) | Yes: "Night · 2-frame merge, tone-mapped on capture" |
+| **Mode jumped back to PHOTO after every preview** while the camera stayed in the previous mode | Mode kept in a screen-local `remember`, lost when navigating to the preview | Mode read from the ViewModel | Yes: Portrait stays selected after capture → preview → close |
+| **Mode badges overlapped the scene-hint pill** (all modes) | Same top offset | Badges at top + 116 dp | Yes |
+| **Histogram overlapped the hint pill**; **Pro lens label overlapped the gallery thumbnail** | Fixed offsets | Histogram top-right and lens label top-left below the hint row | Yes |
+| **Result notes covered the photo** (selfie: face hidden with 6 notes and a large system font) | Wrapping chip layout | One horizontally scrolling row | Yes |
+| **Object-tracking box drifted away from the tap** | Tracker runs on the sensor-oriented analysis grid; tap and box were in screen orientation without rotation | Coordinates rotated screen ↔ sensor (`uprightToSensor`/`sensorToUpright`, 2 unit tests) | Yes: box centred on the tap |
+| Face detection cost | 530 ms per Enhance (debug) | Detection at ≤960 px instead of 1280 | 413 ms |
+
+## Performance (2448×3264)
+| Operation | Debug build | Non-debuggable (same package, `isDebuggable=false` temporarily, reverted, not committed) |
+|---|---|---|
+| Enhance (pipeline only) | 0.8 + 3.2 s | **0.34 + 1.12 s = 1.47 s** (Run 2: 1.16 s; the added stages cost ≈0.3 s) |
+| Face detection before Enhance | 413 ms (after the fix) | not re-measured |
+| Night, 2-frame tripod merge | 17.2 s | **3.1 s** (align 0.57 / merge 1.05 / tone 1.31) |
+
+## Still not verified on device
+Bokeh extension path (needs a phone that ships it); Landscape/HDR merge in a bright high-contrast scene; Moon; Pet; thermal fallback; Editing Tools execution (Pro-gated, billing not configured); localized UI on device; front-camera face metering accuracy; Run 10 dehaze on a real hazy landscape.
+
+## Validation (Run 11)
+`assembleDebug testDebugUnitTest lintDebug --continue` → **BUILD SUCCESSFUL; 568 unit tests, 0 failures (1 skipped, pre-existing); lint 0 errors.** The first run of this suite failed 3 analyzer lifecycle tests: the new rotation read threw on a frame without `imageInfo` before the frame could be closed — made defensive (a throw there would stall analysis), re-run green. Final APK installed and smoke-tested; cold start to first frame 2.7 s (debug build).

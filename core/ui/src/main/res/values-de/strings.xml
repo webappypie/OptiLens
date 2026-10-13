@@ -352,4 +352,5 @@
     <string name="camera_portrait_no_blur">Keine Hintergrundunschärfe auf diesem Gerät</string>
     <string name="camera_landscape_label">Landschaft: Auto-HDR bei hohem Kontrast</string>
     <string name="camera_landscape_merging">Bilder werden kombiniert…</string>
+    <string name="camera_hdr_too_dark">Zu dunkel für HDR, daher wurde ein normales Foto aufgenommen. Versuche den Nachtmodus.</string>
 </resources>

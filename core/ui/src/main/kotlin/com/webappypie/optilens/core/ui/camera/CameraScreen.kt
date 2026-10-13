@@ -184,7 +184,9 @@ fun CameraScreen(
     val horizonSensor = remember { HorizonSensor(context) }
     val rollDegrees by horizonSensor.rollDegrees.collectAsStateWithLifecycle()
 
-    var currentMode by remember { mutableStateOf(CameraMode.PHOTO) }
+    // The ViewModel owns the mode: a local `remember` was reset to PHOTO every time the user came
+    // back from the preview, while the camera stayed in the previous mode.
+    val currentMode by rememberUpdatedState(uiState.currentMode)
     val captureRotation = rememberCaptureRotation()
 
     // Platform shutter click, honouring the "Shutter Sound" setting.
@@ -547,7 +549,6 @@ fun CameraScreen(
                     when (action) {
                         SceneHintAction.ENABLE_HDR -> viewModel.toggleHdr()
                         SceneHintAction.SWITCH_TO_NIGHT -> {
-                            currentMode = CameraMode.NIGHT
                             viewModel.setCameraMode(CameraMode.NIGHT)
                         }
                     }
@@ -564,7 +565,7 @@ fun CameraScreen(
                     onClick = { viewModel.togglePreviewLowLightBoost() },
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(top = topInset + 64.dp, start = 16.dp),
+                        .padding(top = topInset + MODE_BADGE_TOP, start = 16.dp),
                 )
             }
 
@@ -576,7 +577,7 @@ fun CameraScreen(
                     faceCount = uiState.detectedFaces.size,
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(top = topInset + 64.dp, start = 16.dp),
+                        .padding(top = topInset + MODE_BADGE_TOP, start = 16.dp),
                 )
             }
 
@@ -588,7 +589,7 @@ fun CameraScreen(
                     icon = Icons.Default.Landscape,
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(top = topInset + 64.dp, start = 16.dp),
+                        .padding(top = topInset + MODE_BADGE_TOP, start = 16.dp),
                 )
             }
 
@@ -600,7 +601,7 @@ fun CameraScreen(
                     icon = Icons.Default.AutoAwesome,
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(top = topInset + 64.dp, start = 16.dp),
+                        .padding(top = topInset + MODE_BADGE_TOP, start = 16.dp),
                 )
             }
 
@@ -612,7 +613,7 @@ fun CameraScreen(
                     icon = Icons.Default.Pets,
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(top = topInset + 64.dp, start = 16.dp),
+                        .padding(top = topInset + MODE_BADGE_TOP, start = 16.dp),
                 )
             }
 
@@ -624,7 +625,7 @@ fun CameraScreen(
                     icon = Icons.Default.Restaurant,
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(top = topInset + 64.dp, start = 16.dp),
+                        .padding(top = topInset + MODE_BADGE_TOP, start = 16.dp),
                 )
             }
 
@@ -636,7 +637,7 @@ fun CameraScreen(
                     isProcessing = uiState.isProcessingDocument,
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(top = topInset + 64.dp, start = 16.dp),
+                        .padding(top = topInset + MODE_BADGE_TOP, start = 16.dp),
                 )
             }
 
@@ -654,7 +655,7 @@ fun CameraScreen(
                     icon = Icons.Default.DarkMode,
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(top = topInset + 64.dp, start = 16.dp),
+                        .padding(top = topInset + MODE_BADGE_TOP, start = 16.dp),
                 )
             }
 
@@ -667,7 +668,7 @@ fun CameraScreen(
                     icon = Icons.Default.Pets,
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(top = topInset + 64.dp, start = 16.dp),
+                        .padding(top = topInset + MODE_BADGE_TOP, start = 16.dp),
                 )
             }
 
@@ -706,7 +707,7 @@ fun CameraScreen(
                     onToggleMode = { viewModel.cycleHistogramMode() },
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(top = topInset + 56.dp, end = 16.dp),
+                        .padding(top = topInset + MODE_BADGE_TOP, end = 16.dp),
                 )
             }
 
@@ -715,9 +716,10 @@ fun CameraScreen(
                 LensMetadataHud(
                     metadata = uiState.lensMetadata,
                     isRawActive = uiState.proState.isRawEnabled,
+                    // Top-left (Pro has no mode badge): at the bottom it sat on the gallery thumbnail.
                     modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(bottom = 12.dp, start = 16.dp),
+                        .align(Alignment.TopStart)
+                        .padding(top = topInset + MODE_BADGE_TOP, start = 16.dp),
                 )
             }
         }
@@ -880,7 +882,6 @@ fun CameraScreen(
                         title = stringResource(mode.labelRes),
                         isSelected = currentMode == mode,
                         onClick = {
-                            currentMode = mode
                             viewModel.setCameraMode(mode)
                         },
                     )
@@ -1478,3 +1479,6 @@ private fun PortraitStatusBadge(
         )
     }
 }
+
+/** Mode badges and the histogram sit below the scene-hint pill (top + 64 dp, ~44 dp tall) so they never overlap it. */
+private val MODE_BADGE_TOP = 116.dp

@@ -352,4 +352,5 @@
     <string name="camera_portrait_no_blur">इस डिवाइस पर बैकग्राउंड ब्लर उपलब्ध नहीं</string>
     <string name="camera_landscape_label">लैंडस्केप: हाई कॉन्ट्रास्ट में ऑटो HDR</string>
     <string name="camera_landscape_merging">फ़्रेम मिलाए जा रहे हैं…</string>
+    <string name="camera_hdr_too_dark">HDR के लिए बहुत अंधेरा है, इसलिए सामान्य फ़ोटो ली गई। नाइट मोड आज़माएँ।</string>
 </resources>

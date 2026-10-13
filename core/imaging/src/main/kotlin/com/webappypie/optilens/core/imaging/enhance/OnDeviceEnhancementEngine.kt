@@ -76,6 +76,7 @@ class OnDeviceEnhancementEngine @Inject constructor(
 
         val workers = workerCount(width)
         try {
+            val faceStart = System.nanoTime()
             val faces = try {
                 faceDetector?.detect(input).orEmpty().map { FaceRegion(it.left, it.top, it.right, it.bottom) }
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -84,10 +85,11 @@ class OnDeviceEnhancementEngine @Inject constructor(
                 logger.w(TAG, "Face detection skipped: ${e.message}")
                 emptyList()
             }
+            val faceMs = (System.nanoTime() - faceStart) / 1_000_000
             val report = LocalEnhancementPipeline(config, EnhancementHints(faces)).process(source, sink, workers, onProgress)
             logger.i(
                 TAG,
-                "Enhanced ${width}x$height with $workers workers: analysis ${report.analysisMs} ms, " +
+                "Enhanced ${width}x$height with $workers workers: face detection $faceMs ms, analysis ${report.analysisMs} ms, " +
                     "render ${report.renderMs} ms, exposure ${"%.2f".format(report.exposureStops)} EV, " +
                     "noise ${"%.4f".format(report.shadowNoiseSigma)}, denoise r=${report.lumaDenoiseRadius}, " +
                     "clipped ${"%.1f".format(report.clippedHighlightFraction * 100)}%, scene ${report.scene}, " +

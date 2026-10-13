@@ -98,7 +98,13 @@ class RealtimeIntelligenceAnalyzer(
     private var cachedFaces: List<DetectedFace> = emptyList()
     private var cachedScene: SceneClassification = SceneClassification.DEFAULT
 
+    /** Clockwise rotation that makes analysis frames upright (screen orientation). */
+    @Volatile
+    private var frameRotationDegrees = 0
+
     override fun analyze(image: ImageProxy) {
+        // Read defensively: a throw here would skip this frame's close() and stall analysis.
+        frameRotationDegrees = runCatching { image.imageInfo.rotationDegrees }.getOrDefault(frameRotationDegrees)
         val startTimeNs = System.nanoTime()
         val now = System.currentTimeMillis()
         // Set when ownership of [image] (and its close) moves to the face-detection coroutine.
@@ -172,7 +178,7 @@ class RealtimeIntelligenceAnalyzer(
             // 7. Real-Time Object Tracking (Fast 15 fps loop, bounded < 3ms, non-blocking)
             if (objectTracker.getCurrentState().status != com.webappypie.optilens.core.camera.tracking.TrackingStatus.INACTIVE) {
                 val trackedState = objectTracker.update(frameData, thermalPolicyProvider())
-                onTrackedObjectUpdated(trackedState)
+                onTrackedObjectUpdated(trackedState.toUpright(frameRotationDegrees))
             }
 
             // 8. Throttled AI Inference (~4 fps)
@@ -271,8 +277,14 @@ class RealtimeIntelligenceAnalyzer(
         }
     }
 
+    /**
+     * [normTapX]/[normTapY] are in screen (upright) orientation; the tracker works on the
+     * sensor-oriented analysis grid, so the tap is rotated into it (and results back, see
+     * [toUpright]). Without this the tracker followed a different region than the one tapped.
+     */
     fun startObjectTracking(normTapX: Float, normTapY: Float, boxSizeFraction: Float = 0.18f) {
-        objectTracker.startTracking(normTapX, normTapY, boxSizeFraction)
+        val (x, y) = uprightToSensor(normTapX, normTapY, frameRotationDegrees)
+        objectTracker.startTracking(x, y, boxSizeFraction)
     }
 
     fun stopObjectTracking() {
@@ -292,4 +304,34 @@ class RealtimeIntelligenceAnalyzer(
         cachedFaces = emptyList()
         cachedScene = SceneClassification.DEFAULT
     }
+}
+
+/** Maps a normalised upright (screen) point into the sensor-oriented frame rotated by [rotation]. */
+internal fun uprightToSensor(u: Float, v: Float, rotation: Int): Pair<Float, Float> = when ((rotation % 360 + 360) % 360) {
+    90 -> v to 1f - u
+    180 -> 1f - u to 1f - v
+    270 -> 1f - v to u
+    else -> u to v
+}
+
+/** Maps a normalised sensor-frame point to upright (screen) orientation. */
+internal fun sensorToUpright(x: Float, y: Float, rotation: Int): Pair<Float, Float> = when ((rotation % 360 + 360) % 360) {
+    90 -> 1f - y to x
+    180 -> 1f - x to 1f - y
+    270 -> y to 1f - x
+    else -> x to y
+}
+
+internal fun com.webappypie.optilens.core.camera.tracking.TrackedObjectState.toUpright(
+    rotation: Int,
+): com.webappypie.optilens.core.camera.tracking.TrackedObjectState {
+    val b = bounds ?: return this
+    if ((rotation % 360 + 360) % 360 == 0) return this
+    val (x1, y1) = sensorToUpright(b.left, b.top, rotation)
+    val (x2, y2) = sensorToUpright(b.right, b.bottom, rotation)
+    return copy(
+        bounds = com.webappypie.optilens.core.camera.tracking.TrackedObjectBounds(
+            left = minOf(x1, x2), top = minOf(y1, y2), right = maxOf(x1, x2), bottom = maxOf(y1, y2),
+        ),
+    )
 }
